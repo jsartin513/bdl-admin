@@ -56,7 +56,7 @@ const PaymentPage = () => {
           ))}
         </ul>
       ) : (
-        <p>Loading...</p>
+        <p>Loading..</p>
       )}
 
       <h1>Payments</h1>
@@ -70,7 +70,7 @@ const PaymentPage = () => {
           ))} 
         </ul>
       ) : (
-        <p>Loading...</p>
+        <p>Loading..</p>
       )}
     </div>
   );
