@@ -4,7 +4,12 @@ import { google } from "googleapis";
 
 const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
 const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+// const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+const ENCODED_PRIVATE_KEY = process.env.BASE64_GOOGLE_PRIVATE_KEY;
+
+const PRIVATE_KEY = ENCODED_PRIVATE_KEY
+  ? Buffer.from(ENCODED_PRIVATE_KEY, "base64").toString("utf-8")
+  : undefined;
 
 if (!CLIENT_EMAIL || !PRIVATE_KEY) {
   throw new Error("Missing Google service account credentials");
