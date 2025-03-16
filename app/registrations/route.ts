@@ -24,7 +24,9 @@ const handler = async (req: NextRequest) => {
         client_email: CLIENT_EMAIL,
         private_key: PRIVATE_KEY,
       },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive"],
+      projectId: "gen-lang-client-0392038781",
+      
     });
     const sheets = google.sheets({ version: "v4", auth });
 
