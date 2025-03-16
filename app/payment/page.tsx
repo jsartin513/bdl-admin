@@ -67,7 +67,7 @@ const PaymentPage = () => {
             <li key={payment.id}>
               {payment.from}: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
             </li>
-          ))}
+          ))} 
         </ul>
       ) : (
         <p>Loading...</p>
