@@ -43,6 +43,16 @@ const PaymentPage = () => {
     fetchPaymentData();
   }, []);
 
+  const hasPaid = (name: string) => {
+    return payments.some(payment => payment.from === name && payment.amountTotal === '$65.00' && payment.to === 'Boston Dodgeball League');
+  };
+
+  const unmatchedPayments = payments.filter(payment => 
+    payment.amountTotal === "$65.00" && 
+    payment.to === 'Boston Dodgeball League' && 
+    !registrations.some(registration => registration.name === payment.from)
+  );
+
   return (
     <div>
       <h1>Registered Users</h1>
@@ -51,7 +61,7 @@ const PaymentPage = () => {
         <ul>
           {registrations.map((registration) => (
             <li key={registration.email}>
-              {registration.name} ({registration.email}) - {registration.registrationDate}
+              {registration.name} ({registration.email}) - {registration.registrationDate} - {hasPaid(registration.name) ? 'Paid' : 'Not Paid'}
             </li>
           ))}
         </ul>
@@ -59,18 +69,18 @@ const PaymentPage = () => {
         <p>Loading..</p>
       )}
 
-      <h1>Payments</h1>
+      <h1>Unmatched Payments</h1>
       {error && <p>{error}</p>}
-      {payments.length > 0 ? (
+      {unmatchedPayments.length > 0 ? (
         <ul>
-          {payments.map((payment) => (
+          {unmatchedPayments.map((payment) => (
             <li key={payment.id}>
               {payment.from}: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
             </li>
           ))} 
         </ul>
       ) : (
-        <p>Loading..</p>
+        <p>No unmatched payments found.</p>
       )}
     </div>
   );

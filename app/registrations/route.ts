@@ -40,9 +40,9 @@ const handler = async (req: NextRequest) => {
       throw new Error("No data found in the spreadsheet");
     }
     const registrations = rows.slice(1).map((row) => ({
-      name: row[0],
+      registrationDate: row[0],
       email: row[1],
-      registrationDate: row[2],
+      name: row[2],
     }));
 
     return NextResponse.json({ registrations });
