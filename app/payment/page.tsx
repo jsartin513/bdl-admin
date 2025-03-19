@@ -3,6 +3,10 @@
 
 import React, { useEffect, useState } from 'react';
 
+const PAYMENT_AMOUNT = '$65.00';
+const PAYMENT_TYPE = 'Payment';
+const PAYMENT_TO = 'Boston Dodgeball League';
+
 const PaymentPage = () => {
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -44,13 +48,13 @@ const PaymentPage = () => {
   }, []);
 
   const hasPaid = (name: string) => {
-    return payments.some(payment => payment.from === name.trim() && payment.amountTotal === '$65.00' && payment.to === 'Boston Dodgeball League' && payment.type === 'Payment');
+    return payments.some(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
   };
 
   const unmatchedPayments = payments.filter(payment => 
-    payment.amountTotal === "$65.00" && 
-    payment.to === 'Boston Dodgeball League' && 
-    payment.type === 'Payment' &&
+    payment.amountTotal === PAYMENT_AMOUNT && 
+    payment.to === PAYMENT_TO && 
+    payment.type === PAYMENT_TYPE &&
     !registrations.some(registration => registration.name.trim() === payment.from.trim())
   );
 
