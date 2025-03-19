@@ -40,7 +40,7 @@ const handler = async (req: NextRequest) => {
     }
     const payments = rows.slice(1).map((row) => ({
       id: `payment-${row[0]}`,
-      // datetime: row[1],
+      date: row[1],
       time: row[2],
       type: row[3],
       status: row[4],

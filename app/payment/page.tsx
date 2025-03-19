@@ -47,8 +47,13 @@ const PaymentPage = () => {
     fetchPaymentData();
   }, []);
 
-  const hasPaid = (name: string) => {
-    return payments.some(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
+  // const hasPaid = (name: string) => {
+  //   return payments.some(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
+  // };
+
+  const getPaymentDetails = (name: string) => {
+    const payment = payments.find(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
+    return payment ? { date: payment.date, transactionId: payment.id } : null;
   };
 
   const unmatchedPayments = payments.filter(payment => 
@@ -58,17 +63,25 @@ const PaymentPage = () => {
     !registrations.some(registration => registration.name.trim() === payment.from.trim())
   );
 
+  const getTrimmedPaymentId = (paymentId: string) => {
+    return paymentId.replace('payment-', '').replace('"', '').replace('"', '');
+  };
+
   return (
     <div>
-      <h1>Registered Users</h1>
+      <h1>Registered Players</h1>
       {error && <p>{error}</p>}
       {registrations.length > 0 ? (
         <ul>
-          {registrations.map((registration) => (
-            <li key={registration.email}>
-              {registration.name} ({registration.email}) - {hasPaid(registration.name) ? 'Paid' : 'Not Paid'}
-            </li>
-          ))}
+          {registrations.map((registration) => {
+            const paymentDetails = getPaymentDetails(registration.name);
+            return (
+              <li key={registration.email}>
+                {registration.name} ({registration.email}) - 
+                {paymentDetails ? `Paid ${paymentDetails.date} (${getTrimmedPaymentId(paymentDetails.transactionId)})` : 'No Payment Found'}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p>Loading..</p>
