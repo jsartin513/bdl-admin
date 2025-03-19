@@ -44,14 +44,14 @@ const PaymentPage = () => {
   }, []);
 
   const hasPaid = (name: string) => {
-    return payments.some(payment => payment.from === name && payment.amountTotal === '$65.00' && payment.to === 'Boston Dodgeball League' && payment.type === 'Payment');
+    return payments.some(payment => payment.from === name.trim() && payment.amountTotal === '$65.00' && payment.to === 'Boston Dodgeball League' && payment.type === 'Payment');
   };
 
   const unmatchedPayments = payments.filter(payment => 
     payment.amountTotal === "$65.00" && 
     payment.to === 'Boston Dodgeball League' && 
     payment.type === 'Payment' &&
-    !registrations.some(registration => registration.name === payment.from)
+    !registrations.some(registration => registration.name.trim() === payment.from.trim())
   );
 
   return (
