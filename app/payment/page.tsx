@@ -66,7 +66,7 @@ const PaymentPage = () => {
         <ul>
           {registrations.map((registration) => (
             <li key={registration.email}>
-              {registration.name} ({registration.email}) - {registration.registrationDate} - {hasPaid(registration.name) ? 'Paid' : 'Not Paid'}
+              {registration.name} ({registration.email}) - {hasPaid(registration.name) ? 'Paid' : 'Not Paid'}
             </li>
           ))}
         </ul>
