@@ -68,17 +68,21 @@ const PaymentPage = () => {
   };
 
   return (
-    <div>
-      <h1>Registered Players</h1>
-      {error && <p>{error}</p>}
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Registered Players</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       {registrations.length > 0 ? (
-        <ul>
+        <ul style={{ listStyleType: 'none', padding: 0 }}>
           {registrations.map((registration) => {
             const paymentDetails = getPaymentDetails(registration.name);
             return (
-              <li key={registration.email}>
-                {registration.name} ({registration.email}) - 
-                {paymentDetails ? `Paid ${paymentDetails.date} (${getTrimmedPaymentId(paymentDetails.transactionId)})` : 'No Payment Found'}
+              <li key={registration.email} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+                <strong>{registration.name}</strong> ({registration.email}) - 
+                {paymentDetails ? (
+                  <span style={{ color: 'green' }}> Paid {paymentDetails.date} (Transaction ID: {getTrimmedPaymentId(paymentDetails.transactionId)})</span>
+                ) : (
+                  <span style={{ color: 'red' }}> No Payment Found</span>
+                )}
               </li>
             );
           })}
@@ -87,13 +91,13 @@ const PaymentPage = () => {
         <p>Loading..</p>
       )}
 
-      <h1>Unmatched Payments</h1>
-      {error && <p>{error}</p>}
+      <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Unmatched Payments</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       {unmatchedPayments.length > 0 ? (
-        <ul>
+        <ul style={{ listStyleType: 'none', padding: 0 }}>
           {unmatchedPayments.map((payment) => (
-            <li key={payment.id}>
-              {payment.from}: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
+            <li key={payment.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+              <strong>{payment.from}</strong>: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
             </li>
           ))} 
         </ul>
