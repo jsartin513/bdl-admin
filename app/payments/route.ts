@@ -30,7 +30,7 @@ const handler = async (req: NextRequest) => {
 
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: "Sheet1",
+      range: "LatestPayments",
     });
 
     const rows = result.data.values;
@@ -40,17 +40,17 @@ const handler = async (req: NextRequest) => {
     const payments = rows.slice(1).map((row) => ({
       id: `payment-${row[0]}`,
       // datetime: row[1],
-      type: row[2],
-      status: row[3],
-      note: row[4],
-      from: row[5],
-      to: row[6],
-      amountTotal: row[7],
-      amountTip: row[8],
+      time: row[2],
+      type: row[3],
+      status: row[4],
+      note: row[5],
+      from: row[6],
+      to: row[7],
+      amountTotal: row[8],
       amountTax: row[9],
-      amountFee: row[10],
-      taxRate: row[11],
-      taxExempt: row[12],
+      amountTip: row[10],
+      amountNet: row[11],
+      amountFee: row[12],
       // fundingSource: row[13],
       // destination: row[14],
       // beginningBalance: row[15],
