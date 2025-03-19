@@ -3,6 +3,7 @@ import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
 
 const SHEET_ID = "1eD-x1T1tcjB4xG-4Jn69pzavPokYL2CVAbZqXZJ5esc";
+const SHEET_NAME = "LatestPayments";
 const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 // const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 const ENCODED_PRIVATE_KEY = process.env.BASE64_GOOGLE_PRIVATE_KEY;
@@ -30,7 +31,7 @@ const handler = async (req: NextRequest) => {
 
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: "LatestPayments",
+      range: SHEET_NAME,
     });
 
     const rows = result.data.values;
@@ -39,7 +40,7 @@ const handler = async (req: NextRequest) => {
     }
     const payments = rows.slice(1).map((row) => ({
       id: `payment-${row[0]}`,
-      // datetime: row[1],
+      date: row[1],
       time: row[2],
       type: row[3],
       status: row[4],

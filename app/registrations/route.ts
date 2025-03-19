@@ -3,6 +3,7 @@ import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
 
 const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
+const SHEET_NAME = "Form Responses 1";
 const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 // const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 const ENCODED_PRIVATE_KEY = process.env.BASE64_GOOGLE_PRIVATE_KEY;
@@ -32,7 +33,7 @@ const handler = async (req: NextRequest) => {
 
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: "Form Responses 1",
+      range: SHEET_NAME,
     });
 
     const rows = result.data.values;
@@ -43,6 +44,8 @@ const handler = async (req: NextRequest) => {
       registrationDate: row[0],
       email: row[1],
       name: row[2],
+      venmoHandle: row[7],
+      markedPaidByDave: row[8],
     }));
 
     return NextResponse.json({ registrations });

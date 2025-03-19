@@ -3,6 +3,10 @@
 
 import React, { useEffect, useState } from 'react';
 
+const PAYMENT_AMOUNT = '$65.00';
+const PAYMENT_TYPE = 'Payment';
+const PAYMENT_TO = 'Boston Dodgeball League';
+
 const PaymentPage = () => {
   const [registrations, setRegistrations] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -43,40 +47,57 @@ const PaymentPage = () => {
     fetchPaymentData();
   }, []);
 
-  const hasPaid = (name: string) => {
-    return payments.some(payment => payment.from === name.trim() && payment.amountTotal === '$65.00' && payment.to === 'Boston Dodgeball League' && payment.type === 'Payment');
+  // const hasPaid = (name: string) => {
+  //   return payments.some(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
+  // };
+
+  const getPaymentDetails = (name: string) => {
+    const payment = payments.find(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
+    return payment ? { date: payment.date, transactionId: payment.id } : null;
   };
 
   const unmatchedPayments = payments.filter(payment => 
-    payment.amountTotal === "$65.00" && 
-    payment.to === 'Boston Dodgeball League' && 
-    payment.type === 'Payment' &&
+    payment.amountTotal === PAYMENT_AMOUNT && 
+    payment.to === PAYMENT_TO && 
+    payment.type === PAYMENT_TYPE &&
     !registrations.some(registration => registration.name.trim() === payment.from.trim())
   );
 
+  const getTrimmedPaymentId = (paymentId: string) => {
+    return paymentId.replace('payment-', '').replace('"', '').replace('"', '');
+  };
+
   return (
-    <div>
-      <h1>Registered Users</h1>
-      {error && <p>{error}</p>}
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
+      <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Registered Players</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       {registrations.length > 0 ? (
-        <ul>
-          {registrations.map((registration) => (
-            <li key={registration.email}>
-              {registration.name} ({registration.email}) - {registration.registrationDate} - {hasPaid(registration.name) ? 'Paid' : 'Not Paid'}
-            </li>
-          ))}
+        <ul style={{ listStyleType: 'none', padding: 0 }}>
+          {registrations.map((registration) => {
+            const paymentDetails = getPaymentDetails(registration.name);
+            return (
+              <li key={registration.email} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+                <strong>{registration.name}</strong> ({registration.email}) - 
+                {paymentDetails ? (
+                  <span style={{ color: 'green' }}> Paid {paymentDetails.date} (Transaction ID: {getTrimmedPaymentId(paymentDetails.transactionId)})</span>
+                ) : (
+                  <span style={{ color: 'red' }}> No Payment Found</span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p>Loading..</p>
       )}
 
-      <h1>Unmatched Payments</h1>
-      {error && <p>{error}</p>}
+      <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Unmatched Payments</h1>
+      {error && <p style={{ color: 'red' }}>{error}</p>}
       {unmatchedPayments.length > 0 ? (
-        <ul>
+        <ul style={{ listStyleType: 'none', padding: 0 }}>
           {unmatchedPayments.map((payment) => (
-            <li key={payment.id}>
-              {payment.from}: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
+            <li key={payment.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+              <strong>{payment.from}</strong>: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
             </li>
           ))} 
         </ul>
