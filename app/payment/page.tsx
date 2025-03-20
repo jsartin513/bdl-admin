@@ -47,10 +47,6 @@ const PaymentPage = () => {
     fetchPaymentData();
   }, []);
 
-  // const hasPaid = (name: string) => {
-  //   return payments.some(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
-  // };
-
   const getPaymentDetails = (name: string) => {
     const payment = payments.find(payment => payment.from === name.trim() && payment.amountTotal === PAYMENT_AMOUNT && payment.to === PAYMENT_TO && payment.type === PAYMENT_TYPE);
     return payment ? { date: payment.date, transactionId: payment.id } : null;
@@ -67,13 +63,19 @@ const PaymentPage = () => {
     return paymentId.replace('payment-', '').replace('"', '').replace('"', '');
   };
 
+  const sortedRegistrations = registrations.sort((a, b) => {
+    const aPaid = getPaymentDetails(a.name) ? 1 : 0;
+    const bPaid = getPaymentDetails(b.name) ? 1 : 0;
+    return bPaid - aPaid;
+  });
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Registered Players</h1>
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {registrations.length > 0 ? (
         <ul style={{ listStyleType: 'none', padding: 0 }}>
-          {registrations.map((registration) => {
+          {sortedRegistrations.map((registration) => {
             const paymentDetails = getPaymentDetails(registration.name);
             return (
               <li key={registration.email} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
