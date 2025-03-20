@@ -74,9 +74,52 @@ const PaymentPage = () => {
     return registrations.filter(registration => registration.name.includes(lastName));
   };
 
+  const exportToCSV = () => {
+    const headers = ['Name', 'Email', 'Payment Status', 'Payment Date', 'Transaction ID'];
+    const rows = sortedRegistrations.map((registration) => {
+      const paymentDetails = getPaymentDetails(registration.name);
+      return [
+        registration.name,
+        registration.email,
+        paymentDetails ? 'Paid' : 'No Payment Found',
+        paymentDetails ? paymentDetails.date : '',
+        paymentDetails ? getTrimmedPaymentId(paymentDetails.transactionId) : ''
+      ];
+    });
+
+    const unmatchedHeaders = ['From', 'Amount', 'Type', 'Status'];
+    const unmatchedRows = unmatchedPayments.map((payment) => [
+      payment.from,
+      payment.amountTotal,
+      payment.type,
+      payment.status
+    ]);
+
+    let csvContent = 'data:text/csv;charset=utf-8,';
+    csvContent += headers.join(',') + '\n';
+    rows.forEach(row => {
+      csvContent += row.join(',') + '\n';
+    });
+
+    csvContent += '\nUnmatched Payments\n';
+    csvContent += unmatchedHeaders.join(',') + '\n';
+    unmatchedRows.forEach(row => {
+      csvContent += row.join(',') + '\n';
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'registrations_and_unmatched_payments.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Registered Players</h1>
+      <button onClick={exportToCSV} style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '5px' }}>Export to CSV</button>
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {registrations.length > 0 ? (
         <ul style={{ listStyleType: 'none', padding: 0 }}>
