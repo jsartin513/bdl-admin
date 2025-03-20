@@ -69,6 +69,11 @@ const PaymentPage = () => {
     return bPaid - aPaid;
   });
 
+  const getPotentialMatches = (paymentFrom: string) => {
+    const lastName = paymentFrom.split(' ').pop();
+    return registrations.filter(registration => registration.name.includes(lastName));
+  };
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1 style={{ color: '#fff', fontSize: '2em', borderBottom: '2px solid #333', paddingBottom: '10px' }}>Registered Players</h1>
@@ -100,6 +105,13 @@ const PaymentPage = () => {
           {unmatchedPayments.map((payment) => (
             <li key={payment.id} style={{ marginBottom: '10px', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
               <strong>{payment.from}</strong>: {payment.amountTotal} (Type: {payment.type}, Status: {payment.status})
+              <ul>
+                {getPotentialMatches(payment.from).map((match) => (
+                  <li key={match.email} style={{ marginTop: '5px', padding: '5px', border: '1px solid #ccc', borderRadius: '5px' }}>
+                    Potential Match: <strong>{match.name}</strong> ({match.email})
+                  </li>
+                ))}
+              </ul>
             </li>
           ))} 
         </ul>
