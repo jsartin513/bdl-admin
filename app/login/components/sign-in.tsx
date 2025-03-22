@@ -1,15 +1,19 @@
+'use client';
+import { signIn } from "next-auth/react";
 
-import { signIn } from "@/auth"
- 
 export default function SignIn() {
+  const handleSignIn = async () => {
+    await signIn("google");
+  };
+
   return (
     <form
-      action={async () => {
-        "use server"
-        await signIn("google")
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSignIn();
       }}
     >
-      <button type="submit">Signin with Google</button>
+      <button type="submit">Sign in with Google</button>
     </form>
-  )
-} 
+  );
+}
