@@ -11,14 +11,10 @@ export default async function middleware(req: NextRequest) {
   const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|api\/.*$).*/;
 
   if (protectedPaths.test(pathname)) {
-    console.log("middleware.ts");
-    console.log('req.nextUrl', req.nextUrl);
-    console.log('req.nextUrl.pathname', req.nextUrl.pathname);
 
     if (token) {
       return NextResponse.next();
     } else {
-      console.log("Redirecting to login page");
       const newUrl = new URL("/login", req.nextUrl.origin);
       return NextResponse.redirect(newUrl);
     }
