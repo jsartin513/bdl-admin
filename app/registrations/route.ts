@@ -1,34 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleAuth } from "google-auth-library";
+import { getToken } from "next-auth/jwt";
 import { google } from "googleapis";
 
 const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
 const SHEET_NAME = "Form Responses 1";
-const CLIENT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-// const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-const ENCODED_PRIVATE_KEY = process.env.BASE64_GOOGLE_PRIVATE_KEY;
 
-const PRIVATE_KEY = ENCODED_PRIVATE_KEY
-  ? Buffer.from(ENCODED_PRIVATE_KEY, "base64").toString("utf-8")
-  : undefined;
-
-if (!CLIENT_EMAIL || !PRIVATE_KEY) {
-  throw new Error("Missing Google service account credentials");
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const handler = async (req: NextRequest) => {
+export async function GET(req: NextRequest) {
   try {
+    const AUTH_SECRET = process.env.AUTH_SECRET;
+    const token = await getToken({ req, secret: AUTH_SECRET });
+    if (!token || !token.accessToken ) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     console.log("Fetching data from Google Sheets");
-    const auth = new GoogleAuth({
-      credentials: {
-        client_email: CLIENT_EMAIL,
-        private_key: PRIVATE_KEY,
-      },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive"],
-      projectId: "gen-lang-client-0392038781",
-      
-    });
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: token.accessToken });
+
     const sheets = google.sheets({ version: "v4", auth });
 
     const result = await sheets.spreadsheets.values.get({
@@ -56,8 +44,4 @@ const handler = async (req: NextRequest) => {
       { status: 500 }
     );
   }
-};
-
-export async function GET(req: NextRequest) {
-  return handler(req);
 }
