@@ -11,10 +11,13 @@ export default async function middleware(req: NextRequest) {
   const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|api\/.*$).*/;
 
   if (protectedPaths.test(pathname)) {
+    console.log("middleware: Checking if user is authenticated");
 
     if (token) {
+      console.log("middleware: User is authenticated");
       return NextResponse.next();
     } else {
+      console.log("middleware: User is not authenticated, redirecting to login");
       const newUrl = new URL("/login", req.nextUrl.origin);
       return NextResponse.redirect(newUrl);
     }
