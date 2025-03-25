@@ -1,13 +1,19 @@
 import React from "react";
 import SignIn from "./components/sign-in";
 
-const LoginPage = async ({ searchParams }: { searchParams: { redirect?: string } }) => {
-  const awaitedSearchParams = await searchParams;
-  const redirect = awaitedSearchParams.redirect || "/";
+interface PageProps {
+  searchParams: Promise<{ redirect?: string }>;
+}
+
+const LoginPage = async ({ searchParams }: PageProps) => {
+  const { redirect } = await searchParams;
+  const redirectUrl = redirect ? redirect: "/";
+
+
   return (
     <div>
       <h1>Login</h1>
-      <SignIn redirect={redirect} />
+      <SignIn redirect={redirectUrl} />
     </div>
   );
 };
