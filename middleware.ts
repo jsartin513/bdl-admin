@@ -38,7 +38,7 @@ export default async function middleware(req: NextRequest) {
   // Add the _vercel_jwt cookie for API routes
   if (pathname.startsWith("/api") && process.env.NODE_ENV !== "development") {
     console.log("fixing cookie maybe")
-    const jwtCookie = req.cookies.get("__Secure-authjs.session-token");
+    const jwtCookie = req.cookies.get("__Secure-authjs.session-token")?.value;
     console.log("jwtCookie", jwtCookie);
     if (jwtCookie) {
       const headers = new Headers(req.headers);
