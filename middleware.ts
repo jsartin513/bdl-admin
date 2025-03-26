@@ -10,7 +10,7 @@ export default async function middleware(req: NextRequest) {
   if (process.env.NODE_ENV !== "development") {
     tokenParams = {
       ...tokenParams,
-      cookieName: "next-auth.session-token", // Specify the cookie name
+      cookieName: "__Secure-authjs.session-token", // Specify the cookie name
       secureCookie: true, // Ensure secure cookies in production
     } as Parameters<typeof getToken>[0]; // Type assertion to avoid TypeScript error
   }
