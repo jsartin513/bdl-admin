@@ -3,7 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 
 export default async function middleware(req: NextRequest) {
   const AUTH_SECRET = process.env.AUTH_SECRET;
-  const token = await getToken({ req, secret: AUTH_SECRET });
+
+  let tokenParams: Parameters<typeof getToken>[0] = { req, secret: AUTH_SECRET };
+
+  // IF we're not in localhost, we need to specify cookie name
+  if (process.env.NODE_ENV !== "development") {
+    tokenParams = {
+      ...tokenParams,
+      cookieName: "next-auth.session-token", // Specify the cookie name
+      secureCookie: true, // Ensure secure cookies in production
+    } as Parameters<typeof getToken>[0]; // Type assertion to avoid TypeScript error
+  }
+
+  const token = await getToken(tokenParams);
   const { pathname, search } = req.nextUrl;
 
   // Regex to match paths that should be protected
