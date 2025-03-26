@@ -1,6 +1,5 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
-// import { JWT } from "next-auth/jwt";
 
 const GOOGLE_OAUTH_ID = process.env.AUTH_GOOGLE_ID;
 const GOOGLE_OAUTH_SECRET = process.env.AUTH_GOOGLE_SECRET;
@@ -24,7 +23,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   session: {
     strategy: "jwt",
   },
-  secret: process.env.AUTH_SECRET,
   callbacks: {
     async jwt({ token, account }) {
       if (account) {
