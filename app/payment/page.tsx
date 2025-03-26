@@ -15,7 +15,7 @@ const PaymentPage = () => {
   useEffect(() => {
     const fetchRegistrationData = async () => {
       try {
-        const response = await fetch('/registrations');
+        const response = await fetch('/api/registrations');
         const data = await response.json();
         if (response.ok) {
           setRegistrations(data.registrations);
@@ -30,7 +30,7 @@ const PaymentPage = () => {
 
     const fetchPaymentData = async () => {
       try {
-        const response = await fetch('/payments');
+        const response = await fetch('/api/payments');
         const data = await response.json();
         if (response.ok) {
           setPayments(data.payments);
