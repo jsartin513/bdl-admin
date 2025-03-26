@@ -16,6 +16,9 @@ export async function GET(req: NextRequest) {
     console.log("Fetching data from Google Sheets");
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: token.accessToken });
+    console.log("auth", auth);
+    console.log("access_token", token.accessToken);
+    console.log("token", token);
 
     const sheets = google.sheets({ version: "v4", auth });
 

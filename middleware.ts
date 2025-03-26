@@ -35,5 +35,22 @@ export default async function middleware(req: NextRequest) {
     }
   }
 
+  // Add the _vercel_jwt cookie for API routes
+  if (pathname.startsWith("/api") && process.env.NODE_ENV !== "development") {
+    console.log("fixing cookie maybe")
+    const jwtCookie = req.cookies.get("__Secure-authjs.session-token");
+    console.log("jwtCookie", jwtCookie);
+    if (jwtCookie) {
+      const headers = new Headers(req.headers);
+      headers.set("Cookie", `_vercel_jwt=${jwtCookie}`);
+
+      return NextResponse.next({
+        request: {
+          headers,
+        },
+      });
+    }
+  }
+
   return NextResponse.next();
 }
