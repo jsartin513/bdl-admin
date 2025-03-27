@@ -42,7 +42,7 @@ export default async function middleware(req: NextRequest) {
     console.log("jwtCookie", jwtCookie);
     if (jwtCookie) {
       const headers = new Headers(req.headers);
-      headers.set("Cookie", `_vercel_jwt=${jwtCookie}`);
+      headers.set("Cookie", `user-token=${jwtCookie}`);
 
       return NextResponse.next({
         request: {
