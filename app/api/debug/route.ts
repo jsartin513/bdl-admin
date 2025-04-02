@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers"; // Import cookies from next/headers
 import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Fetch the session using NextAuth
-  const session = await auth();
+  console.log("Fetching session...");
+  console.log("Typeof request:", typeof request);
+  const session = await auth(); // Use the auth function to get the session
   // Extract user data from the session
   const user = session
     ? {
@@ -35,6 +37,14 @@ export async function GET() {
     cookiesData.get("authjs.csrf-token")?.value || // Development cookie
     null;
 
+  let cookieList: string[] = [];
+  const cookiesFromRequest = request.headers.get("cookie") || null;
+  if (cookiesFromRequest) {
+    cookieList = cookiesFromRequest
+      .split(";")
+      .map((cookie) => cookie.trim());
+  }
+
   return NextResponse.json({
     success: true,
     message: "Backend is working!",
@@ -44,5 +54,6 @@ export async function GET() {
       callbackUrl,
       csrfToken,
     },
+    cookieList,
   });
 }
