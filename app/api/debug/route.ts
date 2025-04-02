@@ -25,7 +25,15 @@ export async function GET() {
 
   // Fetch cookies
   const cookiesData = await cookies();
-  const callbackUrl = cookiesData.get("authjs.callback-url")?.value || null;
+  const callbackUrl =
+    cookiesData.get("__Secure-authjs.callback-url")?.value || // Production cookie
+    cookiesData.get("authjs.callback-url")?.value || // Development cookie
+    null;
+
+  const csrfToken =
+    cookiesData.get("__Host-authjs.csrf-token")?.value || // Production cookie
+    cookiesData.get("authjs.csrf-token")?.value || // Development cookie
+    null;
 
   return NextResponse.json({
     success: true,
@@ -34,6 +42,7 @@ export async function GET() {
     appInfo,
     cookies: {
       callbackUrl,
+      csrfToken,
     },
   });
 }
