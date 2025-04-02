@@ -32,18 +32,30 @@ export async function GET(request: NextRequest) {
     cookiesData.get("authjs.callback-url")?.value || // Development cookie
     null;
 
+  console.log("callbackUrl:", callbackUrl);
+
   const csrfToken =
     cookiesData.get("__Host-authjs.csrf-token")?.value || // Production cookie
     cookiesData.get("authjs.csrf-token")?.value || // Development cookie
     null;
 
+  console.log("csrfToken:", csrfToken);
+
   let cookieList: string[] = [];
   const cookiesFromRequest = request.headers.get("cookie") || null;
   if (cookiesFromRequest) {
-    cookieList = cookiesFromRequest
-      .split(";")
-      .map((cookie) => cookie.trim());
+    cookieList = cookiesFromRequest.split(";").map((cookie) => cookie.trim());
   }
+
+  // Log the cookies
+  console.log("Cookies from request:", cookiesFromRequest);
+  console.log("Cookies from headers:", cookieList);
+  console.log("Cookies from next/headers:", cookiesData);
+  console.log("Session:", session);
+  console.log("User:", user);
+  console.log("App Info:", appInfo);
+  console.log("Request URL:", request.url);
+  console.log("Request Headers:", request.headers);
 
   return NextResponse.json({
     success: true,
@@ -54,6 +66,7 @@ export async function GET(request: NextRequest) {
       callbackUrl,
       csrfToken,
     },
-    cookieList,
+    cookiesFromNextHeaders: cookiesData,
+    cookiesFromRequest: cookieList,
   });
 }
