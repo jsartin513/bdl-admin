@@ -6,6 +6,7 @@ const GOOGLE_OAUTH_SECRET = process.env.AUTH_GOOGLE_SECRET;
 
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  debug: true,
   providers: [
     Google({
       clientId: GOOGLE_OAUTH_ID,
