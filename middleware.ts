@@ -39,10 +39,14 @@ export default async function middleware(req: NextRequest) {
   if (pathname.startsWith("/api") && process.env.NODE_ENV !== "development") {
     console.log("fixing cookie maybe")
     const jwtCookie = req.cookies.get("__Secure-authjs.session-token")?.value;
+    const callbackUrl = req.cookies.get("__Secure-authjs.callback-url")?.value;
+    const csrfToken = req.cookies.get("__Host-authjs.csrf-token")?.value;
     console.log("jwtCookie", jwtCookie);
     if (jwtCookie) {
       const headers = new Headers(req.headers);
       headers.set("Cookie", `user-token=${jwtCookie}`);
+      headers.set("callback-url", callbackUrl || "");
+      headers.set("csrf-token", csrfToken || "");
 
       return NextResponse.next({
         request: {
