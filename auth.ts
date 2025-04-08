@@ -4,6 +4,7 @@ import Google from "next-auth/providers/google";
 const GOOGLE_OAUTH_ID = process.env.AUTH_GOOGLE_ID;
 const GOOGLE_OAUTH_SECRET = process.env.AUTH_GOOGLE_SECRET;
 
+const cookiePrefix = process.env.NODE_ENV === "development" ? "" : "__Secure-";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   debug: true,
@@ -13,13 +14,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientSecret: GOOGLE_OAUTH_SECRET,
       authorization: {
         params: {
-          scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets.readonly openid email profile',
-          prompt: 'consent',
-          access_type: 'offline',
-          response_type: 'code',
+          scope:
+            "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets.readonly openid email profile",
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
         },
       },
-      checks: ['state'],
+      checks: ["state"],
     }),
   ],
   session: {
@@ -37,6 +39,46 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.accessToken = token.accessToken;
       }
       return session;
+    },
+  },
+  cookies: {
+    csrfToken: {
+      name: `__Host-next-auth.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: true,
+      },
+    },
+    pkceCodeVerifier: {
+      name: `${cookiePrefix}next-auth.pkce.code_verifier`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: true,
+        maxAge: 900,
+      },
+    },
+    state: {
+      name: `${cookiePrefix}next-auth.state`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: true,
+        maxAge: 900,
+      },
+    },
+    nonce: {
+      name: `${cookiePrefix}next-auth.nonce`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: true,
+      },
     },
   },
 });
