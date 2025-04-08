@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { google } from "googleapis";
 
 const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
@@ -7,20 +6,54 @@ const SHEET_NAME = "Form Responses 1";
 
 export async function GET(req: NextRequest) {
   try {
-    const AUTH_SECRET = process.env.AUTH_SECRET;
-    const token = await getToken({ req, secret: AUTH_SECRET });
-    if (!token || !token.accessToken ) {
+    // Extract the session from the custom header
+    const sessionHeader = req.headers.get("X-Session");
+    let session = null;
+
+    if (sessionHeader) {
+      try {
+        session = JSON.parse(sessionHeader);
+      } catch (err) {
+        console.error("Failed to parse session from header:", err);
+      }
+    }
+
+    if (!session || !session.accessToken || !session.refreshToken || !session.expiresAt) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log("Fetching data from Google Sheets");
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: token.accessToken });
-    console.log("auth", auth);
-    console.log("access_token", token.accessToken);
-    console.log("token", token);
 
-    const sheets = google.sheets({ version: "v4", auth });
+    const googleOAuth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    // Check if the access token is expired
+    const isTokenExpired = Date.now() >= session.expiresAt;
+
+    if (isTokenExpired) {
+      console.log("Access token expired. Refreshing token...");
+      googleOAuth2Client.setCredentials({ refresh_token: session.refreshToken });
+
+      try {
+        const { credentials } = await googleOAuth2Client.refreshAccessToken();
+        session.accessToken = credentials.access_token;
+        session.expiresAt = credentials.expiry_date;
+
+        console.log("New access token:", session.accessToken);
+        console.log("New expiry date:", session.expiresAt);
+      } catch (err) {
+        console.error("Failed to refresh access token:", err);
+        return NextResponse.json({ error: "Failed to refresh access token" }, { status: 401 });
+      }
+    }
+
+    // Set the credentials for the Google Sheets API
+    googleOAuth2Client.setCredentials({ access_token: session.accessToken });
+
+    const sheets = google.sheets({ version: "v4", auth: googleOAuth2Client });
 
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
