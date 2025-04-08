@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { google } from "googleapis";
 
 const SHEET_ID = "1eD-x1T1tcjB4xG-4Jn69pzavPokYL2CVAbZqXZJ5esc";
@@ -7,15 +6,25 @@ const SHEET_NAME = "LatestPayments";
 
 export async function GET(req: NextRequest) {
   try {
-    const AUTH_SECRET = process.env.AUTH_SECRET;
-    const token = await getToken({ req, secret: AUTH_SECRET });
-    if (!token || !token.accessToken) {
+    // Extract the session from the custom header
+    const sessionHeader = req.headers.get("X-Session");
+    let session = null;
+
+    if (sessionHeader) {
+      try {
+        session = JSON.parse(sessionHeader);
+      } catch (err) {
+        console.error("Failed to parse session from header:", err);
+      }
+    }
+
+    if (!session || !session.accessToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     console.log("Fetching data from Google Sheets");
     const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: token.accessToken });
+    auth.setCredentials({ access_token: session.accessToken });
 
     const sheets = google.sheets({ version: "v4", auth });
 

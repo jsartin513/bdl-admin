@@ -31,12 +31,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, account }) {
       if (account) {
         token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
+        token.expiresIn = account.expires_in;
       }
       return token;
     },
     async session({ session, token }) {
       if (token?.accessToken) {
         session.accessToken = token.accessToken;
+      }
+      if (token?.refreshToken) {
+        session.refreshToken = token.refreshToken;
+      }
+      if (token?.expiresIn) {
+        const expiresAt = new Date(Date.now() + token.expiresIn * 1000);
+        session.expiresAt = expiresAt;
       }
       return session;
     },
@@ -86,6 +95,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: Date;
   }
 }
 
