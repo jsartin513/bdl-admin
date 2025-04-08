@@ -1,5 +1,6 @@
 import React from "react";
 import { headers } from "next/headers";
+import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
 
 const Page = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7,15 +8,19 @@ const Page = async () => {
   let error: string | null = null;
 
   try {
-    // Get the incoming request headers
-    const incomingHeaders = headers();
+    // Fetch the session
+    const session = await auth();
 
-    // Forward the headers to the backend
+    // Get the incoming request headers
+    const incomingHeaders = await headers();
+
+    // Forward the headers and session to the backend
     const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/debug`, {
       cache: "no-store", // Ensures the data is fetched fresh for every request
       headers: {
         "Content-Type": "application/json",
-        ...Object.fromEntries((await incomingHeaders).entries()), // Forward all incoming headers
+        ...Object.fromEntries(incomingHeaders.entries()), // Forward all incoming headers
+        "X-Session": JSON.stringify(session), // Pass the session explicitly
       },
       method: "GET",
     });

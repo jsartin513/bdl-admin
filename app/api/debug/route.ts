@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers"; // Import cookies from next/headers
-import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
 
 export async function GET(request: NextRequest) {
-  // Fetch the session using NextAuth
-  console.log("Fetching session...");
-  console.log("Typeof request:", typeof request);
-  const session = await auth(); // Use the auth function to get the session
-  
+  // Extract the session from the custom header
+  const sessionHeader = request.headers.get("X-Session");
+  let session = null;
+
+  if (sessionHeader) {
+    try {
+      session = JSON.parse(sessionHeader);
+    } catch (err) {
+      console.error("Failed to parse session from header:", err);
+    }
+  }
+
+  // Log the session for debugging
+  console.log("Session from header:", session);
+
   // Extract user data from the session
   const user = session
     ? {
@@ -47,7 +56,6 @@ export async function GET(request: NextRequest) {
   if (cookiesFromRequest) {
     cookieList = cookiesFromRequest.split(";").map((cookie) => cookie.trim());
   }
-
 
   // Log the cookies
   console.log("Cookies from request:", cookiesFromRequest);
