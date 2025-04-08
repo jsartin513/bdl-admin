@@ -25,9 +25,6 @@ export default async function TopNav() {
         {session?.user ? (
           <span>
             Welcome, {session.user.name || "User"}!{" "}
-            <Link href="/api/auth/signout" className="hover:underline">
-              Logout
-            </Link>
           </span>
         ) : (
           <Link href="/api/auth/signin" className="hover:underline">

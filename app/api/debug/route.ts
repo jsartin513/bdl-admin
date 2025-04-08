@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   console.log("Fetching session...");
   console.log("Typeof request:", typeof request);
   const session = await auth(); // Use the auth function to get the session
+  
   // Extract user data from the session
   const user = session
     ? {
