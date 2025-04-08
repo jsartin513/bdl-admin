@@ -40,7 +40,7 @@ export default async function middleware(req: NextRequest) {
     console.log("fixing cookie maybe")
     const jwtCookie = req.cookies.get("__Secure-authjs.session-token")?.value;
     const callbackUrl = req.cookies.get("__Secure-authjs.callback-url")?.value;
-    const csrfToken = req.cookies.get("__Host-authjs.csrf-token")?.value;
+    const csrfToken = req.cookies.get("__Host-next-auth.csrf-token")?.value;
     console.log("jwtCookie", jwtCookie);
     console.log("callbackUrl", callbackUrl);
     console.log("csrfToken", csrfToken);
