@@ -46,7 +46,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: `__Host-next-auth.csrf-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         secure: true,
       },
@@ -55,7 +55,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: `${cookiePrefix}next-auth.pkce.code_verifier`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         secure: true,
         maxAge: 900,
@@ -65,7 +65,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: `${cookiePrefix}next-auth.state`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         secure: true,
         maxAge: 900,
@@ -75,7 +75,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: `${cookiePrefix}next-auth.nonce`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
         secure: true,
       },
