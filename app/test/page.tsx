@@ -2,6 +2,7 @@ import React from "react";
 import { headers } from "next/headers";
 
 const Page = async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any | null = null;
   let error: string | null = null;
 
@@ -14,7 +15,7 @@ const Page = async () => {
       cache: "no-store", // Ensures the data is fetched fresh for every request
       headers: {
         "Content-Type": "application/json",
-        ...Object.fromEntries(incomingHeaders.entries()), // Forward all incoming headers
+        ...Object.fromEntries((await incomingHeaders).entries()), // Forward all incoming headers
       },
       method: "GET",
     });
