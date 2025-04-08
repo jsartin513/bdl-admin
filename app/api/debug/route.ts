@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     cookieList = cookiesFromRequest.split(";").map((cookie) => cookie.trim());
   }
 
+
   // Log the cookies
   console.log("Cookies from request:", cookiesFromRequest);
   console.log("Cookies from headers:", cookieList);

@@ -1,41 +1,49 @@
-'use client';
-import { useEffect, useState } from 'react';
+import React from "react";
+import { headers } from "next/headers";
 
-const Page = () => {
-    const [data, setData] = useState(null);
-    const [error, setError] = useState("");
+const Page = async () => {
+  let data: any | null = null;
+  let error: string | null = null;
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const response = await fetch('/api/debug');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const json = await response.json();
-                setData(json);
-            } catch (err: unknown) {
-                if (!(err instanceof Error)) return;
+  try {
+    // Get the incoming request headers
+    const incomingHeaders = headers();
 
-                setError(err.message);
-            }
-        };
+    // Forward the headers to the backend
+    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/debug`, {
+      cache: "no-store", // Ensures the data is fetched fresh for every request
+      headers: {
+        "Content-Type": "application/json",
+        ...Object.fromEntries(incomingHeaders.entries()), // Forward all incoming headers
+      },
+      method: "GET",
+    });
 
-        fetchData();
-    }, []);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
 
-    return (
-        <div>
-            <h1>Backend Response</h1>
-            {error ? (
-                <p style={{ color: 'red' }}>Error: {error}</p>
-            ) : data ? (
-                <pre>{JSON.stringify(data, null, 2)}</pre>
-            ) : (
-                <p>Loading...</p>
-            )}
-        </div>
-    );
+    data = await response.json();
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      error = err.message;
+    } else {
+      error = "An unknown error occurred";
+    }
+  }
+
+  return (
+    <div>
+      <h1>Backend Response</h1>
+      {error ? (
+        <p style={{ color: "red" }}>Error: {error}</p>
+      ) : data ? (
+        <pre>{JSON.stringify(data, null, 2)}</pre>
+      ) : (
+        <p>Loading...</p>
+      )}
+    </div>
+  );
 };
 
 export default Page;

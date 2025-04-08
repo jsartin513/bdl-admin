@@ -1,26 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
 import { google } from "googleapis";
+import jwt from "jsonwebtoken"; // Install this package if not already installed
 
 const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
 const SHEET_NAME = "Form Responses 1";
 
 export async function GET(req: NextRequest) {
   try {
-    const AUTH_SECRET = process.env.AUTH_SECRET;
-    const token = await getToken({ req, secret: AUTH_SECRET });
-    if (!token || !token.accessToken ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const sessionCookie =
+      process.env.NODE_ENV === "production"
+        ? "__Secure-authjs.session-token"
+        : "authjs.session-token";
+
+    const sessionToken = req.cookies.get(sessionCookie)?.value;
+    if (!sessionToken) {
+      return NextResponse.json({ error: "Unauthorized: Session token not found" }, { status: 401 });
+    }
+
+    // Decode the session token (assuming it's a JWT)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let decodedToken: any;
+    try {
+      decodedToken = jwt.decode(sessionToken);
+    } catch (err) {
+      console.error("Failed to decode session token", err);
+      return NextResponse.json({ error: "Invalid session token" }, { status: 401 });
+    }
+
+    // Extract accessToken or other required data from the decoded token
+    const accessToken = decodedToken?.accessToken;
+    if (!accessToken) {
+      console.log("Access token not found in session");
+      console.log("Decoded token:", decodedToken);
+      return NextResponse.json({ error: "Unauthorized: Access token not found in session" }, { status: 401 });
     }
 
     console.log("Fetching data from Google Sheets");
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: token.accessToken });
-    console.log("auth", auth);
-    console.log("access_token", token.accessToken);
-    console.log("token", token);
+    const gAuth = new google.auth.OAuth2();
+    gAuth.setCredentials({ access_token: accessToken });
+    console.log("auth", gAuth);
+    console.log("access_token", accessToken);
 
-    const sheets = google.sheets({ version: "v4", auth });
+    const sheets = google.sheets({ version: "v4", auth: gAuth });
 
     const result = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
