@@ -41,10 +41,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.accessToken = token.accessToken;
       }
       if (token?.refreshToken) {
-        session.refreshToken = token.refreshToken;
+        session.refreshToken = typeof token.refreshToken === "string" ? token.refreshToken : undefined;
       }
       if (token?.expiresIn) {
-        const expiresAt = new Date(Date.now() + token.expiresIn * 1000);
+        const expiresAt = new Date(Date.now() + Number(token.expiresIn) * 1000);
         session.expiresAt = expiresAt;
       }
       return session;

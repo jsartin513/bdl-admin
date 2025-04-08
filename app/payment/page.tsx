@@ -9,7 +9,7 @@ const PAYMENT_TO = "Boston Dodgeball League";
 
 const PaymentPage = async () => {
   let registrations: any[] = [];
-  let payments: any[] = [];
+  const payments: any[] = [];
   let error: string | null = null;
 
   try {
@@ -88,55 +88,55 @@ const PaymentPage = async () => {
     );
   };
 
-  const exportToCSV = () => {
-    const headers = [
-      "Name",
-      "Email",
-      "Payment Status",
-      "Payment Date",
-      "Transaction ID",
-    ];
-    const rows = sortedRegistrations.map((registration) => {
-      const paymentDetails = getPaymentDetails(registration.name);
-      return [
-        registration.name,
-        registration.email,
-        paymentDetails ? "Paid" : "No Payment Found",
-        paymentDetails ? paymentDetails.date : "",
-        paymentDetails
-          ? getTrimmedPaymentId(paymentDetails.transactionId)
-          : "",
-      ];
-    });
+  // const exportToCSV = () => {
+  //   const headers = [
+  //     "Name",
+  //     "Email",
+  //     "Payment Status",
+  //     "Payment Date",
+  //     "Transaction ID",
+  //   ];
+  //   const rows = sortedRegistrations.map((registration) => {
+  //     const paymentDetails = getPaymentDetails(registration.name);
+  //     return [
+  //       registration.name,
+  //       registration.email,
+  //       paymentDetails ? "Paid" : "No Payment Found",
+  //       paymentDetails ? paymentDetails.date : "",
+  //       paymentDetails
+  //         ? getTrimmedPaymentId(paymentDetails.transactionId)
+  //         : "",
+  //     ];
+  //   });
 
-    const unmatchedHeaders = ["From", "Amount", "Type", "Status"];
-    const unmatchedRows = unmatchedPayments.map((payment) => [
-      payment.from,
-      payment.amountTotal,
-      payment.type,
-      payment.status,
-    ]);
+  //   const unmatchedHeaders = ["From", "Amount", "Type", "Status"];
+  //   const unmatchedRows = unmatchedPayments.map((payment) => [
+  //     payment.from,
+  //     payment.amountTotal,
+  //     payment.type,
+  //     payment.status,
+  //   ]);
 
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += headers.join(",") + "\n";
-    rows.forEach((row) => {
-      csvContent += row.join(",") + "\n";
-    });
+  //   let csvContent = "data:text/csv;charset=utf-8,";
+  //   csvContent += headers.join(",") + "\n";
+  //   rows.forEach((row) => {
+  //     csvContent += row.join(",") + "\n";
+  //   });
 
-    csvContent += "\nUnmatched Payments\n";
-    csvContent += unmatchedHeaders.join(",") + "\n";
-    unmatchedRows.forEach((row) => {
-      csvContent += row.join(",") + "\n";
-    });
+  //   csvContent += "\nUnmatched Payments\n";
+  //   csvContent += unmatchedHeaders.join(",") + "\n";
+  //   unmatchedRows.forEach((row) => {
+  //     csvContent += row.join(",") + "\n";
+  //   });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "registrations_and_unmatched_payments.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  //   const encodedUri = encodeURI(csvContent);
+  //   const link = document.createElement("a");
+  //   link.setAttribute("href", encodedUri);
+  //   link.setAttribute("download", "registrations_and_unmatched_payments.csv");
+  //   document.body.appendChild(link);
+  //   link.click();
+  //   document.body.removeChild(link);
+  // };
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
