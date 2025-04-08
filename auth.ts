@@ -19,7 +19,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           response_type: 'code',
         },
       },
-      checks: ['state', 'pkce'],
+      checks: ['state'],
     }),
   ],
   session: {
