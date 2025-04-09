@@ -9,7 +9,7 @@ const PAYMENT_TO = "Boston Dodgeball League";
 
 const PaymentPage = async () => {
   let registrations: any[] = [];
-  const payments: any[] = [];
+  let payments: any[] = [];
   let error: string | null = null;
 
   try {
@@ -32,19 +32,19 @@ const PaymentPage = async () => {
     }
 
     // Fetch payment data
-  //   const paymentResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/payments`, {
-  //     headers: {
-  //       "Content-Type": "application/json",
-  //       "X-Session": JSON.stringify(session), // Pass the session explicitly
-  //     },
-  //     cache: "no-store", // Ensure fresh data is fetched for every request
-  //   });
-  //   const paymentData = await paymentResponse.json();
-  //   if (paymentResponse.ok) {
-  //     payments = paymentData.payments;
-  //   } else {
-  //     error = paymentData.error;
-  //   }
+    const paymentResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/payments`, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session": JSON.stringify(session), // Pass the session explicitly
+      },
+      cache: "no-store", // Ensure fresh data is fetched for every request
+    });
+    const paymentData = await paymentResponse.json();
+    if (paymentResponse.ok) {
+      payments = paymentData.payments;
+    } else {
+      error = paymentData.error;
+    }
   } catch (err) {
     error = "Failed to fetch data";
     console.error(err);
