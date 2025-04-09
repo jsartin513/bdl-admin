@@ -27,9 +27,6 @@ export default async function TopNav() {
             <span>
               Welcome, {session.user.name || "User"}!
             </span>
-            <pre className="text-xs text-white bg-gray-700 p-2 rounded mt-2">
-              {JSON.stringify(session, null, 2)}
-            </pre>
           </div>
         ) : (
           <Link href="/api/auth/signin" className="hover:underline">
