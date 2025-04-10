@@ -17,7 +17,10 @@ export default async function TopNav() {
         <Link href="/test" className="hover:underline">
           Test
         </Link>
-        <Link href="/login" className="hover:underline">
+        <Link
+          href="/reauthorize" // Link to the reauthorization page
+          className="hover:underline text-blue-300"
+        >
           Re-authorize
         </Link>
       </div>
