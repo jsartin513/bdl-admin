@@ -8,9 +8,6 @@ export default async function TopNav() {
   return (
     <nav className="bg-gray-800 text-blue-300 p-4 flex justify-between items-center">
       <div className="flex space-x-4">
-        <Link href="/" className="hover:underline">
-          Home
-        </Link>
         <Link href="/payment" className="hover:underline">
           Payment
         </Link>

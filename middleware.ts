@@ -6,13 +6,13 @@ export default async function middleware(req: NextRequest) {
 
   let tokenParams: Parameters<typeof getToken>[0] = { req, secret: AUTH_SECRET };
 
-  // IF we're not in localhost, we need to specify cookie name
+  // Specify secure cookie settings for production
   if (process.env.NODE_ENV !== "development") {
     tokenParams = {
       ...tokenParams,
-      cookieName: "__Secure-authjs.session-token", // Specify the cookie name
-      secureCookie: true, // Ensure secure cookies in production
-    } as Parameters<typeof getToken>[0]; // Type assertion to avoid TypeScript error
+      cookieName: "__Secure-authjs.session-token",
+      secureCookie: true,
+    } as Parameters<typeof getToken>[0];
   }
 
   const token = await getToken(tokenParams);
@@ -22,42 +22,23 @@ export default async function middleware(req: NextRequest) {
   const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|api\/.*$).*/;
 
   if (protectedPaths.test(pathname)) {
-    console.log("middleware: Checking if user is authenticated");
-
     if (token) {
-      console.log("middleware: User is authenticated");
+      // User is authenticated, allow access
       return NextResponse.next();
     } else {
-      console.log("middleware: User is not authenticated, redirecting to login");
+      // User is not authenticated
+      if (pathname === "/logout") {
+        // Redirect users coming from /logout to /test
+        return NextResponse.redirect(new URL("/test", req.nextUrl.origin));
+      }
+
+      // Redirect unauthenticated users to the login page
       const newUrl = new URL("/login", req.nextUrl.origin);
       newUrl.searchParams.set("redirect", pathname + search); // Save the original path and query
       return NextResponse.redirect(newUrl);
     }
   }
 
-  // Add the _vercel_jwt cookie for API routes
-  if (pathname.startsWith("/api") && process.env.NODE_ENV !== "development") {
-    console.log("fixing cookie maybe")
-    const jwtCookie = req.cookies.get("__Secure-authjs.session-token")?.value;
-    const callbackUrl = req.cookies.get("__Secure-authjs.callback-url")?.value;
-    const csrfToken = req.cookies.get("__Host-next-auth.csrf-token")?.value;
-    console.log("jwtCookie", jwtCookie);
-    console.log("callbackUrl", callbackUrl);
-    console.log("csrfToken", csrfToken);
-    
-    if (jwtCookie) {
-      const headers = new Headers(req.headers);
-      headers.set("Cookie", `user-token=${jwtCookie}`);
-      headers.set("callback-url", callbackUrl || "");
-      headers.set("csrf-token", csrfToken || "");
-
-      return NextResponse.next({
-        request: {
-          headers,
-        },
-      });
-    }
-  }
-
+  // Remove unused cookie handling for API routes
   return NextResponse.next();
 }
