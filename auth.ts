@@ -7,7 +7,6 @@ const GOOGLE_OAUTH_SECRET = process.env.AUTH_GOOGLE_SECRET;
 const cookiePrefix = process.env.NODE_ENV === "development" ? "" : "__Secure-";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  debug: true,
   providers: [
     Google({
       clientId: GOOGLE_OAUTH_ID,
