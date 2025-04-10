@@ -17,16 +17,18 @@ export default async function TopNav() {
         <Link href="/test" className="hover:underline">
           Test
         </Link>
-        <Link href="/login" className="hover:underline">
-          Re-authorize
-        </Link>
       </div>
       <div>
         {session?.user ? (
           <div>
-            <span>
-              Welcome, {session.user.name || "User"}!
-            </span>
+            <Link
+              href="/logout" // Link to the reauthorization page
+              className="hover:underline text-blue-300"
+            >
+              Sign Out
+            </Link>
+            <span className="ml-2 text-blue-300">  {session.user.name || "User"}</span>
+            
           </div>
         ) : (
           <Link href="/api/auth/signin" className="hover:underline">
