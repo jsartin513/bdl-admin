@@ -14,7 +14,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorization: {
         params: {
           scope:
-            "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets.readonly openid email profile",
+            "https://www.googleapis.com/auth/spreadsheets.readonly openid email profile",
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
