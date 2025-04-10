@@ -1,5 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest, NextResponse } from "next/server";
+import path from "path";
 
 export default async function middleware(req: NextRequest) {
   const AUTH_SECRET = process.env.AUTH_SECRET;
@@ -16,7 +17,8 @@ export default async function middleware(req: NextRequest) {
   }
 
   const token = await getToken(tokenParams);
-  const { pathname, search } = req.nextUrl;
+  let pathname = req.nextUrl.pathname;
+  const search = req.nextUrl.search;
 
   // Regex to match paths that should be protected
   const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|api\/.*$).*/;
@@ -28,7 +30,16 @@ export default async function middleware(req: NextRequest) {
       console.log("middleware: User is authenticated");
       return NextResponse.next();
     } else {
-      console.log("middleware: User is not authenticated, redirecting to login");
+      console.log("middleware: User is not authenticated");
+
+      // If the user is coming from the logout page, redirect to /test
+      if (pathname === "/logout") {
+        console.log("middleware: Redirecting user from logout to /payment");
+        pathname = "/payment";
+      }
+
+      // Otherwise, redirect to the login page
+      console.log("middleware: Redirecting user to login");
       const newUrl = new URL("/login", req.nextUrl.origin);
       newUrl.searchParams.set("redirect", pathname + search); // Save the original path and query
       return NextResponse.redirect(newUrl);
@@ -37,14 +48,14 @@ export default async function middleware(req: NextRequest) {
 
   // Add the _vercel_jwt cookie for API routes
   if (pathname.startsWith("/api") && process.env.NODE_ENV !== "development") {
-    console.log("fixing cookie maybe")
+    console.log("fixing cookie maybe");
     const jwtCookie = req.cookies.get("__Secure-authjs.session-token")?.value;
     const callbackUrl = req.cookies.get("__Secure-authjs.callback-url")?.value;
     const csrfToken = req.cookies.get("__Host-next-auth.csrf-token")?.value;
     console.log("jwtCookie", jwtCookie);
     console.log("callbackUrl", callbackUrl);
     console.log("csrfToken", csrfToken);
-    
+
     if (jwtCookie) {
       const headers = new Headers(req.headers);
       headers.set("Cookie", `user-token=${jwtCookie}`);
