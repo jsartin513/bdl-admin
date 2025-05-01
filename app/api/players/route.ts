@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 
-const SHEET_ID = "1eD-x1T1tcjB4xG-4Jn69pzavPokYL2CVAbZqXZJ5esc";
-const SHEET_NAME = "LatestPayments";
+const SHEET_ID = "1C16RppqLLagKF2vz-gYpdHCU0AszgvGibkC_lfZF4RQ";
+const SHEET_NAME = "Form Responses 1"; // Replace with the actual sheet name
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("Fetching data from Google Sheets");
+    console.log("Fetching player data from Google Sheets");
     const auth = new google.auth.OAuth2();
     auth.setCredentials({ access_token: session.accessToken });
 
@@ -34,39 +34,18 @@ export async function GET(req: NextRequest) {
     });
 
     const rows = result.data.values;
-    if (!rows) {
+    if (!rows || rows.length < 2) {
       throw new Error("No data found in the spreadsheet");
     }
 
-    const payments = rows.slice(1).map((row) => ({
-      id: `payment-${row[0]}`,
-      date: row[1],
-      time: row[2],
-      type: row[3],
-      status: row[4],
-      note: row[5],
-      from: row[6],
-      to: row[7],
-      amountTotal: row[8],
-      amountTax: row[9],
-      amountTip: row[10],
-      amountNet: row[11],
-      amountFee: row[12],
+    // Map the rows to extract player information
+    const players = rows.slice(1).map((row) => ({
+      email: row[1], // Assuming email is in the second column
+      fullName: row[2], // Assuming full name is in the third column
+      waiverTimestamp: row[0], // Assuming timestamp is in the first column
     }));
 
-    // Calculate the latest payment timestamp
-    const latestPaymentTimestamp = payments
-      .map((payment) => {
-        const dateTime = `${payment.date} ${payment.time}`;
-        const timestamp = new Date(dateTime).getTime();
-        return isNaN(timestamp) ? 0 : timestamp;
-      })
-      .reduce((max, current) => Math.max(max, current), 0);
-
-    return NextResponse.json({
-      payments,
-      latestPaymentTimestamp: new Date(latestPaymentTimestamp).toISOString(),
-    });
+    return NextResponse.json({ players });
   } catch (err) {
     console.error(err);
     return NextResponse.json(
