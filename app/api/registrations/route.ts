@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 
-const SHEET_ID = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60";
+// Tournament 4 registration form
+// const SHEET_ID = "19_KylHMmaft-a2FXXM9EWJTMRVo4hAOqV4VN5ASyBiY"; 
+
+// Tester form for registration
+const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k";
 const SHEET_NAME = "Form Responses 1";
 
 export async function GET(req: NextRequest) {

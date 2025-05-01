@@ -3,7 +3,7 @@
 import React from "react";
 import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
 
-const PAYMENT_AMOUNT = "$65.00";
+const PAYMENT_AMOUNT = "$50.00";
 const PAYMENT_TYPE = "Payment";
 const PAYMENT_TO = "Boston Dodgeball League";
 
@@ -53,7 +53,7 @@ const PaymentPage = async () => {
   const getPaymentDetails = (name: string) => {
     const payment = payments.find(
       (payment) =>
-        payment.from === name.trim() &&
+        payment.from === name?.trim() &&
         payment.amountTotal === PAYMENT_AMOUNT &&
         payment.to === PAYMENT_TO &&
         payment.type === PAYMENT_TYPE
@@ -67,7 +67,7 @@ const PaymentPage = async () => {
       payment.to === PAYMENT_TO &&
       payment.type === PAYMENT_TYPE &&
       !registrations.some(
-        (registration) => registration.name.trim() === payment.from.trim()
+        (registration) => registration?.name?.trim() === payment?.from?.trim()
       )
   );
 
@@ -84,7 +84,7 @@ const PaymentPage = async () => {
   const getPotentialMatches = (paymentFrom: string) => {
     const lastName = paymentFrom.split(" ").pop();
     return registrations.filter((registration) =>
-      registration.name.includes(lastName)
+      registration?.name?.includes(lastName)
     );
   };
 
