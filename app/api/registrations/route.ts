@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 
-// Tournament 4 registration form
-// const SHEET_ID = "19_KylHMmaft-a2FXXM9EWJTMRVo4hAOqV4VN5ASyBiY"; 
-
-// Tester form for registration
-const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k";
-const SHEET_NAME = "Form Responses 1";
-
 export async function GET(req: NextRequest) {
   try {
     // Extract the session from the custom header
@@ -59,9 +52,21 @@ export async function GET(req: NextRequest) {
 
     const sheets = google.sheets({ version: "v4", auth: googleOAuth2Client });
 
+    // Extract sheetId and sheetName from query parameters
+    const { searchParams } = new URL(req.url);
+    const sheetId = searchParams.get("sheetId");
+    const sheetName = searchParams.get("sheetName");
+
+    if (!sheetId || !sheetName) {
+      return NextResponse.json(
+        { error: "Missing sheetId or sheetName query parameters" },
+        { status: 400 }
+      );
+    }
+
     const result = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: SHEET_NAME,
+      spreadsheetId: sheetId,
+      range: sheetName,
     });
 
     const rows = result.data.values;

@@ -7,6 +7,11 @@ const PAYMENT_AMOUNT = "$50.00";
 const PAYMENT_TYPE = "Payment";
 const PAYMENT_TO = "Boston Dodgeball League";
 
+// Define the sheetId and sheetName as constants or fetch them dynamically if needed
+const SHEET_NAME = "Form Responses 1"; // This is the ID of the Google Sheet
+// const SHEET_ID = "19_KylHMmaft-a2FXXM9EWJTMRVo4hAOqV4VN5ASyBiY"; // Real sheet for tournament 4
+const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k"; // Test sheet
+
 const PaymentPage = async () => {
   let registrations: any[] = [];
   let payments: any[] = [];
@@ -17,13 +22,16 @@ const PaymentPage = async () => {
     const session = await auth();
 
     // Fetch registration data
-    const registrationResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/registrations`, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Session": JSON.stringify(session), // Pass the session explicitly
-      },
-      cache: "no-store", // Ensure fresh data is fetched for every request
-    });
+    const registrationResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/registrations?sheetId=${SHEET_ID}&sheetName=${encodeURIComponent(SHEET_NAME)}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session": JSON.stringify(session), // Pass the session explicitly
+        },
+        cache: "no-store", // Ensure fresh data is fetched for every request
+      }
+    );
     const registrationData = await registrationResponse.json();
     if (registrationResponse.ok) {
       registrations = registrationData.registrations;
