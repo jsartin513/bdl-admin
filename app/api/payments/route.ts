@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     if (!rows) {
       throw new Error("No data found in the spreadsheet");
     }
+
     const payments = rows.slice(1).map((row) => ({
       id: `payment-${row[0]}`,
       date: row[1],
@@ -53,7 +54,19 @@ export async function GET(req: NextRequest) {
       amountFee: row[12],
     }));
 
-    return NextResponse.json({ payments });
+    // Calculate the latest payment timestamp
+    const latestPaymentTimestamp = payments
+      .map((payment) => {
+        const dateTime = `${payment.date} ${payment.time}`;
+        const timestamp = new Date(dateTime).getTime();
+        return isNaN(timestamp) ? 0 : timestamp;
+      })
+      .reduce((max, current) => Math.max(max, current), 0);
+
+    return NextResponse.json({
+      payments,
+      latestPaymentTimestamp: new Date(latestPaymentTimestamp).toISOString(),
+    });
   } catch (err) {
     console.error(err);
     return NextResponse.json(

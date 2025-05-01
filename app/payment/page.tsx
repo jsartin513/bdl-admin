@@ -15,6 +15,7 @@ const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k"; // Test sheet
 const PaymentPage = async () => {
   let registrations: any[] = [];
   let payments: any[] = [];
+  let latestPaymentTimestamp: string | null = null;
   let error: string | null = null;
 
   try {
@@ -50,6 +51,7 @@ const PaymentPage = async () => {
     const paymentData = await paymentResponse.json();
     if (paymentResponse.ok) {
       payments = paymentData.payments;
+      latestPaymentTimestamp = paymentData.latestPaymentTimestamp;
     } else {
       error = paymentData.error;
     }
@@ -69,82 +71,26 @@ const PaymentPage = async () => {
     return payment ? { date: payment.date, transactionId: payment.id } : null;
   };
 
-  const unmatchedPayments = payments.filter(
-    (payment) =>
-      payment.amountTotal === PAYMENT_AMOUNT &&
-      payment.to === PAYMENT_TO &&
-      payment.type === PAYMENT_TYPE &&
-      !registrations.some(
-        (registration) => registration?.name?.trim() === payment?.from?.trim()
-      )
-  );
-
-  const getTrimmedPaymentId = (paymentId: string) => {
-    return paymentId.replace("payment-", "").replace('"', "").replace('"', "");
-  };
-
   const sortedRegistrations = registrations.sort((a, b) => {
     const aPaid = getPaymentDetails(a.name) ? 1 : 0;
     const bPaid = getPaymentDetails(b.name) ? 1 : 0;
     return bPaid - aPaid;
   });
 
-  const getPotentialMatches = (paymentFrom: string) => {
-    const lastName = paymentFrom.split(" ").pop();
-    return registrations.filter((registration) =>
-      registration?.name?.includes(lastName)
-    );
+  const isAfterLatestPayment = (registrationDate: string) => {
+    if (!latestPaymentTimestamp) return false;
+
+    const latestPaymentDate = new Date(latestPaymentTimestamp);
+    const registrationDateObj = new Date(registrationDate);
+
+    // Check if either date is invalid
+    if (isNaN(latestPaymentDate.getTime()) || isNaN(registrationDateObj.getTime())) {
+      console.error("Invalid date value:", { latestPaymentTimestamp, registrationDate });
+      return false;
+    }
+
+    return registrationDateObj.getTime() > latestPaymentDate.getTime();
   };
-
-  // const exportToCSV = () => {
-  //   const headers = [
-  //     "Name",
-  //     "Email",
-  //     "Payment Status",
-  //     "Payment Date",
-  //     "Transaction ID",
-  //   ];
-  //   const rows = sortedRegistrations.map((registration) => {
-  //     const paymentDetails = getPaymentDetails(registration.name);
-  //     return [
-  //       registration.name,
-  //       registration.email,
-  //       paymentDetails ? "Paid" : "No Payment Found",
-  //       paymentDetails ? paymentDetails.date : "",
-  //       paymentDetails
-  //         ? getTrimmedPaymentId(paymentDetails.transactionId)
-  //         : "",
-  //     ];
-  //   });
-
-  //   const unmatchedHeaders = ["From", "Amount", "Type", "Status"];
-  //   const unmatchedRows = unmatchedPayments.map((payment) => [
-  //     payment.from,
-  //     payment.amountTotal,
-  //     payment.type,
-  //     payment.status,
-  //   ]);
-
-  //   let csvContent = "data:text/csv;charset=utf-8,";
-  //   csvContent += headers.join(",") + "\n";
-  //   rows.forEach((row) => {
-  //     csvContent += row.join(",") + "\n";
-  //   });
-
-  //   csvContent += "\nUnmatched Payments\n";
-  //   csvContent += unmatchedHeaders.join(",") + "\n";
-  //   unmatchedRows.forEach((row) => {
-  //     csvContent += row.join(",") + "\n";
-  //   });
-
-  //   const encodedUri = encodeURI(csvContent);
-  //   const link = document.createElement("a");
-  //   link.setAttribute("href", encodedUri);
-  //   link.setAttribute("download", "registrations_and_unmatched_payments.csv");
-  //   document.body.appendChild(link);
-  //   link.click();
-  //   document.body.removeChild(link);
-  // };
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -158,23 +104,18 @@ const PaymentPage = async () => {
       >
         Registered Players
       </h1>
-      <button
-        style={{
-          marginBottom: "20px",
-          padding: "10px",
-          backgroundColor: "#4CAF50",
-          color: "white",
-          border: "none",
-          borderRadius: "5px",
-        }}
-      >
-        Export to CSV
-      </button>
+      {latestPaymentTimestamp && (
+        <p>
+          Latest Payment Timestamp:{" "}
+          <strong>{new Date(latestPaymentTimestamp).toLocaleString()}</strong>
+        </p>
+      )}
       {error && <p style={{ color: "red" }}>{error}</p>}
       {registrations.length > 0 ? (
         <ul style={{ listStyleType: "none", padding: 0 }}>
           {sortedRegistrations.map((registration) => {
             const paymentDetails = getPaymentDetails(registration.name);
+            const registeredAfter = isAfterLatestPayment(registration.registrationDate);
             return (
               <li
                 key={registration.email}
@@ -190,10 +131,16 @@ const PaymentPage = async () => {
                   <span style={{ color: "green" }}>
                     {" "}
                     Paid {paymentDetails.date} (Transaction ID:{" "}
-                    {getTrimmedPaymentId(paymentDetails.transactionId)})
+                    {paymentDetails.transactionId})
                   </span>
                 ) : (
-                  <span style={{ color: "red" }}> No Payment Found</span>
+                  <span style={{ color: "red" }}>
+                    {" "}
+                    Unpaid{" "}
+                    {registeredAfter
+                      ? "(Registered after latest venmo export)"
+                      : "(Registered within venmo export period)"}
+                  </span>
                 )}
               </li>
             );
@@ -201,54 +148,6 @@ const PaymentPage = async () => {
         </ul>
       ) : (
         <p>Loading..</p>
-      )}
-
-      <h1
-        style={{
-          color: "#fff",
-          fontSize: "2em",
-          borderBottom: "2px solid #333",
-          paddingBottom: "10px",
-        }}
-      >
-        Unmatched Payments
-      </h1>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {unmatchedPayments.length > 0 ? (
-        <ul style={{ listStyleType: "none", padding: 0 }}>
-          {unmatchedPayments.map((payment) => (
-            <li
-              key={payment.id}
-              style={{
-                marginBottom: "10px",
-                padding: "10px",
-                border: "1px solid #ccc",
-                borderRadius: "5px",
-              }}
-            >
-              <strong>{payment.from}</strong>: {payment.amountTotal} (Type:{" "}
-              {payment.type}, Status: {payment.status})
-              <ul>
-                {getPotentialMatches(payment.from).map((match) => (
-                  <li
-                    key={match.email}
-                    style={{
-                      marginTop: "5px",
-                      padding: "5px",
-                      border: "1px solid #ccc",
-                      borderRadius: "5px",
-                    }}
-                  >
-                    Potential Match: <strong>{match.name}</strong> (
-                    {match.email})
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No unmatched payments found.</p>
       )}
     </div>
   );
