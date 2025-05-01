@@ -9,12 +9,12 @@ const PAYMENT_TO = "Boston Dodgeball League";
 
 // Define the sheetId and sheetName as constants or fetch them dynamically if needed
 const SHEET_NAME = "Form Responses 1"; // This is the ID of the Google Sheet
-// const SHEET_ID = "19_KylHMmaft-a2FXXM9EWJTMRVo4hAOqV4VN5ASyBiY"; // Real sheet for tournament 4
 const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k"; // Test sheet
 
 const PaymentPage = async () => {
   let registrations: any[] = [];
   let payments: any[] = [];
+  let players: any[] = [];
   let latestPaymentTimestamp: string | null = null;
   let error: string | null = null;
 
@@ -55,6 +55,21 @@ const PaymentPage = async () => {
     } else {
       error = paymentData.error;
     }
+
+    // Fetch player data (waiver information)
+    const playerResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/players`, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Session": JSON.stringify(session), // Pass the session explicitly
+      },
+      cache: "no-store", // Ensure fresh data is fetched for every request
+    });
+    const playerData = await playerResponse.json();
+    if (playerResponse.ok) {
+      players = playerData.players;
+    } else {
+      error = playerData.error;
+    }
   } catch (err) {
     error = "Failed to fetch data";
     console.error(err);
@@ -69,6 +84,11 @@ const PaymentPage = async () => {
         payment.type === PAYMENT_TYPE
     );
     return payment ? { date: payment.date, transactionId: payment.id } : null;
+  };
+
+  const getWaiverDetails = (email: string) => {
+    const player = players.find((player) => player.email === email);
+    return player ? player.waiverTimestamp : null;
   };
 
   const sortedRegistrations = registrations.sort((a, b) => {
@@ -115,6 +135,7 @@ const PaymentPage = async () => {
         <ul style={{ listStyleType: "none", padding: 0 }}>
           {sortedRegistrations.map((registration) => {
             const paymentDetails = getPaymentDetails(registration.name);
+            const waiverTimestamp = getWaiverDetails(registration.email);
             const registeredAfter = isAfterLatestPayment(registration.registrationDate);
             return (
               <li
@@ -129,18 +150,24 @@ const PaymentPage = async () => {
                 <strong>{registration.name}</strong> ({registration.email}) -{" "}
                 {paymentDetails ? (
                   <span style={{ color: "green" }}>
-                    {" "}
                     Paid {paymentDetails.date} (Transaction ID:{" "}
                     {paymentDetails.transactionId})
                   </span>
                 ) : (
                   <span style={{ color: "red" }}>
-                    {" "}
                     Unpaid{" "}
                     {registeredAfter
                       ? "(Registered after latest venmo export)"
                       : "(Registered within venmo export period)"}
                   </span>
+                )}
+                <br />
+                {waiverTimestamp ? (
+                  <span style={{ color: "lightblue" }}>
+                    Waiver Signed: {new Date(waiverTimestamp).toLocaleString()}
+                  </span>
+                ) : (
+                  <span style={{ color: "orange" }}>Waiver Not Signed</span>
                 )}
               </li>
             );
