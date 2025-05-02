@@ -23,7 +23,7 @@ const PlayersMatchPage = async () => {
     const waiverData = await waiverResponse.json();
     if (waiverResponse.ok) {
       waiverPlayers = waiverData.players.map((player: any) => ({
-        name: player.fullName,
+        name: player?.fullName?.trim(), // Trim whitespace
         email: player.email,
       })); // Extract only name and email
     } else {
@@ -41,7 +41,7 @@ const PlayersMatchPage = async () => {
     const venmoData = await venmoResponse.json();
     if (venmoResponse.ok) {
       venmoPayments = venmoData.payments.map((payment: any) => ({
-        name: payment.from,
+        name: payment?.from?.trim(), // Trim whitespace
       })); // Extract only name
     } else {
       error = venmoData.error;
@@ -60,7 +60,7 @@ const PlayersMatchPage = async () => {
   // Match logic
   const exactMatches = waiverPlayers.map((player) => {
     const match = venmoPayments.find((payment) =>
-      payment?.name?.toLowerCase().includes(player.name.toLowerCase())
+      payment?.name?.toLowerCase() === player.name.toLowerCase()
     );
     return match
       ? {
