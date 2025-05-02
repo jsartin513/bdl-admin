@@ -2,6 +2,7 @@
 
 import React from "react";
 import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
+import { EQUIVALENT_NAMES } from "@/app/_lib/constants"; // Import the constants file
 
 const PlayersMatchPage = async () => {
   let waiverPlayers: any[] = [];
@@ -51,6 +52,22 @@ const PlayersMatchPage = async () => {
     console.error(err);
   }
 
+  // Helper function to extract the first name
+  const getFirstName = (fullName: string) => {
+    const parts = fullName?.trim().split(" ");
+    return parts?.length > 0 ? parts[0].toLowerCase() : "";
+  };
+
+  // Helper function to normalize first names using EQUIVALENT_NAMES
+  const normalizeFirstName = (firstName: string) => {
+    for (const [canonicalName, equivalents] of Object.entries(EQUIVALENT_NAMES)) {
+      if (canonicalName.toLowerCase() === firstName || equivalents.map(name => name.toLowerCase()).includes(firstName)) {
+        return canonicalName.toLowerCase();
+      }
+    }
+    return firstName; // Return the original name if no match is found
+  };
+
   // Helper function to extract the last name
   const getLastName = (fullName: string) => {
     const parts = fullName?.trim().split(" ");
@@ -70,7 +87,32 @@ const PlayersMatchPage = async () => {
       : null;
   }).filter(Boolean);
 
-  const almostMatches = waiverPlayers.map((player) => {
+  const combinedMatches = waiverPlayers.map((player) => {
+    const playerFirstName = normalizeFirstName(getFirstName(player.name));
+    const playerLastName = getLastName(player.name);
+    const match = venmoPayments.find((payment) => {
+      const paymentFirstName = normalizeFirstName(getFirstName(payment.name));
+      const paymentLastName = getLastName(payment.name);
+      return playerLastName === paymentLastName && playerFirstName === paymentFirstName;
+    });
+    return match
+      ? {
+          waiverName: player.name,
+          venmoName: match.name,
+          type: "Matched Names", // Indicate this is a matched name
+        }
+      : null;
+  })
+    .filter(Boolean)
+    .filter(
+      (combinedMatch) =>
+        !exactMatches.some(
+          (exactMatch) =>
+            exactMatch?.name?.toLowerCase() === combinedMatch?.waiverName?.toLowerCase()
+        )
+    );
+
+  const justLastNameMatches = waiverPlayers.map((player) => {
     const playerLastName = getLastName(player.name);
     const match = venmoPayments.find((payment) => {
       const paymentLastName = getLastName(payment.name);
@@ -85,10 +127,14 @@ const PlayersMatchPage = async () => {
   })
     .filter(Boolean)
     .filter(
-      (almostMatch) =>
+      (lastNameMatch) =>
         !exactMatches.some(
           (exactMatch) =>
-            exactMatch?.name?.toLowerCase() === almostMatch?.waiverName?.toLowerCase()
+            exactMatch?.name?.toLowerCase() === lastNameMatch?.waiverName?.toLowerCase()
+        ) &&
+        !combinedMatches.some(
+          (combinedMatch) =>
+            combinedMatch?.waiverName?.toLowerCase() === lastNameMatch?.waiverName?.toLowerCase()
         )
     );
 
@@ -136,9 +182,21 @@ const PlayersMatchPage = async () => {
         </ul>
       </div>
       <div>
-        <h2>Almost Matches (Last Name Matches)</h2>
+        <h2>Matched Names (First Name Equivalents + Last Name Matches)</h2>
         <ul>
-          {almostMatches.map((match, index) =>
+          {combinedMatches.map((match, index) =>
+            match ? (
+              <li key={index}>
+                Waiver: {match.waiverName} - Venmo: {match.venmoName}
+              </li>
+            ) : null
+          )}
+        </ul>
+      </div>
+      <div>
+        <h2>Just Last Name Matches</h2>
+        <ul>
+          {justLastNameMatches.map((match, index) =>
             match ? (
               <li key={index}>
                 Waiver: {match.waiverName} - Venmo: {match.venmoName}
