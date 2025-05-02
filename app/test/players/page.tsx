@@ -139,66 +139,61 @@ const PlayersMatchPage = async () => {
     );
 
   return (
-    <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
-      <h1
-        style={{
-          color: "#fff",
-          fontSize: "2em",
-          borderBottom: "2px solid #333",
-          paddingBottom: "10px",
-        }}
-      >
+    <div className="p-6 bg-gray-100 font-sans text-gray-800">
+      <h1 className="text-3xl font-bold text-gray-900 border-b-2 border-gray-300 pb-2 mb-6">
         Match Players with Venmo Payments
       </h1>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      <div>
-        <h2>Waiver Players</h2>
-        <ul>
+      {error && <p className="text-red-600 font-semibold mb-4">{error}</p>}
+      <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Waiver Players</h2>
+        <ul className="list-disc pl-5 space-y-2">
           {waiverPlayers.map((player, index) => (
-            <li key={index}>
-              {player.name} ({player.email})
+            <li key={index} className="border-b border-gray-200 pb-2">
+              {player.name} <span className="text-gray-500">({player.email})</span>
             </li>
           ))}
         </ul>
       </div>
-      <div>
-        <h2>Venmo Payments</h2>
-        <ul>
+      <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Venmo Payments</h2>
+        <ul className="list-disc pl-5 space-y-2">
           {venmoPayments.map((payment, index) => (
-            <li key={index}>{payment.name}</li>
+            <li key={index} className="border-b border-gray-200 pb-2">{payment.name}</li>
           ))}
         </ul>
       </div>
-      <div>
-        <h2>Exact Matches</h2>
-        <ul>
+      <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Exact Matches</h2>
+        <ul className="list-disc pl-5 space-y-2">
           {exactMatches.map((match, index) =>
             match ? (
-              <li key={index}>
-                {match.name} ({match.email})
+              <li key={index} className="border-b border-gray-200 pb-2">
+                {match.name} <span className="text-gray-500">({match.email})</span>
               </li>
             ) : null
           )}
         </ul>
       </div>
-      <div>
-        <h2>Matched Names (First Name Equivalents + Last Name Matches)</h2>
-        <ul>
+      <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">
+          Matched Names (First Name Equivalents + Last Name Matches)
+        </h2>
+        <ul className="list-disc pl-5 space-y-2">
           {combinedMatches.map((match, index) =>
             match ? (
-              <li key={index}>
+              <li key={index} className="border-b border-gray-200 pb-2">
                 Waiver: {match.waiverName} - Venmo: {match.venmoName}
               </li>
             ) : null
           )}
         </ul>
       </div>
-      <div>
-        <h2>Just Last Name Matches</h2>
-        <ul>
+      <div className="mb-6 p-4 bg-white rounded-lg shadow-md">
+        <h2 className="text-xl font-semibold text-gray-700 mb-4">Just Last Name Matches</h2>
+        <ul className="list-disc pl-5 space-y-2">
           {justLastNameMatches.map((match, index) =>
             match ? (
-              <li key={index}>
+              <li key={index} className="border-b border-gray-200 pb-2">
                 Waiver: {match.waiverName} - Venmo: {match.venmoName}
               </li>
             ) : null
