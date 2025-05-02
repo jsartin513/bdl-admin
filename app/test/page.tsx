@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link"; // Import the Link component
 import { headers } from "next/headers";
 import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
 
@@ -48,6 +49,12 @@ const Page = async () => {
       ) : (
         <p>Loading...</p>
       )}
+      {/* Add a link to the /test/players page */}
+      <div style={{ marginTop: "20px" }}>
+        <Link href="/test/players">
+            Go to Players Match Page
+        </Link>
+      </div>
     </div>
   );
 };
