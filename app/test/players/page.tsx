@@ -22,7 +22,10 @@ const PlayersMatchPage = async () => {
     });
     const waiverData = await waiverResponse.json();
     if (waiverResponse.ok) {
-      waiverPlayers = waiverData.players; // Array of player objects
+      waiverPlayers = waiverData.players.map((player: any) => ({
+        name: player.fullName,
+        email: player.email,
+      })); // Extract only name and email
     } else {
       error = waiverData.error;
     }
@@ -37,7 +40,9 @@ const PlayersMatchPage = async () => {
     });
     const venmoData = await venmoResponse.json();
     if (venmoResponse.ok) {
-      venmoPayments = venmoData.payments; // Array of payment objects
+      venmoPayments = venmoData.payments.map((payment: any) => ({
+        name: payment.from,
+      })); // Extract only name
     } else {
       error = venmoData.error;
     }
@@ -49,16 +54,12 @@ const PlayersMatchPage = async () => {
   // Match logic
   const matches = waiverPlayers.map((player) => {
     const match = venmoPayments.find((payment) =>
-      payment?.from?.toLowerCase().includes(player.fullName.toLowerCase())
+      payment?.name?.toLowerCase().includes(player.name.toLowerCase())
     );
     return match
       ? {
-          waiver: player.fullName,
+          name: player.name,
           email: player.email,
-          waiverTimestamp: player.waiverTimestamp,
-          paymentDate: match.date,
-          paymentAmount: match.amountTotal,
-          transactionId: match.id,
         }
       : null;
   }).filter(Boolean);
@@ -81,10 +82,7 @@ const PlayersMatchPage = async () => {
         <ul>
           {waiverPlayers.map((player, index) => (
             <li key={index}>
-              {player.fullName} ({player.email}) - Waiver Signed:{" "}
-              {player.waiverTimestamp
-                ? new Date(player.waiverTimestamp).toLocaleString()
-                : "Not Signed"}
+              {player.name} ({player.email})
             </li>
           ))}
         </ul>
@@ -93,10 +91,7 @@ const PlayersMatchPage = async () => {
         <h2>Venmo Payments</h2>
         <ul>
           {venmoPayments.map((payment, index) => (
-            <li key={index}>
-              From: {payment.from} - Amount: {payment.amountTotal} - Date:{" "}
-              {new Date(payment.date).toLocaleString()} - Transaction ID: {payment.id}
-            </li>
+            <li key={index}>{payment.name}</li>
           ))}
         </ul>
       </div>
@@ -106,10 +101,7 @@ const PlayersMatchPage = async () => {
           {matches.map((match, index) =>
             match ? (
               <li key={index}>
-                Waiver: {match.waiver} ({match.email}) - Waiver Signed:{" "}
-                {new Date(match.waiverTimestamp).toLocaleString()} - Payment:{" "}
-                {match.paymentAmount} on {new Date(match.paymentDate).toLocaleString()} (Transaction ID:{" "}
-                {match.transactionId})
+                {match.name} ({match.email})
               </li>
             ) : null
           )}
