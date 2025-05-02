@@ -51,8 +51,14 @@ const PlayersMatchPage = async () => {
     console.error(err);
   }
 
+  // Helper function to extract the last name
+  const getLastName = (fullName: string) => {
+    const parts = fullName?.trim().split(" ");
+    return parts?.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+  };
+
   // Match logic
-  const matches = waiverPlayers.map((player) => {
+  const exactMatches = waiverPlayers.map((player) => {
     const match = venmoPayments.find((payment) =>
       payment?.name?.toLowerCase().includes(player.name.toLowerCase())
     );
@@ -63,6 +69,28 @@ const PlayersMatchPage = async () => {
         }
       : null;
   }).filter(Boolean);
+
+  const almostMatches = waiverPlayers.map((player) => {
+    const playerLastName = getLastName(player.name);
+    const match = venmoPayments.find((payment) => {
+      const paymentLastName = getLastName(payment.name);
+      return playerLastName && playerLastName === paymentLastName;
+    });
+    return match
+      ? {
+          waiverName: player.name,
+          venmoName: match.name,
+        }
+      : null;
+  })
+    .filter(Boolean)
+    .filter(
+      (almostMatch) =>
+        !exactMatches.some(
+          (exactMatch) =>
+            exactMatch?.name?.toLowerCase() === almostMatch?.waiverName?.toLowerCase()
+        )
+    );
 
   return (
     <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
@@ -96,12 +124,24 @@ const PlayersMatchPage = async () => {
         </ul>
       </div>
       <div>
-        <h2>Matches</h2>
+        <h2>Exact Matches</h2>
         <ul>
-          {matches.map((match, index) =>
+          {exactMatches.map((match, index) =>
             match ? (
               <li key={index}>
                 {match.name} ({match.email})
+              </li>
+            ) : null
+          )}
+        </ul>
+      </div>
+      <div>
+        <h2>Almost Matches (Last Name Matches)</h2>
+        <ul>
+          {almostMatches.map((match, index) =>
+            match ? (
+              <li key={index}>
+                Waiver: {match.waiverName} - Venmo: {match.venmoName}
               </li>
             ) : null
           )}
