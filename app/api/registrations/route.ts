@@ -12,6 +12,9 @@ export async function GET(req: NextRequest) {
     const sheetId = searchParams.get("sheetId");
     const sheetName = searchParams.get("sheetName");
 
+    if (!sheetId || !sheetName) {
+      throw new Error("Missing sheetId or sheetName");
+    }
     const rows = await fetchSheetData(auth, sheetId, sheetName);
 
     const registrations = rows.slice(1).map((row) => ({
