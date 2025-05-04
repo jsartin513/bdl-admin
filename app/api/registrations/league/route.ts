@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateWithGoogle, getRegistrations, getPayments, getPlayers } from "../googleUtils";
+import { authenticateWithGoogle, getRegistrations, getPayments, getPlayers} from "../../googleUtils";
 
-const PAYMENT_AMOUNT = "$50.00";
+const PAYMENT_AMOUNT = "$65.00"; // Adjusted for Remix League
 const PAYMENT_TYPE = "Payment";
-const PAYMENT_TO = "Boston Dodgeball League";
+const PAYMENT_TO = "Boston Dodgeball Remix League";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,18 +13,12 @@ export async function GET(req: NextRequest) {
 
     const auth = await authenticateWithGoogle(session);
 
-    // Extract query parameters
-    const { searchParams } = new URL(req.url);
-    const sheetId = searchParams.get("sheetId");
-    const sheetName = searchParams.get("sheetName");
+    const sheetId = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60"; // Remix League Google Sheet
+    const sheetName = "Form Responses 1"; // Adjust if necessary
     const paymentsSheetId = "1eD-x1T1tcjB4xG-4Jn69pzavPokYL2CVAbZqXZJ5esc"; // Payments sheet ID
     const paymentsSheetName = "LatestPayments";
     const playersSheetId = "1C16RppqLLagKF2vz-gYpdHCU0AszgvGibkC_lfZF4RQ"; // Players sheet ID
     const playersSheetName = "Form Responses 1";
-
-    if (!sheetId || !sheetName) {
-      throw new Error("Missing sheetId or sheetName");
-    }
 
     // Fetch data from Google Sheets
     const registrations = await getRegistrations(auth, sheetId, sheetName);
@@ -32,18 +27,30 @@ export async function GET(req: NextRequest) {
 
     // Helper functions
     const getPaymentDetails = (name: string) => {
-      const payment = payments.find(
-        (payment) =>
-          payment.from === name?.trim() &&
+      const normalizedName = name?.trim().toLowerCase();
+      console.log("Normalized Name:", normalizedName);
+      const payment = payments.find((payment: any) => {
+        console.log("Comparing with Payment:", {
+          from: payment.from?.trim().toLowerCase(),
+          amountTotal: payment.amountTotal,
+          to: payment.to,
+          type: payment.type,
+        });
+        return (
+          payment.from?.trim().toLowerCase() === normalizedName &&
           payment.amountTotal === PAYMENT_AMOUNT &&
           payment.to === PAYMENT_TO &&
           payment.type === PAYMENT_TYPE
-      );
+        );
+      });
       return payment ? { date: payment.date, transactionId: payment.id } : null;
     };
 
     const getWaiverDetails = (email: string) => {
-      const player = players.find((player) => player.email === email);
+      const normalizedEmail = email?.trim().toLowerCase();
+      const player = players.find(
+        (player: any) => player.email?.trim().toLowerCase() === normalizedEmail
+      );
       return player ? player.waiverTimestamp : null;
     };
 
@@ -53,7 +60,6 @@ export async function GET(req: NextRequest) {
       const latestPaymentDate = new Date(latestPaymentTimestamp);
       const registrationDateObj = new Date(registrationDate);
 
-      // Check if either date is invalid
       if (isNaN(latestPaymentDate.getTime()) || isNaN(registrationDateObj.getTime())) {
         console.error("Invalid date value:", { latestPaymentTimestamp, registrationDate });
         return false;
@@ -63,7 +69,7 @@ export async function GET(req: NextRequest) {
     };
 
     // Process registrations
-    const processedRegistrations = registrations.map((registration) => {
+    const processedRegistrations = registrations.map((registration: any) => {
       const paymentDetails = getPaymentDetails(registration.name);
       const waiverTimestamp = getWaiverDetails(registration.email);
       const registeredAfter = isAfterLatestPayment(registration.registrationDate);

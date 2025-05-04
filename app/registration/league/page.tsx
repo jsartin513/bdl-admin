@@ -1,33 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import React from "react";
-import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
+import { auth } from "@/auth";
 
-const SHEET_NAME = "Form Responses 1"; // This is the name of the Google Sheet
-const SHEET_ID = "1y_F-hwJ-qZnsNz-YnmUK0fyMo3hpA6Thr_UC6PYbR_k"; // Test sheet
-
-const PaymentPage = async () => {
+const RemixPage = async () => {
   let registrations: any[] = [];
   let latestPaymentTimestamp: string | null = null;
   let error: string | null = null;
 
   try {
-    // Fetch the session
     const session = await auth();
 
-    // Fetch processed registration data from the backend
     const response = await fetch(
-      `${
-        process.env.NEXT_PUBLIC_BASE_URL
-      }/api/registrations?sheetId=${SHEET_ID}&sheetName=${encodeURIComponent(
-        SHEET_NAME
-      )}`,
+      `${process.env.NEXT_PUBLIC_BASE_URL}/api/registrations/league`,
       {
         headers: {
           "Content-Type": "application/json",
-          "X-Session": JSON.stringify(session), // Pass the session explicitly
+          "X-Session": JSON.stringify(session),
         },
-        cache: "no-store", // Ensure fresh data is fetched for every request
+        cache: "no-store",
       }
     );
 
@@ -53,7 +44,7 @@ const PaymentPage = async () => {
           paddingBottom: "10px",
         }}
       >
-        Registered Players
+        Remix League Registrations
       </h1>
       {latestPaymentTimestamp && (
         <p>
@@ -77,25 +68,19 @@ const PaymentPage = async () => {
               <strong>{registration.name}</strong> ({registration.email}) -{" "}
               {registration.paymentStatus === "Paid" ? (
                 <span style={{ color: "green" }}>
-                  {registration.paymentStatus} on{" "}
-                  {registration.paymentDetails?.date} (Transaction ID:{" "}
+                  {registration.paymentStatus} on {registration.paymentDetails?.date} (Transaction ID:{" "}
                   {registration.paymentDetails?.transactionId})
                 </span>
               ) : (
-                <span style={{ color: "red" }}>
-                  {registration.paymentStatus}
-                </span>
+                <span style={{ color: "red" }}>{registration.paymentStatus}</span>
               )}
               <br />
               {registration.waiverStatus === "Waiver Signed" ? (
                 <span style={{ color: "lightblue" }}>
-                  {registration.waiverStatus}:{" "}
-                  {new Date(registration.waiverTimestamp).toLocaleString()}
+                  {registration.waiverStatus}: {new Date(registration.waiverTimestamp).toLocaleString()}
                 </span>
               ) : (
-                <span style={{ color: "orange" }}>
-                  {registration.waiverStatus}
-                </span>
+                <span style={{ color: "orange" }}>{registration.waiverStatus}</span>
               )}
             </li>
           ))}
@@ -107,4 +92,4 @@ const PaymentPage = async () => {
   );
 };
 
-export default PaymentPage;
+export default RemixPage;
