@@ -9,7 +9,7 @@ interface GoogleSession {
 
 export async function authenticateWithGoogle(session: GoogleSession) {
   if (!session || !session.accessToken || !session.refreshToken || !session.expiresAt) {
-    throw new Error("Unauthorized");
+    throw new Error("Unauthorized: Missing session details");
   }
 
   const googleOAuth2Client = new google.auth.OAuth2(
@@ -21,7 +21,7 @@ export async function authenticateWithGoogle(session: GoogleSession) {
   const isTokenExpired = Date.now() >= session.expiresAt;
 
   if (isTokenExpired) {
-    console.log("Access token expired. Refreshing token...");
+    console.log("Access token expired. Attempting to refresh...");
     googleOAuth2Client.setCredentials({ refresh_token: session.refreshToken });
 
     try {
@@ -29,6 +29,7 @@ export async function authenticateWithGoogle(session: GoogleSession) {
       session.accessToken = credentials.access_token || "";
       session.expiresAt = credentials.expiry_date || 0;
 
+      console.log("Token refreshed successfully:");
       console.log("New access token:", session.accessToken);
       console.log("New expiry date:", session.expiresAt);
     } catch (error) {
@@ -38,6 +39,15 @@ export async function authenticateWithGoogle(session: GoogleSession) {
   }
 
   googleOAuth2Client.setCredentials({ access_token: session.accessToken });
+
+  // Verify the token to ensure it's valid
+  try {
+    await googleOAuth2Client.getAccessToken();
+  } catch (error) {
+    console.error("Access token verification failed:", error);
+    throw new Error("Invalid or expired access token");
+  }
+
   return googleOAuth2Client;
 }
 
