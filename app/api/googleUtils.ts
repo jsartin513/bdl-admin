@@ -24,18 +24,22 @@ export async function authenticateWithGoogle(session: GoogleSession) {
     console.log("Access token expired. Refreshing token...");
     googleOAuth2Client.setCredentials({ refresh_token: session.refreshToken });
 
-    const { credentials } = await googleOAuth2Client.refreshAccessToken();
-    session.accessToken = credentials.access_token || "";
-    session.expiresAt = credentials.expiry_date || 0;
+    try {
+      const { credentials } = await googleOAuth2Client.refreshAccessToken();
+      session.accessToken = credentials.access_token || "";
+      session.expiresAt = credentials.expiry_date || 0;
 
-    console.log("New access token:", session.accessToken);
-    console.log("New expiry date:", session.expiresAt);
+      console.log("New access token:", session.accessToken);
+      console.log("New expiry date:", session.expiresAt);
+    } catch (error) {
+      console.error("Failed to refresh access token:", error);
+      throw new Error("Failed to refresh access token");
+    }
   }
 
   googleOAuth2Client.setCredentials({ access_token: session.accessToken });
   return googleOAuth2Client;
 }
-
 
 export async function fetchSheetData(auth: OAuth2Client, sheetId: string, sheetName: string) {
   if (!sheetId || !sheetName) {
