@@ -2,9 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateWithGoogle, getRegistrations, getPayments, getPlayers} from "../../googleUtils";
 
-const PAYMENT_AMOUNT = "$65.00"; // Adjusted for Remix League
+const PAYMENT_AMOUNT = '$65.00'; // Adjusted for Remix League
 const PAYMENT_TYPE = "Payment";
-const PAYMENT_TO = "Boston Dodgeball Remix League";
+const PAYMENT_TO = "Boston Dodgeball League";
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,9 +32,6 @@ export async function GET(req: NextRequest) {
       const payment = payments.find((payment: any) => {
         console.log("Comparing with Payment:", {
           from: payment.from?.trim().toLowerCase(),
-          amountTotal: payment.amountTotal,
-          to: payment.to,
-          type: payment.type,
         });
         return (
           payment.from?.trim().toLowerCase() === normalizedName &&
