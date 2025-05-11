@@ -1,9 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateWithGoogle, getRegistrations, getPayments, getPlayers } from "../googleUtils";
+import { EQUIVALENT_NAMES } from "@/app/_lib/constants"; // Import the constants file
 
 const PAYMENT_AMOUNT = "$50.00";
 const PAYMENT_TYPE = "Payment";
 const PAYMENT_TO = "Boston Dodgeball League";
+
+// Helper function to extract the first name
+const getFirstName = (fullName: string) => {
+  const parts = fullName?.trim().split(" ");
+  return parts?.length > 0 ? parts[0].toLowerCase() : "";
+};
+
+// Helper function to normalize first names using EQUIVALENT_NAMES
+const normalizeFirstName = (firstName: string) => {
+  for (const [canonicalName, equivalents] of Object.entries(EQUIVALENT_NAMES)) {
+    if (
+      canonicalName.toLowerCase() === firstName ||
+      equivalents.map((name) => name.toLowerCase()).includes(firstName)
+    ) {
+      return canonicalName.toLowerCase();
+    }
+  }
+  return firstName; // Return the original name if no match is found
+};
+
+// Helper function to extract the last name
+const getLastName = (fullName: string) => {
+  const parts = fullName?.trim().split(" ");
+  return parts?.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,8 +68,40 @@ export async function GET(req: NextRequest) {
       return payment ? { date: payment.date, transactionId: payment.id } : null;
     };
 
-    const getWaiverDetails = (email: string) => {
-      const player = players.find((player) => player.email === email);
+    /**
+     * Retrieves the waiver timestamp for a player based on their email or name.
+     * 
+     * @param {string} email - The email address of the player.
+     * @param {string} name - The full name of the player.
+     * @returns {string | null} - The waiver timestamp if found, or null if no match is found.
+     * 
+     * The function first attempts to find a player by their email. If no match is found,
+     * it tries to match the player by their full name. As a last resort, it compares
+     * normalized first and last names to find a match.
+     */
+    const getWaiverDetails = (email: string, name: string) => {
+      let player = players.find((player) => player.email.trim().toLowerCase() === email.trim().toLowerCase());
+      if (player) {
+        return player.waiverTimestamp;
+      }
+      // If no player found by email, try to match by name
+      player = players.find((player) => player.fullName.trim().toLowerCase() === name.trim().toLowerCase());
+      if (player) {
+        return player.waiverTimestamp;
+      }
+
+      player = players.find((player) => {
+        const playerFirstName = normalizeFirstName(getFirstName(player.fullName));
+        const playerLastName = getLastName(player.fullName);
+        const registrationFirstName = normalizeFirstName(getFirstName(name));
+        const registrationLastName = getLastName(name);
+
+        return (
+          playerLastName === registrationLastName &&
+          playerFirstName === registrationFirstName
+        );
+      });
+
       return player ? player.waiverTimestamp : null;
     };
 
@@ -65,7 +123,7 @@ export async function GET(req: NextRequest) {
     // Process registrations
     const processedRegistrations = registrations.map((registration) => {
       const paymentDetails = getPaymentDetails(registration.name);
-      const waiverTimestamp = getWaiverDetails(registration.email);
+      const waiverTimestamp = getWaiverDetails(registration.email, registration.name);
       const registeredAfter = isAfterLatestPayment(registration.registrationDate);
 
       return {
@@ -78,7 +136,7 @@ export async function GET(req: NextRequest) {
           : registeredAfter
           ? "Unpaid (Registered after latest venmo export)"
           : "Unpaid (Registered within venmo export period)",
-        waiverStatus: waiverTimestamp ? "Waiver Signed" : "Waiver Not Signed",
+        waiverStatus: waiverTimestamp ? "Waiver Signed" : "Signed waiver not found",
       };
     });
 
