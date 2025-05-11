@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
           : registeredAfter
           ? "Unpaid (Registered after latest venmo export)"
           : "Unpaid (Registered within venmo export period)",
-        waiverStatus: waiverTimestamp ? "Waiver Signed" : "Waiver Not Signed",
+        waiverStatus: waiverTimestamp ? "Waiver Signed" : "Signed waiver not found",
       };
     });
 

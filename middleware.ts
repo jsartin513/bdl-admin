@@ -29,7 +29,7 @@ export default async function middleware(req: NextRequest) {
       // User is not authenticated
       if (pathname === "/logout") {
         // Redirect users coming from /logout to /test
-        return NextResponse.redirect(new URL("/test", req.nextUrl.origin));
+        return NextResponse.redirect(new URL("/registration", req.nextUrl.origin));
       }
 
       // Redirect unauthenticated users to the login page
