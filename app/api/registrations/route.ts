@@ -68,6 +68,17 @@ export async function GET(req: NextRequest) {
       return payment ? { date: payment.date, transactionId: payment.id } : null;
     };
 
+    /**
+     * Retrieves the waiver timestamp for a player based on their email or name.
+     * 
+     * @param {string} email - The email address of the player.
+     * @param {string} name - The full name of the player.
+     * @returns {string | null} - The waiver timestamp if found, or null if no match is found.
+     * 
+     * The function first attempts to find a player by their email. If no match is found,
+     * it tries to match the player by their full name. As a last resort, it compares
+     * normalized first and last names to find a match.
+     */
     const getWaiverDetails = (email: string, name: string) => {
       let player = players.find((player) => player.email.trim().toLowerCase() === email.trim().toLowerCase());
       if (player) {
