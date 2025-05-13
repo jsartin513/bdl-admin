@@ -128,6 +128,7 @@ export async function GET(req: NextRequest) {
 
       return {
         ...registration,
+        gender: registration.gender?.trim().toLowerCase() || "unknown", // Include gender field
         paymentDetails,
         waiverTimestamp,
         registeredAfter,

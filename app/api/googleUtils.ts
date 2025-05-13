@@ -77,6 +77,7 @@ export async function getRegistrations(auth: OAuth2Client, sheetId: string, shee
     registrationDate: row[0],
     email: row[1],
     name: row[2],
+    gender: row[3],
     venmoHandle: row[7],
     markedPaidByDave: row[8],
   }));
