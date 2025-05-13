@@ -77,6 +77,9 @@ const PaymentPage = async () => {
         <p style={{ margin: "5px 0", fontSize: "1.2em", color: "#004d40" }}>
           Available Spots: {availableSpots} ( {availableWomenSpots} MUST be female)
         </p>
+        <p style={{ margin: "5px 0", fontSize: "1.2em", color: "#004d40" }}>
+          Available spots for non-women: {availableSpots - availableWomenSpots}
+        </p>
       </div>
 
       <h1
