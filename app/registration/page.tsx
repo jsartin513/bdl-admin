@@ -67,7 +67,7 @@ const PaymentPage = async () => {
           border: "1px solid #b2ebf2", // Border matching the background
         }}
       >
-        <h2 style={{ margin: 0, fontSize: "1.8em", color: "#00796b" }}>Event Stats</h2>
+        <h2 style={{ margin: 0, fontSize: "1.8em", color: "#00796b" }}>Registration Stats</h2>
         <p style={{ margin: "5px 0", fontSize: "1.2em", color: "#004d40" }}>
           Total Registrants: {totalRegistrants} / {TOTAL_SPOTS}
         </p>
