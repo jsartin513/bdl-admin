@@ -6,6 +6,23 @@ const PAYMENT_AMOUNT = "$50.00";
 const PAYMENT_TYPE = "Payment";
 const PAYMENT_TO = "Boston Dodgeball League";
 
+// Define lists for BDL committee and comped players
+const BDL_COMMITTEE = [
+  "Abby Lee",
+  "Jessica Sartin",
+  "Claire Ousey",
+  "Stephen Decker",
+  "David Hollm",
+  "Bo Tillmon",
+];
+
+const COMPED_PLAYERS = [
+  "Marcos Berrios",
+  "Danny Stein",
+  "Emily Hotz",
+  "Colin Roddy",
+];
+
 // Helper function to extract the first name
 const getFirstName = (fullName: string) => {
   const parts = fullName?.trim().split(" ");
@@ -126,17 +143,27 @@ export async function GET(req: NextRequest) {
       const waiverTimestamp = getWaiverDetails(registration.email, registration.name);
       const registeredAfter = isAfterLatestPayment(registration.registrationDate);
 
+      // Determine payment status
+      let paymentStatus = "";
+      if (BDL_COMMITTEE.includes(registration.name)) {
+        paymentStatus = "No Payment Needed (BDL Committee)";
+      } else if (COMPED_PLAYERS.includes(registration.name)) {
+        paymentStatus = "No Payment Needed (Comped)";
+      } else if (paymentDetails) {
+        paymentStatus = "Paid";
+      } else if (registeredAfter) {
+        paymentStatus = "Unpaid (Registered after latest venmo export)";
+      } else {
+        paymentStatus = "Unpaid (Registered within venmo export period)";
+      }
+
       return {
         ...registration,
         gender: registration.gender?.trim().toLowerCase() || "unknown", // Include gender field
         paymentDetails,
         waiverTimestamp,
         registeredAfter,
-        paymentStatus: paymentDetails
-          ? "Paid"
-          : registeredAfter
-          ? "Unpaid (Registered after latest venmo export)"
-          : "Unpaid (Registered within venmo export period)",
+        paymentStatus,
         waiverStatus: waiverTimestamp ? "Waiver Signed" : "Signed waiver not found",
       };
     });

@@ -115,6 +115,10 @@ const PaymentPage = async () => {
                   {registration.paymentDetails?.date} (Transaction ID:{" "}
                   {registration.paymentDetails?.transactionId})
                 </span>
+              ) : registration.paymentStatus.startsWith("No Payment Needed") ? (
+                <span style={{ color: "blue" }}>
+                  {registration.paymentStatus}
+                </span>
               ) : (
                 <span style={{ color: "red" }}>
                   {registration.paymentStatus}
