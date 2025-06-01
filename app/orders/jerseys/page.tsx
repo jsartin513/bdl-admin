@@ -92,34 +92,47 @@ async function fetchJerseyOrders(): Promise<Jersey[]> {
   return dataRows.flatMap(parseJerseysFromRow);
 }
 
-// Group jerseys by the "jerseysWanted" field (the original entry)
-function groupByJerseyWanted(jerseys: Jersey[]) {
+// Clean up jersey type string for grouping and display
+function cleanJerseyType(jerseyType: string): string {
+  return jerseyType
+    .replace(/^"+/, "")                // Remove leading double quotes
+    .replace(/"+$/, "")                // Remove trailing double quotes
+    .replace(/^Jersey:\s*/i, "")       // Remove "Jersey: " prefix
+    .replace(/\s*\(Captain:.*?\)/gi, "") // Remove (Captain: ...)
+    .trim() || "Unspecified";
+}
+
+// Group jerseys by the cleaned "jerseysWanted" field, alphabetized
+function groupByJerseyWantedAlphabetized(jerseys: Jersey[]) {
   const groups: Record<string, Jersey[]> = {};
   jerseys.forEach((jersey) => {
-    const key = jersey.jerseysWanted || "Unspecified";
+    const key = cleanJerseyType(jersey.jerseysWanted || "Unspecified");
     if (!groups[key]) groups[key] = [];
     groups[key].push(jersey);
   });
-  return groups;
+  // Alphabetize the group keys
+  return Object.fromEntries(
+    Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
+  );
 }
 
 export default async function JerseysPage() {
   const allJerseys = await fetchJerseyOrders();
-  const grouped = groupByJerseyWanted(allJerseys);
+  const grouped = groupByJerseyWantedAlphabetized(allJerseys);
 
   return (
     <main>
       <h1>Fourth Throwdown Jersey Orders</h1>
       {Object.entries(grouped).map(([jerseyType, jerseys]) => (
         <section key={jerseyType} style={{ marginBottom: 40 }}>
-          <h2>Jersey: {jerseyType || "Unspecified"}</h2>
+          <h2>{jerseyType}</h2>
           <table>
             <thead>
               <tr>
+                <th>Preferred Name on Back</th>
                 <th>Email</th>
                 <th>Size</th>
                 <th>Sleeve Length</th>
-                <th>Preferred Name on Back</th>
                 <th>Number</th>
                 <th>Venmo/Stripe</th>
                 <th>Other Notes</th>
@@ -128,10 +141,10 @@ export default async function JerseysPage() {
             <tbody>
               {jerseys.map((jersey, idx) => (
                 <tr key={idx}>
+                  <td>{jersey.preferredNameOnBack}</td>
                   <td>{jersey.email}</td>
                   <td>{jersey.size}</td>
                   <td>{jersey.sleeveLength}</td>
-                  <td>{jersey.preferredNameOnBack}</td>
                   <td>{jersey.number}</td>
                   <td>{jersey.venmo}</td>
                   <td>{jersey.notes}</td>
