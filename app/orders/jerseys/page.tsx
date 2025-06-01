@@ -66,7 +66,7 @@ function parseJerseysFromRow(row: string[]): Jersey[] {
         notes,
       };
     }
-    const [name, num, sz, sleeve] = entry.split(",").map((s) => s.trim());
+    const [, num, sz, sleeve] = entry.split(",").map((s) => s.trim());
     return {
       timestamp,
       email,
