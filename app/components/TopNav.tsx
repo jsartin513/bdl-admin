@@ -14,6 +14,9 @@ export default async function TopNav() {
         <Link href="/test" className="hover:underline">
           Show Permissions (debugging)
         </Link>
+        <Link href="/orders/jerseys" className="hover:underline">
+          Jersey Orders
+        </Link>
       </div>
       <div>
         {session?.user ? (
