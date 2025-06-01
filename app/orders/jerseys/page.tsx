@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
 
 const SHEET_ID = "1E9kE244j1KcIMSaskSFSiOKNQEDZnJJ80cseotEkyuE";
@@ -93,44 +92,55 @@ async function fetchJerseyOrders(): Promise<Jersey[]> {
   return dataRows.flatMap(parseJerseysFromRow);
 }
 
+// Group jerseys by the "jerseysWanted" field (the original entry)
+function groupByJerseyWanted(jerseys: Jersey[]) {
+  const groups: Record<string, Jersey[]> = {};
+  jerseys.forEach((jersey) => {
+    const key = jersey.jerseysWanted || "Unspecified";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(jersey);
+  });
+  return groups;
+}
+
 export default async function JerseysPage() {
   const allJerseys = await fetchJerseyOrders();
+  const grouped = groupByJerseyWanted(allJerseys);
 
   return (
     <main>
       <h1>Fourth Throwdown Jersey Orders</h1>
-      <table>
-        <thead>
-          <tr>
-            {/* <th>Timestamp</th> */}
-            <th>Email</th>
-            {/* <th>Reviewed Size Chart</th> */}
-            <th>Size</th>
-            <th>Sleeve Length</th>
-            <th>Preferred Name on Back</th>
-            <th>Number</th>
-            <th>Jersey(s) Wanted</th>
-            <th>Venmo/Stripe</th>
-            <th>Other Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {allJerseys.map((jersey, idx) => (
-            <tr key={idx}>
-              {/* <td>{jersey.timestamp}</td> */}
-              <td>{jersey.email}</td>
-              {/* <td>{jersey.reviewedSizeChart}</td> */}
-              <td>{jersey.size}</td>
-              <td>{jersey.sleeveLength}</td>
-              <td>{jersey.preferredNameOnBack}</td>
-              <td>{jersey.number}</td>
-              <td>{jersey.jerseysWanted}</td>
-              <td>{jersey.venmo}</td>
-              <td>{jersey.notes}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {Object.entries(grouped).map(([jerseyType, jerseys]) => (
+        <section key={jerseyType} style={{ marginBottom: 40 }}>
+          <h2>Jersey: {jerseyType || "Unspecified"}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Size</th>
+                <th>Sleeve Length</th>
+                <th>Preferred Name on Back</th>
+                <th>Number</th>
+                <th>Venmo/Stripe</th>
+                <th>Other Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {jerseys.map((jersey, idx) => (
+                <tr key={idx}>
+                  <td>{jersey.email}</td>
+                  <td>{jersey.size}</td>
+                  <td>{jersey.sleeveLength}</td>
+                  <td>{jersey.preferredNameOnBack}</td>
+                  <td>{jersey.number}</td>
+                  <td>{jersey.venmo}</td>
+                  <td>{jersey.notes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ))}
     </main>
   );
 }
