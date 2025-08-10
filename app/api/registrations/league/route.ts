@@ -13,11 +13,11 @@ export async function GET(req: NextRequest) {
 
     const auth = await authenticateWithGoogle(session);
 
-    const sheetId = "1A-TL2ah68H388xT6294h8T0GxfE9yIqiRNYJq_tMf60"; // Remix League Google Sheet
+    const sheetId = "1xPeaPyM1uLpbxmWgHZ5f7ya7hxGu-3pgNj9J7t0N6NA"; // BYOT League Google Sheet
     const sheetName = "Form Responses 1"; // Adjust if necessary
     const paymentsSheetId = "1eD-x1T1tcjB4xG-4Jn69pzavPokYL2CVAbZqXZJ5esc"; // Payments sheet ID
     const paymentsSheetName = "LatestPayments";
-    const playersSheetId = "1C16RppqLLagKF2vz-gYpdHCU0AszgvGibkC_lfZF4RQ"; // Players sheet ID
+    const playersSheetId = "1nnND1JvyZi3hI9j-OWkZd-Vnoh3JmzFeMsMBOgJ5oJg"; // Players sheet ID
     const playersSheetName = "Form Responses 1";
 
     // Fetch data from Google Sheets
@@ -43,11 +43,17 @@ export async function GET(req: NextRequest) {
       return payment ? { date: payment.date, transactionId: payment.id } : null;
     };
 
-    const getWaiverDetails = (email: string) => {
+    const getWaiverDetails = (email: string, name: string) => {
       const normalizedEmail = email?.trim().toLowerCase();
-      const player = players.find(
+      let player = players.find(
         (player: any) => player.email?.trim().toLowerCase() === normalizedEmail
       );
+      if (!player && name) {
+        const normalizedName = name?.trim().toLowerCase();
+        player = players.find(
+          (player: any) => player.name?.trim().toLowerCase() === normalizedName
+        );
+      }
       return player ? player.waiverTimestamp : null;
     };
 
@@ -68,7 +74,7 @@ export async function GET(req: NextRequest) {
     // Process registrations
     const processedRegistrations = registrations.map((registration: any) => {
       const paymentDetails = getPaymentDetails(registration.name);
-      const waiverTimestamp = getWaiverDetails(registration.email);
+      const waiverTimestamp = getWaiverDetails(registration.email, registration.name);
       const registeredAfter = isAfterLatestPayment(registration.registrationDate);
 
       return {

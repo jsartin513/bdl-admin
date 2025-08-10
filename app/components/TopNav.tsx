@@ -11,6 +11,12 @@ export default async function TopNav() {
         <Link href="/registration" className="hover:underline">
           Throw Down 4 Registration
         </Link>
+        <Link href="/waiver" className="hover:underline">
+          Waiver Checker
+        </Link>
+        <Link href="/waiver/check" className="hover:underline">
+          Check Any Sheet
+        </Link>
         <Link href="/test" className="hover:underline">
           Show Permissions (debugging)
         </Link>
