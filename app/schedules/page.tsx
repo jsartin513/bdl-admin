@@ -265,13 +265,80 @@ export default function SchedulesPage() {
         </div>
       )}
 
+      {/* Schedule by Team Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900">Schedule by Team</h2>
+        {Object.keys(teamStats).length === 0 ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800">No team data available.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Object.keys(teamStats)
+              .sort((a, b) => a.localeCompare(b))
+              .map((team) => {
+                const teamGames = games.map((game) => {
+                  const activities: string[] = []
+                  
+                  // Check if team is playing
+                  if (game.court1Team1 === team || game.court1Team2 === team) {
+                    activities.push('Playing Court 1')
+                  }
+                  if (game.court2Team1 === team || game.court2Team2 === team) {
+                    activities.push('Playing Court 2')
+                  }
+                  
+                  // Check if team is reffing
+                  if (game.court1Ref === team) {
+                    activities.push('Reffing Court 1')
+                  }
+                  if (game.court2Ref === team) {
+                    activities.push('Reffing Court 2')
+                  }
+                  
+                  return {
+                    gameNumber: game.gameNumber,
+                    activities: activities.length > 0 ? activities : ['Off']
+                  }
+                })
+                
+                return (
+                  <div key={team} className="bg-white border border-gray-300 rounded-lg p-4">
+                    <h3 className="font-bold text-lg mb-3 text-gray-900">{team}</h3>
+                    <div className="space-y-2">
+                      {teamGames.map((gameInfo, index) => (
+                        <div key={index} className="flex justify-between items-center text-sm">
+                          <span className="font-medium text-gray-900">{gameInfo.gameNumber}</span>
+                          <div className="text-right">
+                            {gameInfo.activities.map((activity, actIndex) => (
+                              <div key={actIndex} className={
+                                activity === 'Off' 
+                                  ? 'text-gray-600 italic'
+                                  : activity.startsWith('Playing') 
+                                    ? 'text-blue-700 font-medium'
+                                    : 'text-green-700 font-medium'
+                              }>
+                                {activity}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        )}
+      </div>
+
       {/* Team Stats Section */}
       <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-800">Team Statistics</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900">Team Statistics</h2>
         {Object.keys(teamStats).length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-yellow-800">No team statistics available. Check if the CSV file is loading correctly.</p>
-            <div className="mt-2 text-sm text-gray-600">
+            <div className="mt-2 text-sm text-gray-800">
               <p>Debug info:</p>
               <p>CSV data length: {week1ScheduleCSV.length}</p>
               <p>CSV preview: {week1ScheduleCSV.substring(0, 100)}...</p>
@@ -280,12 +347,12 @@ export default function SchedulesPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full bg-white border border-gray-300 rounded-lg shadow-sm">
-              <thead className="bg-gray-100">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold border-b text-gray-800">Team</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-800">Games Played</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-800">Games Reffed</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-800">Total Commitments</th>
+                  <th className="px-4 py-3 text-left font-semibold border-b text-gray-900">Team</th>
+                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Played</th>
+                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Reffed</th>
+                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Total Commitments</th>
                 </tr>
               </thead>
               <tbody>
@@ -294,8 +361,8 @@ export default function SchedulesPage() {
                   .map(([team, stats]) => (
                     <tr key={team} className="hover:bg-gray-50">
                       <td className="px-4 py-3 border-b font-medium text-gray-900">{team}</td>
-                      <td className="px-4 py-3 border-b text-center text-gray-800">{stats.gamesPlayed}</td>
-                      <td className="px-4 py-3 border-b text-center text-gray-800">{stats.gamesReffed}</td>
+                      <td className="px-4 py-3 border-b text-center text-gray-900">{stats.gamesPlayed}</td>
+                      <td className="px-4 py-3 border-b text-center text-gray-900">{stats.gamesReffed}</td>
                       <td className="px-4 py-3 border-b text-center font-semibold text-gray-900">
                         {stats.gamesPlayed + stats.gamesReffed}
                       </td>
@@ -309,44 +376,44 @@ export default function SchedulesPage() {
 
       {/* Games Schedule Section */}
       <div>
-        <h2 className="text-2xl font-semibold mb-4">Games Schedule - Week 1</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900">Games Schedule - Week 1</h2>
         <div className="space-y-4">
           {games.map((game, index) => (
             <div key={index} className="bg-white border border-gray-300 rounded-lg p-4">
-              <h3 className="font-bold text-lg mb-3">{game.gameNumber}</h3>
+              <h3 className="font-bold text-xl mb-3 text-gray-900">{game.gameNumber}</h3>
               <div className="grid md:grid-cols-2 gap-4">
-                <div className="border border-gray-200 rounded p-3">
-                  <h4 className="font-semibold mb-2">Court 1</h4>
+                <div className="border border-gray-300 rounded p-3 bg-gray-50">
+                  <h4 className="font-bold mb-2 text-gray-900">Court 1</h4>
                   {game.court1Team1 || game.court1Team2 ? (
                     <>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="font-medium">{game.court1Team1 || 'BYE'}</span>
-                        <span className="text-gray-500">vs</span>
-                        <span className="font-medium">{game.court1Team2 || 'BYE'}</span>
+                        <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
+                        <span className="text-gray-800 font-bold">vs</span>
+                        <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-gray-900 font-medium">
                         Ref: {game.court1Ref || 'TBD'}
                       </div>
                     </>
                   ) : (
-                    <div className="text-gray-400">No game scheduled</div>
+                    <div className="text-gray-600 italic">No game scheduled</div>
                   )}
                 </div>
-                <div className="border border-gray-200 rounded p-3">
-                  <h4 className="font-semibold mb-2">Court 2</h4>
+                <div className="border border-gray-300 rounded p-3 bg-gray-50">
+                  <h4 className="font-bold mb-2 text-gray-900">Court 2</h4>
                   {game.court2Team1 || game.court2Team2 ? (
                     <>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="font-medium">{game.court2Team1 || 'BYE'}</span>
-                        <span className="text-gray-500">vs</span>
-                        <span className="font-medium">{game.court2Team2 || 'BYE'}</span>
+                        <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
+                        <span className="text-gray-800 font-bold">vs</span>
+                        <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-gray-900 font-medium">
                         Ref: {game.court2Ref || 'TBD'}
                       </div>
                     </>
                   ) : (
-                    <div className="text-gray-400">No game scheduled</div>
+                    <div className="text-gray-600 italic">No game scheduled</div>
                   )}
                 </div>
               </div>
