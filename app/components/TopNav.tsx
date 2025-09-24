@@ -11,6 +11,9 @@ export default async function TopNav() {
         <Link href="/registration" className="hover:underline">
           Throw Down 4 Registration
         </Link>
+        <Link href="/schedules" className="hover:underline">
+          League Schedules
+        </Link>
         <Link href="/test" className="hover:underline">
           Show Permissions (debugging)
         </Link>
