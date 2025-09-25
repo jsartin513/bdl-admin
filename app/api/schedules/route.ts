@@ -20,7 +20,43 @@ export async function GET(request: NextRequest) {
       name.includes('Week') && !name.includes('10/14') && !name.includes('10/21')
     ).sort()
     
-    // Determine the sheet name to use
+    // Handle "all" weeks case
+    if (week === 'all') {
+      // Combine data from all available weeks
+      let combinedCsvData = ''
+      const weekData: string[] = []
+      
+      for (const weekSheet of availableWeeks) {
+        const worksheet = workbook.Sheets[weekSheet]
+        const csvData = XLSX.utils.sheet_to_csv(worksheet)
+        
+        // Add week identifier to each line for aggregation
+        const lines = csvData.split('\n')
+        const modifiedLines = lines.map((line, index) => {
+          if (index === 0 || !line.trim()) return line // Keep header and empty lines as is
+          if (line.includes('Game ')) {
+            return line // Keep game lines as is - they already have game numbers
+          }
+          return line // Keep other lines as is
+        })
+        
+        weekData.push(modifiedLines.join('\n'))
+      }
+      
+      // Combine all weeks data
+      combinedCsvData = weekData.join('\n\n')
+      
+      return NextResponse.json({
+        success: true,
+        week: 'all',
+        sheetName: 'All Weeks Combined',
+        availableWeeks,
+        csvData: combinedCsvData,
+        weekCount: availableWeeks.length
+      })
+    }
+    
+    // Handle individual week case
     let sheetName = ''
     if (week === '1') {
       sheetName = workbook.SheetNames.find(name => name.includes('Week 1') || name.includes('9.30')) || ''
