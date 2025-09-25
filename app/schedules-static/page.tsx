@@ -25,8 +25,10 @@ interface Conflict {
   conflicts: string[]
 }
 
+const DEFAULT_SELECTED_WEEK = '1';
+
 export default function SchedulesStatic() {
-  const [selectedWeek, setSelectedWeek] = useState('1')
+  const [selectedWeek, setSelectedWeek] = useState(DEFAULT_SELECTED_WEEK)
   const [games, setGames] = useState<Game[]>([])
   const [teamStats, setTeamStats] = useState<TeamStats[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
