@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { week1ScheduleCSV } from './scheduleData'
 
 interface Game {
   gameNumber: string
@@ -30,22 +29,33 @@ export default function SchedulesPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedWeek, setSelectedWeek] = useState('1')
 
   useEffect(() => {
-    const loadScheduleData = () => {
+    const loadScheduleData = async () => {
       try {
-        console.log('About to parse CSV data...')
-        console.log('CSV length:', week1ScheduleCSV.length)
-        console.log('First 200 chars:', week1ScheduleCSV.substring(0, 200))
+        setLoading(true)
+        setError(null)
         
-        const { parsedGames, stats, detectedConflicts } = parseScheduleCSV(week1ScheduleCSV)
-        console.log('Results:', { parsedGames: parsedGames.length, stats: Object.keys(stats), conflicts: detectedConflicts.length })
+        console.log('Loading schedule data for week', selectedWeek)
+        
+        const response = await fetch('/api/schedules?week=' + selectedWeek)
+        const data = await response.json()
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'HTTP ' + response.status)
+        }
+        
+        console.log('API Response received')
+        
+        const { parsedGames, stats, detectedConflicts } = parseScheduleCSV(data.csvData)
         
         setGames(parsedGames)
         setTeamStats(stats)
         setConflicts(detectedConflicts)
       } catch (err) {
-        setError(`Failed to load schedule data: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        const errorMessage = 'Failed to load schedule data: ' + (err instanceof Error ? err.message : 'Unknown error')
+        setError(errorMessage)
         console.error('Error loading schedule data:', err)
       } finally {
         setLoading(false)
@@ -53,73 +63,44 @@ export default function SchedulesPage() {
     }
 
     loadScheduleData()
-  }, [])
+  }, [selectedWeek])
 
   const parseScheduleCSV = (csvText: string) => {
-    console.log('=== PARSING STARTED ===')
-    console.log('parseScheduleCSV called with text length:', csvText.length)
-    const lines = csvText.split('\n').filter(line => line.trim()) // Remove empty lines
-    console.log('Filtered lines:', lines.length)
-    
-    // Count lines that start with "Game"
-    const gameLines = lines.filter(line => line.includes('Game '))
-    console.log('Game lines found:', gameLines.length)
-    console.log('First few game lines:', gameLines.slice(0, 3))
-    
+    const lines = csvText.split('\n').filter(line => line.trim())
     const parsedGames: Game[] = []
     const stats: Record<string, TeamStats> = {}
     const detectedConflicts: Conflict[] = []
 
-    // Initialize team stats
     const initializeTeamStats = (team: string) => {
       const cleanTeam = team.trim()
-      console.log(`Processing team: "${team}" -> cleaned: "${cleanTeam}"`)
       if (cleanTeam && cleanTeam !== '' && cleanTeam !== 'Refs:' && !stats[cleanTeam]) {
         stats[cleanTeam] = { gamesPlayed: 0, gamesReffed: 0 }
-        console.log('Initialized team:', cleanTeam)
       }
       return cleanTeam
     }
 
-    // Start from line 1 (skip header) and process every 2 lines (game, refs, game, refs...)
     for (let i = 1; i < lines.length; i += 2) {
       const gameLine = lines[i]
       const refLine = lines[i + 1]
 
-      console.log(`\n=== Processing line ${i} ===`)
-      console.log(`Game line: "${gameLine}"`)
-      console.log(`Ref line: "${refLine || 'undefined'}"`)
-
       if (!gameLine || !gameLine.includes('Game ')) {
-        console.log('Skipping non-game line')
         continue
       }
 
       const gameData = gameLine.split(',')
       const refData = refLine ? refLine.split(',') : []
 
-      console.log('Game data split (first 10):', gameData.slice(0, 10))
-      console.log('Ref data split (first 10):', refData.slice(0, 10))
-
       const gameNumber = gameData[0]?.trim()
       
-      // Court 1: columns 1, 3 for teams
       const court1Team1 = initializeTeamStats(gameData[1] || '')
       const court1Team2 = initializeTeamStats(gameData[3] || '')
-      
-      // Court 2: columns 6, 8 for teams  
       const court2Team1 = initializeTeamStats(gameData[6] || '')
       const court2Team2 = initializeTeamStats(gameData[8] || '')
 
-      // Extract refs from ref line - same column positions
-      const court1Ref = initializeTeamStats(refData[1]?.replace('Refs: ', '').replace('Refs:', '') || '')
-      const court2Ref = initializeTeamStats(refData[6]?.replace('Refs: ', '').replace('Refs:', '') || '')
+      const court1Ref = initializeTeamStats(refData[1]?.replace(/Refs:\s*/g, '') || '')
+      const court2Ref = initializeTeamStats(refData[6]?.replace(/Refs:\s*/g, '') || '')
 
-      console.log('Extracted teams:', { gameNumber, court1Team1, court1Team2, court2Team1, court2Team2, court1Ref, court2Ref })
-
-      // Skip completely empty games
       if (!court1Team1 && !court1Team2 && !court2Team1 && !court2Team2) {
-        console.log('Skipping empty game')
         continue
       }
 
@@ -135,10 +116,8 @@ export default function SchedulesPage() {
 
       parsedGames.push(game)
 
-      // Track team stats and conflicts
       const teamsInGame = new Set<string>()
       
-      // Add playing teams
       if (court1Team1) {
         stats[court1Team1].gamesPlayed++
         teamsInGame.add(court1Team1)
@@ -156,21 +135,15 @@ export default function SchedulesPage() {
         teamsInGame.add(court2Team2)
       }
 
-      // Add reffing teams and check for conflicts
       if (court1Ref) {
         stats[court1Ref].gamesReffed++
         
         if (teamsInGame.has(court1Ref)) {
-          const existingConflict = detectedConflicts.find(c => c.gameNumber === gameNumber && c.team === court1Ref)
-          if (existingConflict) {
-            existingConflict.conflicts.push('Playing and reffing Court 1')
-          } else {
-            detectedConflicts.push({
-              gameNumber: gameNumber || '',
-              team: court1Ref,
-              conflicts: ['Playing and reffing Court 1']
-            })
-          }
+          detectedConflicts.push({
+            gameNumber: gameNumber || '',
+            team: court1Ref,
+            conflicts: ['Playing and reffing Court 1']
+          })
         }
       }
 
@@ -178,29 +151,10 @@ export default function SchedulesPage() {
         stats[court2Ref].gamesReffed++
         
         if (teamsInGame.has(court2Ref)) {
-          const existingConflict = detectedConflicts.find(c => c.gameNumber === gameNumber && c.team === court2Ref)
-          if (existingConflict) {
-            existingConflict.conflicts.push('Playing and reffing Court 2')
-          } else {
-            detectedConflicts.push({
-              gameNumber: gameNumber || '',
-              team: court2Ref,
-              conflicts: ['Playing and reffing Court 2']
-            })
-          }
-        }
-      }
-
-      // Check if same team is reffing both courts
-      if (court1Ref && court2Ref && court1Ref === court2Ref) {
-        const existingConflict = detectedConflicts.find(c => c.gameNumber === gameNumber && c.team === court1Ref)
-        if (existingConflict) {
-          existingConflict.conflicts.push('Reffing both courts')
-        } else {
           detectedConflicts.push({
             gameNumber: gameNumber || '',
-            team: court1Ref,
-            conflicts: ['Reffing both courts']
+            team: court2Ref,
+            conflicts: ['Playing and reffing Court 2']
           })
         }
       }
@@ -221,35 +175,47 @@ export default function SchedulesPage() {
     <div className="p-6">
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-red-800 font-semibold">Error: {error}</p>
-        <p className="text-red-600 text-sm mt-2">Check the browser console for more details.</p>
       </div>
     </div>
   )
 
   return (
     <div className="p-6">
-      <h1 className="text-3xl font-bold mb-6">League Schedules</h1>
+      <h1 className="text-3xl font-bold mb-6 text-gray-900">League Schedules</h1>
       
-      {/* Debug Section */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <h3 className="font-semibold text-blue-800 mb-2">Debug Information</h3>
-        <div className="text-sm text-blue-700 grid grid-cols-1 md:grid-cols-2 gap-2">
-          <p>CSV Length: {week1ScheduleCSV.length} chars</p>
-          <p>Games Found: {games.length}</p>
-          <p>Teams Found: {Object.keys(teamStats).length}</p>
-          <p>Conflicts: {conflicts.length}</p>
-          <p>Loading: {loading.toString()}</p>
-          <p>Error: {error || 'None'}</p>
-        </div>
-        <div className="mt-2">
-          <p className="text-xs text-blue-600">CSV Preview:</p>
-          <pre className="text-xs bg-blue-100 p-2 rounded overflow-auto max-h-20">
-            {week1ScheduleCSV.substring(0, 200)}...
-          </pre>
+      <div className="mb-6">
+        <div className="bg-white border border-gray-300 rounded-lg p-4">
+          <div className="flex items-center gap-4">
+            <label htmlFor="week-select" className="font-semibold text-gray-900">
+              Select Week:
+            </label>
+            <select
+              id="week-select"
+              value={selectedWeek}
+              onChange={(e) => setSelectedWeek(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md"
+            >
+              <option value="1">Week 1 (9/30)</option>
+              <option value="2">Week 2</option>
+              <option value="3">Week 3</option>
+              <option value="4">Week 4</option>
+              <option value="5">Week 5</option>
+              <option value="6">Week 6</option>
+            </select>
+          </div>
         </div>
       </div>
       
-      {/* Conflicts Section */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <h3 className="font-semibold text-blue-800 mb-2">Debug Information</h3>
+        <div className="text-sm text-blue-700">
+          <p>Selected Week: {selectedWeek}</p>
+          <p>Games Found: {games.length}</p>
+          <p>Teams Found: {Object.keys(teamStats).length}</p>
+          <p>Conflicts: {conflicts.length}</p>
+        </div>
+      </div>
+      
       {conflicts.length > 0 && (
         <div className="mb-8">
           <h2 className="text-2xl font-semibold mb-4 text-red-600">⚠️ Schedule Conflicts</h2>
@@ -265,7 +231,6 @@ export default function SchedulesPage() {
         </div>
       )}
 
-      {/* Schedule by Team Section */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold mb-4 text-gray-900">Schedule by Team</h2>
         {Object.keys(teamStats).length === 0 ? (
@@ -276,41 +241,36 @@ export default function SchedulesPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {Object.keys(teamStats)
               .sort((a, b) => a.localeCompare(b))
-              .map((team) => {
-                const teamGames = games.map((game) => {
-                  const activities: string[] = []
-                  
-                  // Check if team is playing
-                  if (game.court1Team1 === team || game.court1Team2 === team) {
-                    activities.push('Playing Court 1')
-                  }
-                  if (game.court2Team1 === team || game.court2Team2 === team) {
-                    activities.push('Playing Court 2')
-                  }
-                  
-                  // Check if team is reffing
-                  if (game.court1Ref === team) {
-                    activities.push('Reffing Court 1')
-                  }
-                  if (game.court2Ref === team) {
-                    activities.push('Reffing Court 2')
-                  }
-                  
-                  return {
-                    gameNumber: game.gameNumber,
-                    activities: activities.length > 0 ? activities : ['Off']
-                  }
-                })
-                
-                return (
-                  <div key={team} className="bg-white border border-gray-300 rounded-lg p-4">
-                    <h3 className="font-bold text-lg mb-3 text-gray-900">{team}</h3>
-                    <div className="space-y-2">
-                      {teamGames.map((gameInfo, index) => (
+              .map((team) => (
+                <div key={team} className="bg-white border border-gray-300 rounded-lg p-4">
+                  <h3 className="font-bold text-lg mb-3 text-gray-900">{team}</h3>
+                  <div className="space-y-2">
+                    {games.map((game, index) => {
+                      const activities: string[] = []
+                      
+                      if (game.court1Team1 === team || game.court1Team2 === team) {
+                        activities.push('Playing Court 1')
+                      }
+                      if (game.court2Team1 === team || game.court2Team2 === team) {
+                        activities.push('Playing Court 2')
+                      }
+                      
+                      if (game.court1Ref === team) {
+                        activities.push('Reffing Court 1')
+                      }
+                      if (game.court2Ref === team) {
+                        activities.push('Reffing Court 2')
+                      }
+                      
+                      if (activities.length === 0) {
+                        activities.push('Off')
+                      }
+                      
+                      return (
                         <div key={index} className="flex justify-between items-center text-sm">
-                          <span className="font-medium text-gray-900">{gameInfo.gameNumber}</span>
+                          <span className="font-medium text-gray-900">{game.gameNumber}</span>
                           <div className="text-right">
-                            {gameInfo.activities.map((activity, actIndex) => (
+                            {activities.map((activity, actIndex) => (
                               <div key={actIndex} className={
                                 activity === 'Off' 
                                   ? 'text-gray-600 italic'
@@ -323,26 +283,20 @@ export default function SchedulesPage() {
                             ))}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
+                </div>
+              ))}
           </div>
         )}
       </div>
 
-      {/* Team Stats Section */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold mb-4 text-gray-900">Team Statistics</h2>
         {Object.keys(teamStats).length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-yellow-800">No team statistics available. Check if the CSV file is loading correctly.</p>
-            <div className="mt-2 text-sm text-gray-800">
-              <p>Debug info:</p>
-              <p>CSV data length: {week1ScheduleCSV.length}</p>
-              <p>CSV preview: {week1ScheduleCSV.substring(0, 100)}...</p>
-            </div>
+            <p className="text-yellow-800">No team statistics available for Week {selectedWeek}.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -374,9 +328,8 @@ export default function SchedulesPage() {
         )}
       </div>
 
-      {/* Games Schedule Section */}
       <div>
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900">Games Schedule - Week 1</h2>
+        <h2 className="text-2xl font-semibold mb-4 text-gray-900">Games Schedule - Week {selectedWeek}</h2>
         <div className="space-y-4">
           {games.map((game, index) => (
             <div key={index} className="bg-white border border-gray-300 rounded-lg p-4">
