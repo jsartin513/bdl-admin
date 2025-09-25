@@ -8,8 +8,11 @@ export default async function TopNav() {
   return (
     <nav className="bg-gray-800 text-blue-300 p-4 flex justify-between items-center">
       <div className="flex space-x-4">
-        <Link href="/schedules" className="hover:underline">
-          League Schedules
+        <Link href="/schedules-live" className="hover:underline">
+          League Schedules (Live)
+        </Link>
+        <Link href="/schedules-static" className="hover:underline">
+          League Schedules (Static)
         </Link>
         <Link href="/test" className="hover:underline">
           Show Permissions (debugging)
