@@ -343,7 +343,7 @@ export default function SchedulesPage() {
             <p className="text-yellow-800">
               {selectedWeek === 'all' 
                 ? 'No team statistics available across all weeks.' 
-                : 'No team statistics available for Week ' + selectedWeek + '.'
+                : `No team statistics available for Week ${selectedWeek}.`
               }
             </p>
           </div>
