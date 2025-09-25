@@ -163,6 +163,11 @@ export default function SchedulesPage() {
         const data = await response.json()
         
         if (!response.ok) {
+          if (data.requireAuth || data.requireReauth) {
+            // Authentication issue - redirect to login
+            window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
+            return
+          }
           throw new Error(data.error || 'HTTP ' + response.status)
         }
         

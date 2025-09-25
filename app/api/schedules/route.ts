@@ -11,14 +11,28 @@ export async function GET(request: NextRequest) {
     const session = await auth();
     
     if (!session?.accessToken || !session?.refreshToken || !session?.expiresAt) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      return NextResponse.json({ 
+        error: 'Not authenticated', 
+        message: 'Please log in to access live schedule data',
+        requireAuth: true 
+      }, { status: 401 });
     }
 
-    const googleAuth = await authenticateWithGoogle({
-      accessToken: session.accessToken as string,
-      refreshToken: session.refreshToken as string,
-      expiresAt: new Date(session.expiresAt).getTime(),
-    });
+    let googleAuth;
+    try {
+      googleAuth = await authenticateWithGoogle({
+        accessToken: session.accessToken as string,
+        refreshToken: session.refreshToken as string,
+        expiresAt: new Date(session.expiresAt).getTime(),
+      });
+    } catch (authError) {
+      console.error('Google authentication failed:', authError);
+      return NextResponse.json({ 
+        error: 'Authentication failed', 
+        message: 'Unable to authenticate with Google. Please try logging in again.',
+        requireReauth: true 
+      }, { status: 401 });
+    }
 
     const { searchParams } = new URL(request.url);
     const week = searchParams.get('week') || '1';

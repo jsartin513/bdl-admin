@@ -10,7 +10,7 @@ interface GoogleSession {
 
 export async function authenticateWithGoogle(session: GoogleSession) {
   if (!session || !session.accessToken || !session.refreshToken || !session.expiresAt) {
-    throw new Error("Unauthorized");
+    throw new Error("Unauthorized: Missing required session data");
   }
 
   const googleOAuth2Client = new google.auth.OAuth2(
@@ -19,21 +19,13 @@ export async function authenticateWithGoogle(session: GoogleSession) {
     process.env.GOOGLE_REDIRECT_URI
   );
 
-  const isTokenExpired = Date.now() >= session.expiresAt;
-
-  if (isTokenExpired) {
-    console.log("Access token expired. Refreshing token...");
-    googleOAuth2Client.setCredentials({ refresh_token: session.refreshToken });
-
-    const { credentials } = await googleOAuth2Client.refreshAccessToken();
-    session.accessToken = credentials.access_token ?? "";
-    session.expiresAt = credentials.expiry_date ?? 0;
-
-    console.log("New access token:", session.accessToken);
-    console.log("New expiry date:", session.expiresAt);
-  }
-
-  googleOAuth2Client.setCredentials({ access_token: session.accessToken });
+  // Token refresh is now handled in the JWT callback in auth.ts
+  // so we can directly use the access token from the session
+  googleOAuth2Client.setCredentials({ 
+    access_token: session.accessToken,
+    refresh_token: session.refreshToken
+  });
+  
   return googleOAuth2Client;
 }
 
