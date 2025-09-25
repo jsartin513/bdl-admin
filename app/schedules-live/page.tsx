@@ -39,18 +39,17 @@ export default function SchedulesPage() {
       const stats: Record<string, TeamStats> = {}
       const detectedConflicts: Conflict[] = []
 
+      // Helper function to get initial team stats object
+      const getInitialTeamStats = (): TeamStats => {
+        return selectedWeek === 'all'
+          ? { gamesPlayed: 0, gamesReffed: 0, matchups: {} }
+          : { gamesPlayed: 0, gamesReffed: 0 }
+      }
+
       const initializeTeamStats = (team: string) => {
         const cleanTeam = team.trim()
         if (cleanTeam && cleanTeam !== '' && cleanTeam !== 'Refs:' && !stats[cleanTeam]) {
-          stats[cleanTeam] = { 
-            gamesPlayed: 0, 
-            gamesReffed: 0,
-            ...(selectedWeek === 'all' ? { matchups: {} } : {})
-          }
-        }
-        return cleanTeam
-      }
-
+          stats[cleanTeam] = getInitialTeamStats()
       const recordMatchup = (team1: string, team2: string) => {
         if (selectedWeek === 'all' && team1 && team2 && team1 !== team2) {
           if (stats[team1]?.matchups) {
