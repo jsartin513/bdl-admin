@@ -171,7 +171,7 @@ export default function SchedulesPage() {
         setTeamStats(stats)
         setConflicts(detectedConflicts)
       } catch (err) {
-        const errorMessage = 'Failed to load schedule data: ' + (err instanceof Error ? err.message : 'Unknown error')
+        const errorMessage = `Failed to load schedule data: ${err instanceof Error ? err.message : 'Unknown error'}`
         setError(errorMessage)
         console.error('Error loading schedule data:', err)
       } finally {
