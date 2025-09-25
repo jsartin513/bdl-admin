@@ -50,6 +50,10 @@ export default function SchedulesPage() {
         const cleanTeam = team.trim()
         if (cleanTeam && cleanTeam !== '' && cleanTeam !== 'Refs:' && !stats[cleanTeam]) {
           stats[cleanTeam] = getInitialTeamStats()
+        }
+        return cleanTeam
+      }
+
       const recordMatchup = (team1: string, team2: string) => {
         if (selectedWeek === 'all' && team1 && team2 && team1 !== team2) {
           if (stats[team1]?.matchups) {
