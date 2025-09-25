@@ -31,8 +31,57 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
-        token.expiresIn = account.expires_in;
+        token.expiresAt = account.expires_at ? account.expires_at * 1000 : Date.now() + 3600 * 1000;
       }
+      
+      // Check if token is expired and refresh if needed
+      if (token.accessToken && token.refreshToken && token.expiresAt) {
+        const now = Date.now();
+        const expiresAt = typeof token.expiresAt === 'number' ? token.expiresAt : Date.now();
+        
+        // Refresh token if it expires in the next 5 minutes
+        if (now >= expiresAt - 5 * 60 * 1000) {
+          try {
+            console.log('Refreshing expired access token...');
+            
+            const response = await fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: new URLSearchParams({
+                client_id: GOOGLE_OAUTH_ID!,
+                client_secret: GOOGLE_OAUTH_SECRET!,
+                refresh_token: token.refreshToken as string,
+                grant_type: 'refresh_token',
+              }),
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Token refresh failed: ${response.status}`);
+            }
+            
+            const refreshedTokens = await response.json();
+            
+            token.accessToken = refreshedTokens.access_token;
+            token.expiresAt = now + refreshedTokens.expires_in * 1000;
+            
+            // Google may return a new refresh token, use it if available
+            if (refreshedTokens.refresh_token) {
+              token.refreshToken = refreshedTokens.refresh_token;
+            }
+            
+            console.log('Token refreshed successfully');
+          } catch (error) {
+            console.error('Error refreshing token:', error);
+            // Token refresh failed, user will need to re-authenticate
+            token.accessToken = undefined;
+            token.refreshToken = undefined;
+            token.expiresAt = undefined;
+          }
+        }
+      }
+      
       return token;
     },
     async session({ session, token }) {
@@ -40,11 +89,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.accessToken = token.accessToken;
       }
       if (token?.refreshToken) {
-        session.refreshToken = typeof token.refreshToken === "string" ? token.refreshToken : undefined;
+        session.refreshToken = typeof token.refreshToken === 'string' ? token.refreshToken : undefined;
       }
-      if (token?.expiresIn) {
-        const expiresAt = new Date(Date.now() + Number(token.expiresIn) * 1000);
-        session.expiresAt = expiresAt;
+      if (token?.expiresAt) {
+        session.expiresAt = new Date(token.expiresAt as number);
       }
       return session;
     },
@@ -102,5 +150,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
   }
 }

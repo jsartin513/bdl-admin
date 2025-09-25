@@ -11,9 +11,14 @@ export async function GET(request: NextRequest) {
     const session = await auth();
     
     if (!session?.accessToken || !session?.refreshToken || !session?.expiresAt) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      return NextResponse.json({ 
+        error: 'Not authenticated', 
+        message: 'Please log in to access live schedule data'
+      }, { status: 401 });
     }
 
+    // The JWT callback in auth.ts handles token refresh automatically
+    // So we can directly use the session tokens
     const googleAuth = await authenticateWithGoogle({
       accessToken: session.accessToken as string,
       refreshToken: session.refreshToken as string,
@@ -23,67 +28,85 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const week = searchParams.get('week') || '1';
 
-    // Get all available sheets first
-    const availableSheets = await fetchAllSheets(googleAuth);
-    const weekSheets = availableSheets.filter(sheet => 
-      sheet.name.toLowerCase().includes('week')
-    );
+    try {
+      // Get all available sheets first
+      const availableSheets = await fetchAllSheets(googleAuth);
+      const weekSheets = availableSheets.filter(sheet => 
+        sheet.name.toLowerCase().includes('week')
+      );
 
-    if (week === 'all') {
-      // Get all sheets and combine data
-      let combinedCsvData = '';
-      const weekData: string[] = [];
+      if (week === 'all') {
+        // Get all sheets and combine data
+        let combinedCsvData = '';
+        const weekData: string[] = [];
+        
+        for (const sheet of weekSheets) {
+          try {
+            const sheetData = await fetchSheetData(googleAuth, SHEET_ID, sheet.name);
+            const csvData = convertToCsv(sheetData);
+            weekData.push(csvData);
+          } catch (error) {
+            console.error(`Error fetching sheet ${sheet.name}:`, error);
+          }
+        }
+        
+        combinedCsvData = weekData.join('\n\n');
+        
+        return NextResponse.json({
+          success: true,
+          week: 'all',
+          sheetName: 'All Weeks Combined',
+          availableWeeks: weekSheets.map(s => s.name),
+          csvData: combinedCsvData,
+          weekCount: weekSheets.length
+        });
+      } else {
+        // Get specific week
+        let targetSheet = null;
+        
+        if (week === '1') {
+          targetSheet = weekSheets.find(s => 
+            s.name.includes('Week 1') || s.name.includes('9.30')
+          );
+        } else {
+          targetSheet = weekSheets.find(s => 
+            s.name.includes(`Week ${week}`)
+          );
+        }
+        
+        if (!targetSheet) {
+          return NextResponse.json({ 
+            error: `Week ${week} not found. Available weeks: ${weekSheets.map(s => s.name).join(', ')}` 
+          }, { status: 404 });
+        }
+        
+        const sheetData = await fetchSheetData(googleAuth, SHEET_ID, targetSheet.name);
+        const csvData = convertToCsv(sheetData);
+        
+        return NextResponse.json({
+          success: true,
+          week,
+          sheetName: targetSheet.name,
+          availableWeeks: weekSheets.map(s => s.name),
+          csvData
+        });
+      }
+    } catch (apiError) {
+      console.error('Google Sheets API error:', apiError);
       
-      for (const sheet of weekSheets) {
-        try {
-          const sheetData = await fetchSheetData(googleAuth, SHEET_ID, sheet.name);
-          const csvData = convertToCsv(sheetData);
-          weekData.push(csvData);
-        } catch (error) {
-          console.error(`Error fetching sheet ${sheet.name}:`, error);
+      // Check if it's an authentication error
+      if (apiError instanceof Error) {
+        if (apiError.message.includes('Invalid Credentials') || 
+            apiError.message.includes('Request had invalid authentication') ||
+            apiError.message.includes('unauthorized')) {
+          return NextResponse.json({ 
+            error: 'Authentication failed', 
+            message: 'Session expired. Please refresh the page and try again.'
+          }, { status: 401 });
         }
       }
       
-      combinedCsvData = weekData.join('\n\n');
-      
-      return NextResponse.json({
-        success: true,
-        week: 'all',
-        sheetName: 'All Weeks Combined',
-        availableWeeks: weekSheets.map(s => s.name),
-        csvData: combinedCsvData,
-        weekCount: weekSheets.length
-      });
-    } else {
-      // Get specific week
-      let targetSheet = null;
-      
-      if (week === '1') {
-        targetSheet = weekSheets.find(s => 
-          s.name.includes('Week 1') || s.name.includes('9.30')
-        );
-      } else {
-        targetSheet = weekSheets.find(s => 
-          s.name.includes(`Week ${week}`)
-        );
-      }
-      
-      if (!targetSheet) {
-        return NextResponse.json({ 
-          error: `Week ${week} not found. Available weeks: ${weekSheets.map(s => s.name).join(', ')}` 
-        }, { status: 404 });
-      }
-      
-      const sheetData = await fetchSheetData(googleAuth, SHEET_ID, targetSheet.name);
-      const csvData = convertToCsv(sheetData);
-      
-      return NextResponse.json({
-        success: true,
-        week,
-        sheetName: targetSheet.name,
-        availableWeeks: weekSheets.map(s => s.name),
-        csvData
-      });
+      throw apiError; // Re-throw non-auth errors to be caught by outer catch
     }
   } catch (error) {
     console.error('Error fetching schedule data:', error);

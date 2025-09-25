@@ -152,7 +152,7 @@ export default function SchedulesPage() {
       return { parsedGames, stats, detectedConflicts }
     }
 
-    const loadScheduleData = async () => {
+    const loadScheduleData = async (retryCount = 0) => {
       try {
         setLoading(true)
         setError(null)
@@ -163,6 +163,20 @@ export default function SchedulesPage() {
         const data = await response.json()
         
         if (!response.ok) {
+          // Only redirect if user is completely unauthenticated
+          if (response.status === 401 && data.message?.includes('Please log in')) {
+            window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search)
+            return
+          }
+          // For session expired, try once more to allow JWT callback to refresh token
+          if (response.status === 401 && retryCount === 0) {
+            console.log('Session may have expired, retrying...')
+            return loadScheduleData(1)
+          }
+          // For session expired after retry, suggest refresh
+          if (response.status === 401 && data.message?.includes('Session expired')) {
+            throw new Error(data.message + ' (Try refreshing the page)')
+          }
           throw new Error(data.error || 'HTTP ' + response.status)
         }
         
