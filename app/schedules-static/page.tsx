@@ -51,7 +51,7 @@ export default function SchedulesStatic() {
             team: cleanTeam,
             gamesPlayed: 0, 
             gamesReffed: 0,
-            matchups: selectedWeek === 'all' ? {} : {}
+            matchups: {}
           }
         }
         return cleanTeam
