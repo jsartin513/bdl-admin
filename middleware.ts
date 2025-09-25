@@ -19,7 +19,7 @@ export default async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
   // Regex to match paths that should be protected
-  const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|schedules$|api\/.*$).*/;
+  const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|schedules-static$|api\/.*$).*/;
 
   if (protectedPaths.test(pathname)) {
     if (token) {
