@@ -16,6 +16,8 @@ interface TeamStats {
   team: string
   gamesPlayed: number
   gamesReffed: number
+  homeGames: number
+  awayGames: number
   matchups: { [opponent: string]: number }
 }
 
@@ -53,6 +55,8 @@ export default function SchedulesStatic() {
             team: cleanTeam,
             gamesPlayed: 0, 
             gamesReffed: 0,
+            homeGames: 0,
+            awayGames: 0,
             matchups: {}
           }
         }
@@ -94,28 +98,32 @@ export default function SchedulesStatic() {
         if (gameNumber) {
           const teamsInGame = new Set<string>()
           
-          // Count games played and track teams in this game
+          // Count games played and track home/away games (team1 is home, team2 is away)
           if (court1Team1 && court1Team1 !== 'BYE') {
             if (stats[court1Team1]) {
               stats[court1Team1].gamesPlayed++
+              stats[court1Team1].homeGames++ // Court 1 Team 1 is home
               teamsInGame.add(court1Team1)
             }
           }
           if (court1Team2 && court1Team2 !== 'BYE') {
             if (stats[court1Team2]) {
               stats[court1Team2].gamesPlayed++
+              stats[court1Team2].awayGames++ // Court 1 Team 2 is away
               teamsInGame.add(court1Team2)
             }
           }
           if (court2Team1 && court2Team1 !== 'BYE') {
             if (stats[court2Team1]) {
               stats[court2Team1].gamesPlayed++
+              stats[court2Team1].homeGames++ // Court 2 Team 1 is home
               teamsInGame.add(court2Team1)
             }
           }
           if (court2Team2 && court2Team2 !== 'BYE') {
             if (stats[court2Team2]) {
               stats[court2Team2].gamesPlayed++
+              stats[court2Team2].awayGames++ // Court 2 Team 2 is away
               teamsInGame.add(court2Team2)
             }
           }
@@ -208,7 +216,7 @@ export default function SchedulesStatic() {
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-4 text-gray-900">Basketball League Schedules (Static)</h1>
+        <h1 className="text-3xl font-bold mb-4 text-gray-900">Dodgeball League Schedules (Static)</h1>
         <p className="text-gray-700 mb-4">Static version using local XLSX file - no authentication required</p>
         
         <div className="flex flex-wrap gap-2 mb-4">
@@ -252,15 +260,23 @@ export default function SchedulesStatic() {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-800">Games Played:</span>
-                      <span className="font-semibold text-blue-700">{stat.gamesPlayed}</span>
+                      <span className="font-semibold text-gray-900">{stat.gamesPlayed}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-800">Home Games:</span>
+                      <span className="font-semibold text-blue-600">{stat.homeGames}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-800">Away Games:</span>
+                      <span className="font-semibold text-purple-600">{stat.awayGames}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-800">Games Reffed:</span>
-                      <span className="font-semibold text-green-700">{stat.gamesReffed}</span>
+                      <span className="font-semibold text-green-600">{stat.gamesReffed}</span>
                     </div>
                     <div className="flex justify-between border-t border-gray-200 pt-2">
                       <span className="text-gray-800 font-medium">Total Activities:</span>
-                      <span className={`font-bold ${(stat.gamesPlayed + stat.gamesReffed) > 2 ? 'text-red-600' : 'text-gray-900'}`}>
+                      <span className={`font-bold ${(stat.gamesPlayed + stat.gamesReffed) > 2 ? 'text-red-600' : 'text-black'}`}>
                         {stat.gamesPlayed + stat.gamesReffed}
                       </span>
                     </div>
@@ -312,17 +328,23 @@ export default function SchedulesStatic() {
                 {games.map((game, index) => (
                   <div key={index} className="bg-white border border-gray-300 rounded-lg p-4">
                     <h3 className="font-bold text-xl mb-3 text-gray-900">{game.gameNumber}</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid md:grid-cols-3 gap-4">
                       <div className="border border-gray-300 rounded p-3 bg-gray-50">
                         <h4 className="font-bold mb-2 text-gray-900">Court 1</h4>
                         {game.court1Team1 || game.court1Team2 ? (
                           <>
                             <div className="flex justify-between items-center mb-2">
-                              <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
+                              <div className="text-center">
+                                <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
+                                <div className="text-xs text-blue-600 font-medium">HOME</div>
+                              </div>
                               <span className="text-gray-800 font-bold">vs</span>
-                              <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
+                              <div className="text-center">
+                                <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
+                                <div className="text-xs text-purple-600 font-medium">AWAY</div>
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-900 font-medium">
+                            <div className="text-sm text-green-600 font-medium">
                               Ref: {game.court1Ref || 'TBD'}
                             </div>
                           </>
@@ -335,17 +357,44 @@ export default function SchedulesStatic() {
                         {game.court2Team1 || game.court2Team2 ? (
                           <>
                             <div className="flex justify-between items-center mb-2">
-                              <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
+                              <div className="text-center">
+                                <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
+                                <div className="text-xs text-blue-600 font-medium">HOME</div>
+                              </div>
                               <span className="text-gray-800 font-bold">vs</span>
-                              <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
+                              <div className="text-center">
+                                <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
+                                <div className="text-xs text-purple-600 font-medium">AWAY</div>
+                              </div>
                             </div>
-                            <div className="text-sm text-gray-900 font-medium">
+                            <div className="text-sm text-green-600 font-medium">
                               Ref: {game.court2Ref || 'TBD'}
                             </div>
                           </>
                         ) : (
                           <div className="text-gray-600 italic">No game scheduled</div>
                         )}
+                      </div>
+                      <div className="border border-gray-300 rounded p-3 bg-gray-50">
+                        <h4 className="font-bold mb-2 text-gray-900">Teams Off</h4>
+                        <div className="text-sm text-gray-700">
+                          {(() => {
+                            const playingTeams = new Set([
+                              game.court1Team1, game.court1Team2, 
+                              game.court2Team1, game.court2Team2,
+                              game.court1Ref, game.court2Ref
+                            ].filter(team => team && team !== 'BYE' && team !== 'TBD'))
+                            
+                            const allTeams = teamStats.map(stat => stat.team).sort()
+                            const offTeams = allTeams.filter(team => !playingTeams.has(team))
+                            
+                            return offTeams.length > 0 
+                              ? offTeams.map(team => (
+                                  <div key={team} className="text-black font-medium text-xs mb-1">{team}</div>
+                                ))
+                              : <div className="text-gray-500 italic text-xs">All teams active</div>
+                          })()}
+                        </div>
                       </div>
                     </div>
                   </div>

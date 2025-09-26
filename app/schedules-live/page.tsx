@@ -15,6 +15,8 @@ interface Game {
 interface TeamStats {
   gamesPlayed: number
   gamesReffed: number
+  homeGames: number
+  awayGames: number
   matchups?: Record<string, number>
 }
 
@@ -42,8 +44,8 @@ export default function SchedulesPage() {
       // Helper function to get initial team stats object
       const getInitialTeamStats = (): TeamStats => {
         return selectedWeek === 'all'
-          ? { gamesPlayed: 0, gamesReffed: 0, matchups: {} }
-          : { gamesPlayed: 0, gamesReffed: 0 }
+          ? { gamesPlayed: 0, gamesReffed: 0, homeGames: 0, awayGames: 0, matchups: {} }
+          : { gamesPlayed: 0, gamesReffed: 0, homeGames: 0, awayGames: 0 }
       }
 
       const initializeTeamStats = (team: string) => {
@@ -104,20 +106,25 @@ export default function SchedulesPage() {
 
         const teamsInGame = new Set<string>()
         
+        // Track home and away games (team1 is home, team2 is away)
         if (court1Team1) {
           stats[court1Team1].gamesPlayed++
+          stats[court1Team1].homeGames++ // Court 1 Team 1 is home
           teamsInGame.add(court1Team1)
         }
         if (court1Team2) {
           stats[court1Team2].gamesPlayed++
+          stats[court1Team2].awayGames++ // Court 1 Team 2 is away
           teamsInGame.add(court1Team2)
         }
         if (court2Team1) {
           stats[court2Team1].gamesPlayed++
+          stats[court2Team1].homeGames++ // Court 2 Team 1 is home
           teamsInGame.add(court2Team1)
         }
         if (court2Team2) {
           stats[court2Team2].gamesPlayed++
+          stats[court2Team2].awayGames++ // Court 2 Team 2 is away
           teamsInGame.add(court2Team2)
         }
 
@@ -217,7 +224,7 @@ export default function SchedulesPage() {
 
   return (
     <div className="p-6">
-              <h1 className="text-3xl font-bold mb-4 text-gray-900">Basketball League Schedules (Live)</h1>
+              <h1 className="text-3xl font-bold mb-4 text-gray-900">Dodgeball League Schedules (Live)</h1>
         <p className="text-gray-700 mb-4">Live version reading from Google Sheets - requires authentication</p>
       
       <div className="mb-6">
@@ -372,6 +379,8 @@ export default function SchedulesPage() {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold border-b text-gray-900">Team</th>
                   <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Played</th>
+                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Home Games</th>
+                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Away Games</th>
                   <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Reffed</th>
                   <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Total Commitments</th>
                 </tr>
@@ -383,8 +392,10 @@ export default function SchedulesPage() {
                     <tr key={team} className="hover:bg-gray-50">
                       <td className="px-4 py-3 border-b font-medium text-gray-900">{team}</td>
                       <td className="px-4 py-3 border-b text-center text-gray-900">{stats.gamesPlayed}</td>
-                      <td className="px-4 py-3 border-b text-center text-gray-900">{stats.gamesReffed}</td>
-                      <td className="px-4 py-3 border-b text-center font-semibold text-gray-900">
+                      <td className="px-4 py-3 border-b text-center text-blue-600 font-medium">{stats.homeGames}</td>
+                      <td className="px-4 py-3 border-b text-center text-purple-600 font-medium">{stats.awayGames}</td>
+                      <td className="px-4 py-3 border-b text-center text-green-600 font-medium">{stats.gamesReffed}</td>
+                      <td className="px-4 py-3 border-b text-center font-semibold text-black">
                         {stats.gamesPlayed + stats.gamesReffed}
                       </td>
                     </tr>
@@ -404,17 +415,23 @@ export default function SchedulesPage() {
             {games.map((game, index) => (
               <div key={index} className="bg-white border border-gray-300 rounded-lg p-4">
                 <h3 className="font-bold text-xl mb-3 text-gray-900">{game.gameNumber}</h3>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-3 gap-4">
                   <div className="border border-gray-300 rounded p-3 bg-gray-50">
                     <h4 className="font-bold mb-2 text-gray-900">Court 1</h4>
                     {game.court1Team1 || game.court1Team2 ? (
                       <>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
+                          <div className="text-center">
+                            <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
+                            <div className="text-xs text-blue-600 font-medium">HOME</div>
+                          </div>
                           <span className="text-gray-800 font-bold">vs</span>
-                          <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
+                          <div className="text-center">
+                            <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
+                            <div className="text-xs text-purple-600 font-medium">AWAY</div>
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-900 font-medium">
+                        <div className="text-sm text-green-600 font-medium">
                           Ref: {game.court1Ref || 'TBD'}
                         </div>
                       </>
@@ -427,17 +444,44 @@ export default function SchedulesPage() {
                     {game.court2Team1 || game.court2Team2 ? (
                       <>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
+                          <div className="text-center">
+                            <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
+                            <div className="text-xs text-blue-600 font-medium">HOME</div>
+                          </div>
                           <span className="text-gray-800 font-bold">vs</span>
-                          <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
+                          <div className="text-center">
+                            <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
+                            <div className="text-xs text-purple-600 font-medium">AWAY</div>
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-900 font-medium">
+                        <div className="text-sm text-green-600 font-medium">
                           Ref: {game.court2Ref || 'TBD'}
                         </div>
                       </>
                     ) : (
                       <div className="text-gray-600 italic">No game scheduled</div>
                     )}
+                  </div>
+                  <div className="border border-gray-300 rounded p-3 bg-gray-50 md:col-span-1">
+                    <h4 className="font-bold mb-2 text-gray-900">Teams Off</h4>
+                    <div className="text-sm text-gray-700">
+                      {(() => {
+                        const playingTeams = new Set([
+                          game.court1Team1, game.court1Team2, 
+                          game.court2Team1, game.court2Team2,
+                          game.court1Ref, game.court2Ref
+                        ].filter(team => team && team !== 'BYE' && team !== 'TBD'))
+                        
+                        const allTeams = Object.keys(teamStats).sort()
+                        const offTeams = allTeams.filter(team => !playingTeams.has(team))
+                        
+                        return offTeams.length > 0 
+                          ? offTeams.map(team => (
+                              <div key={team} className="text-black font-medium text-xs mb-1">{team}</div>
+                            ))
+                          : <div className="text-gray-500 italic text-xs">All teams active</div>
+                      })()}
+                    </div>
                   </div>
                 </div>
               </div>
