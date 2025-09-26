@@ -1,30 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-
-interface Game {
-  gameNumber: string
-  court1Team1: string
-  court1Team2: string
-  court1Ref: string
-  court2Team1: string
-  court2Team2: string
-  court2Ref: string
-}
-
-interface TeamStats {
-  gamesPlayed: number
-  gamesReffed: number
-  homeGames: number
-  awayGames: number
-  matchups?: Record<string, number>
-}
-
-interface Conflict {
-  gameNumber: string
-  team: string
-  conflicts: string[]
-}
+import { 
+  Game, 
+  TeamStats, 
+  Conflict,
+  GameCard,
+  LoadingState,
+  ErrorState,
+  WeekSelector,
+  ConflictsAlert,
+  TeamStatsTable,
+  TeamStatsCards
+} from '../components/schedule'
 
 export default function SchedulesPage() {
   const [games, setGames] = useState<Game[]>([])
@@ -206,50 +194,20 @@ export default function SchedulesPage() {
     loadScheduleData()
   }, [selectedWeek])
 
-  if (loading) return (
-    <div className="p-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-blue-800">Loading schedule data...</p>
-      </div>
-    </div>
-  )
+  if (loading) return <LoadingState />
   
-  if (error) return (
-    <div className="p-6">
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800 font-semibold">Error: {error}</p>
-      </div>
-    </div>
-  )
+  if (error) return <ErrorState error={error} />
 
   return (
     <div className="p-6">
               <h1 className="text-3xl font-bold mb-4 text-gray-900">Dodgeball League Schedules (Live)</h1>
         <p className="text-gray-700 mb-4">Live version reading from Google Sheets - requires authentication</p>
       
-      <div className="mb-6">
-        <div className="bg-white border border-gray-300 rounded-lg p-4">
-          <div className="flex items-center gap-4">
-            <label htmlFor="week-select" className="font-semibold text-gray-900">
-              Select Week:
-            </label>
-            <select
-              id="week-select"
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md"
-            >
-              <option value="all">All Weeks (Totals)</option>
-              <option value="1">Week 1 (9/30)</option>
-              <option value="2">Week 2</option>
-              <option value="3">Week 3</option>
-              <option value="4">Week 4</option>
-              <option value="5">Week 5</option>
-              <option value="6">Week 6</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      <WeekSelector 
+        selectedWeek={selectedWeek}
+        onWeekChange={setSelectedWeek}
+        showAllWeeks={true}
+      />
       
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
         <h3 className="font-semibold text-blue-800 mb-2">Debug Information</h3>
@@ -261,150 +219,16 @@ export default function SchedulesPage() {
         </div>
       </div>
       
-      {conflicts.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4 text-red-600">⚠️ Schedule Conflicts</h2>
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            {conflicts.map((conflict, index) => (
-              <div key={index} className="mb-2">
-                <span className="font-semibold">{conflict.gameNumber}</span> - 
-                <span className="font-medium text-red-700"> {conflict.team}</span>: 
-                <span className="text-red-600"> {conflict.conflicts.join(', ')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <ConflictsAlert conflicts={conflicts} />
 
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-          {selectedWeek === 'all' ? 'Schedule by Team - All Weeks Combined' : 'Schedule by Team'}
-        </h2>
-        {Object.keys(teamStats).length === 0 ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-yellow-800">
-              {selectedWeek === 'all' ? 'No team data available across all weeks.' : 'No team data available.'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Object.keys(teamStats)
-              .sort((a, b) => a.localeCompare(b))
-              .map((team) => (
-                <div key={team} className="bg-white border border-gray-300 rounded-lg p-4">
-                  <h3 className="font-bold text-lg mb-3 text-gray-900">{team}</h3>
-                  
-                  {selectedWeek === 'all' && teamStats[team].matchups ? (
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-gray-900 mb-2">
-                        Total: {teamStats[team].gamesPlayed} games played, {teamStats[team].gamesReffed} games reffed
-                      </div>
-                      <div className="text-sm text-gray-700 mb-2 font-medium">Games vs. other teams:</div>
-                      {Object.entries(teamStats[team].matchups || {})
-                        .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([opponent, gameCount]) => (
-                          <div key={opponent} className="flex justify-between text-sm">
-                            <span className="text-gray-900">vs {opponent}</span>
-                            <span className="font-medium text-blue-700">{gameCount} games</span>
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {games.map((game, index) => {
-                        const activities: string[] = []
-                        
-                        if (game.court1Team1 === team || game.court1Team2 === team) {
-                          activities.push('Playing Court 1')
-                        }
-                        if (game.court2Team1 === team || game.court2Team2 === team) {
-                          activities.push('Playing Court 2')
-                        }
-                        
-                        if (game.court1Ref === team) {
-                          activities.push('Reffing Court 1')
-                        }
-                        if (game.court2Ref === team) {
-                          activities.push('Reffing Court 2')
-                        }
-                        
-                        if (activities.length === 0) {
-                          activities.push('Off')
-                        }
-                        
-                        return (
-                          <div key={index} className="flex justify-between items-center text-sm">
-                            <span className="font-medium text-gray-900">{game.gameNumber}</span>
-                            <div className="text-right">
-                              {activities.map((activity, actIndex) => (
-                                <div key={actIndex} className={
-                                  activity === 'Off' 
-                                    ? 'text-gray-600 italic'
-                                    : activity.startsWith('Playing') 
-                                      ? 'text-blue-700 font-medium'
-                                      : 'text-green-700 font-medium'
-                                }>
-                                  {activity}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
+      <TeamStatsCards 
+        teamStats={Object.entries(teamStats).map(([teamName, stats]) => ({ team: teamName, ...stats, matchups: stats.matchups || {} }))}
+        selectedWeek={selectedWeek}
+      />
 
-      <div className="mb-8">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-          {selectedWeek === 'all' ? 'Team Statistics - All Weeks Combined' : 'Team Statistics'}
-        </h2>
-        {Object.keys(teamStats).length === 0 ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-yellow-800">
-              {selectedWeek === 'all' 
-                ? 'No team statistics available across all weeks.' 
-                : 'No team statistics available for Week ' + selectedWeek + '.'
-              }
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-300 rounded-lg shadow-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold border-b text-gray-900">Team</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Played</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Home Games</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Away Games</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Games Reffed</th>
-                  <th className="px-4 py-3 text-center font-semibold border-b text-gray-900">Total Commitments</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(teamStats)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([team, stats]) => (
-                    <tr key={team} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 border-b font-medium text-gray-900">{team}</td>
-                      <td className="px-4 py-3 border-b text-center text-gray-900">{stats.gamesPlayed}</td>
-                      <td className="px-4 py-3 border-b text-center text-blue-600 font-medium">{stats.homeGames}</td>
-                      <td className="px-4 py-3 border-b text-center text-purple-600 font-medium">{stats.awayGames}</td>
-                      <td className="px-4 py-3 border-b text-center text-green-600 font-medium">{stats.gamesReffed}</td>
-                      <td className="px-4 py-3 border-b text-center font-semibold text-black">
-                        {stats.gamesPlayed + stats.gamesReffed}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <TeamStatsTable 
+        teamStats={teamStats}
+      />
 
       {selectedWeek !== 'all' && (
         <div>
@@ -413,78 +237,11 @@ export default function SchedulesPage() {
           </h2>
           <div className="space-y-4">
             {games.map((game, index) => (
-              <div key={index} className="bg-white border border-gray-300 rounded-lg p-4">
-                <h3 className="font-bold text-xl mb-3 text-gray-900">{game.gameNumber}</h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div className="border border-gray-300 rounded p-3 bg-gray-50">
-                    <h4 className="font-bold mb-2 text-gray-900">Court 1</h4>
-                    {game.court1Team1 || game.court1Team2 ? (
-                      <>
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="text-center">
-                            <span className="font-semibold text-gray-900">{game.court1Team1 || 'BYE'}</span>
-                            <div className="text-xs text-blue-600 font-medium">HOME</div>
-                          </div>
-                          <span className="text-gray-800 font-bold">vs</span>
-                          <div className="text-center">
-                            <span className="font-semibold text-gray-900">{game.court1Team2 || 'BYE'}</span>
-                            <div className="text-xs text-purple-600 font-medium">AWAY</div>
-                          </div>
-                        </div>
-                        <div className="text-sm text-green-600 font-medium">
-                          Ref: {game.court1Ref || 'TBD'}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-gray-600 italic">No game scheduled</div>
-                    )}
-                  </div>
-                  <div className="border border-gray-300 rounded p-3 bg-gray-50">
-                    <h4 className="font-bold mb-2 text-gray-900">Court 2</h4>
-                    {game.court2Team1 || game.court2Team2 ? (
-                      <>
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="text-center">
-                            <span className="font-semibold text-gray-900">{game.court2Team1 || 'BYE'}</span>
-                            <div className="text-xs text-blue-600 font-medium">HOME</div>
-                          </div>
-                          <span className="text-gray-800 font-bold">vs</span>
-                          <div className="text-center">
-                            <span className="font-semibold text-gray-900">{game.court2Team2 || 'BYE'}</span>
-                            <div className="text-xs text-purple-600 font-medium">AWAY</div>
-                          </div>
-                        </div>
-                        <div className="text-sm text-green-600 font-medium">
-                          Ref: {game.court2Ref || 'TBD'}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-gray-600 italic">No game scheduled</div>
-                    )}
-                  </div>
-                  <div className="border border-gray-300 rounded p-3 bg-gray-50 md:col-span-1">
-                    <h4 className="font-bold mb-2 text-gray-900">Teams Off</h4>
-                    <div className="text-sm text-gray-700">
-                      {(() => {
-                        const playingTeams = new Set([
-                          game.court1Team1, game.court1Team2, 
-                          game.court2Team1, game.court2Team2,
-                          game.court1Ref, game.court2Ref
-                        ].filter(team => team && team !== 'BYE' && team !== 'TBD'))
-                        
-                        const allTeams = Object.keys(teamStats).sort()
-                        const offTeams = allTeams.filter(team => !playingTeams.has(team))
-                        
-                        return offTeams.length > 0 
-                          ? offTeams.map(team => (
-                              <div key={team} className="text-black font-medium text-xs mb-1">{team}</div>
-                            ))
-                          : <div className="text-gray-500 italic text-xs">All teams active</div>
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <GameCard 
+                key={index} 
+                game={game} 
+                teamStats={teamStats}
+              />
             ))}
           </div>
         </div>
