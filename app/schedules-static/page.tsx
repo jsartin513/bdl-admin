@@ -48,13 +48,29 @@ export default function SchedulesStatic() {
         return cleanTeam
       }
 
-      const recordMatchup = (team1: string, team2: string) => {
+      const recordMatchup = (team1: string, team2: string, team1IsHome: boolean = true) => {
         if (selectedWeek === 'all' && team1 && team2 && team1 !== team2) {
           if (stats[team1]?.matchups) {
-            stats[team1].matchups![team2] = (stats[team1].matchups![team2] || 0) + 1
+            if (!stats[team1].matchups![team2]) {
+              stats[team1].matchups![team2] = { total: 0, home: 0, away: 0 }
+            }
+            stats[team1].matchups![team2].total += 1
+            if (team1IsHome) {
+              stats[team1].matchups![team2].home += 1
+            } else {
+              stats[team1].matchups![team2].away += 1
+            }
           }
           if (stats[team2]?.matchups) {
-            stats[team2].matchups![team1] = (stats[team2].matchups![team1] || 0) + 1
+            if (!stats[team2].matchups![team1]) {
+              stats[team2].matchups![team1] = { total: 0, home: 0, away: 0 }
+            }
+            stats[team2].matchups![team1].total += 1
+            if (team1IsHome) {
+              stats[team2].matchups![team1].away += 1
+            } else {
+              stats[team2].matchups![team1].home += 1
+            }
           }
         }
       }
@@ -124,8 +140,8 @@ export default function SchedulesStatic() {
           })
 
           // Record matchups for "all weeks" view
-          recordMatchup(court1Team1, court1Team2)
-          recordMatchup(court2Team1, court2Team2)
+          recordMatchup(court1Team1, court1Team2, true)  // team1 is home
+          recordMatchup(court2Team1, court2Team2, true)  // team1 is home
 
           // Count games reffed and check for conflicts
           if (court1Ref && court1Ref !== 'TBD') {
@@ -176,6 +192,13 @@ export default function SchedulesStatic() {
         
         if (!response.ok) {
           throw new Error(data.error || 'Failed to fetch schedule')
+        }
+        
+        // Debug logging for week inclusion
+        if (selectedWeek === 'all' && data.debug) {
+          console.log('Static All Weeks Debug Info:', data.debug)
+          console.log('Available weeks:', data.availableWeeks)
+          console.log('Week count:', data.weekCount)
         }
         
         const { games, teamStats, conflicts } = parseScheduleCSV(data.csvData || '')

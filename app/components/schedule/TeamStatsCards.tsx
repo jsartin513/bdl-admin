@@ -41,10 +41,19 @@ export default function TeamStatsCards({ teamStats, selectedWeek }: TeamStatsCar
                 <div className="space-y-1">
                   {Object.entries(stat.matchups)
                     .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([opponent, count]) => (
-                      <div key={opponent} className="flex justify-between text-sm">
-                        <span className="text-gray-900">vs {opponent}:</span>
-                        <span className="font-medium text-blue-700">{count} games</span>
+                    .map(([opponent, matchup]) => (
+                      <div key={opponent} className="text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-900 font-medium">vs {opponent}:</span>
+                          <div className="flex items-center gap-3">
+                            <span className="font-semibold text-green-600">{matchup.total} games</span>
+                            <span className="text-xs text-gray-600">
+                              <span className="text-blue-600">H:{matchup.home}</span>
+                              <span className="mx-1">•</span>
+                              <span className="text-purple-600">A:{matchup.away}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                 </div>

@@ -29,6 +29,9 @@ export default function SchedulesPage() {
       const stats: Record<string, TeamStats> = {}
       const detectedConflicts: Conflict[] = []
 
+      console.log(`Parsing CSV with ${lines.length} total lines`)
+      console.log('First 10 lines:', lines.slice(0, 10))
+
       // Helper function to get initial team stats object
       const getInitialTeamStats = (): TeamStats => {
         return selectedWeek === 'all'
@@ -44,13 +47,29 @@ export default function SchedulesPage() {
         return cleanTeam
       }
 
-      const recordMatchup = (team1: string, team2: string) => {
+      const recordMatchup = (team1: string, team2: string, team1IsHome: boolean = true) => {
         if (selectedWeek === 'all' && team1 && team2 && team1 !== team2) {
           if (stats[team1]?.matchups) {
-            stats[team1].matchups![team2] = (stats[team1].matchups![team2] || 0) + 1
+            if (!stats[team1].matchups![team2]) {
+              stats[team1].matchups![team2] = { total: 0, home: 0, away: 0 }
+            }
+            stats[team1].matchups![team2].total += 1
+            if (team1IsHome) {
+              stats[team1].matchups![team2].home += 1
+            } else {
+              stats[team1].matchups![team2].away += 1
+            }
           }
           if (stats[team2]?.matchups) {
-            stats[team2].matchups![team1] = (stats[team2].matchups![team1] || 0) + 1
+            if (!stats[team2].matchups![team1]) {
+              stats[team2].matchups![team1] = { total: 0, home: 0, away: 0 }
+            }
+            stats[team2].matchups![team1].total += 1
+            if (team1IsHome) {
+              stats[team2].matchups![team1].away += 1
+            } else {
+              stats[team2].matchups![team1].home += 1
+            }
           }
         }
       }
@@ -116,8 +135,8 @@ export default function SchedulesPage() {
           teamsInGame.add(court2Team2)
         }
 
-        recordMatchup(court1Team1, court1Team2)
-        recordMatchup(court2Team1, court2Team2)
+        recordMatchup(court1Team1, court1Team2, true)  // team1 is home
+        recordMatchup(court2Team1, court2Team2, true)  // team1 is home
 
         if (court1Ref) {
           stats[court1Ref].gamesReffed++
@@ -144,6 +163,9 @@ export default function SchedulesPage() {
         }
       }
 
+      console.log(`Parsed ${parsedGames.length} games total`)
+      console.log('Game numbers found:', parsedGames.map(g => g.gameNumber))
+      
       return { parsedGames, stats, detectedConflicts }
     }
 
@@ -176,6 +198,19 @@ export default function SchedulesPage() {
         }
         
         console.log('API Response received')
+        
+        // Debug logging for week inclusion
+        if (selectedWeek === 'all' && data.debug) {
+          console.log('All Weeks Debug Info:', data.debug)
+          console.log('Available weeks:', data.availableWeeks)
+          console.log('Week count:', data.weekCount)
+        }
+        
+        // Debug raw CSV data
+        if (selectedWeek === 'all') {
+          console.log('Raw CSV data length:', data.csvData?.length || 0)
+          console.log('CSV data preview (first 1000 chars):', data.csvData?.substring(0, 1000))
+        }
         
         const { parsedGames, stats, detectedConflicts } = parseScheduleCSV(data.csvData)
         

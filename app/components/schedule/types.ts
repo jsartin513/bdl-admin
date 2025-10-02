@@ -9,17 +9,23 @@ export interface Game {
   court2Ref: string
 }
 
+export interface MatchupDetail {
+  total: number
+  home: number
+  away: number
+}
+
 export interface TeamStats {
   gamesPlayed: number
   gamesReffed: number
   homeGames: number
   awayGames: number
-  matchups?: Record<string, number>
+  matchups?: Record<string, MatchupDetail>
 }
 
 export interface TeamStatsWithTeam extends TeamStats {
   team: string
-  matchups: { [opponent: string]: number }
+  matchups: { [opponent: string]: MatchupDetail }
 }
 
 export interface Conflict {

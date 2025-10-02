@@ -44,13 +44,50 @@ export async function GET(request: NextRequest) {
           try {
             const sheetData = await fetchSheetData(googleAuth, SHEET_ID, sheet.name);
             const csvData = convertToCsv(sheetData);
-            weekData.push(csvData);
+            
+            // Extract week number from sheet name for game numbering
+            const weekMatch = sheet.name.match(/week\s*(\d+)/i);
+            const weekNum = weekMatch ? weekMatch[1] : weekSheets.indexOf(sheet) + 1;
+            
+            // Process CSV data to make game numbers unique across weeks
+            const lines = csvData.split('\n');
+            const processedLines = lines.map(line => {
+              if (line.includes('Game ') && !line.includes('Game Number')) {
+                // Replace "Game X" with "Week Y Game X" to make it unique
+                return line.replace(/Game\s+(\d+)/i, `Week ${weekNum} Game $1`);
+              }
+              return line;
+            });
+            
+            weekData.push(processedLines.join('\n'));
+            console.log(`Processed ${sheet.name}: ${lines.length} lines, week ${weekNum}`);
           } catch (error) {
             console.error(`Error fetching sheet ${sheet.name}:`, error);
           }
         }
         
-        combinedCsvData = weekData.join('\n\n');
+        // Combine data: take header from first week, then all data lines from all weeks
+        const allLines: string[] = [];
+        let headerAdded = false;
+        
+        for (const csvData of weekData) {
+          const lines = csvData.split('\n');
+          for (const line of lines) {
+            if (line.includes('Game Number') || line.includes('Court 1 Team 1')) {
+              // This is a header line
+              if (!headerAdded) {
+                allLines.push(line);
+                headerAdded = true;
+              }
+              // Skip additional headers
+            } else if (line.trim()) {
+              // This is a data line
+              allLines.push(line);
+            }
+          }
+        }
+        
+        combinedCsvData = allLines.join('\n');
         
         return NextResponse.json({
           success: true,
@@ -58,7 +95,13 @@ export async function GET(request: NextRequest) {
           sheetName: 'All Weeks Combined',
           availableWeeks: weekSheets.map(s => s.name),
           csvData: combinedCsvData,
-          weekCount: weekSheets.length
+          weekCount: weekSheets.length,
+          debug: {
+            allSheets: availableSheets.map(s => s.name),
+            weekSheets: weekSheets.map(s => s.name),
+            combinedDataLength: combinedCsvData.length,
+            totalLines: combinedCsvData.split('\n').length
+          }
         });
       } else {
         // Get specific week
