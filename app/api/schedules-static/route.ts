@@ -15,10 +15,22 @@ export async function GET(request: NextRequest) {
     // Parse the Excel file
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
     
-    // Get available sheet names (excluding certain sheets)
-    const availableWeeks = workbook.SheetNames.filter(name => 
-      name.includes('Week') && !name.includes('10/14') && !name.includes('10/21')
-    ).sort()
+    // Get available sheet names (include all weeks 1-6 with flexible naming)
+    console.log('🔍 ALL EXCEL SHEETS:', workbook.SheetNames);
+    
+    const availableWeeks = workbook.SheetNames.filter(name => {
+      const nameLower = name.toLowerCase()
+      return nameLower.includes('week') ||
+             nameLower.match(/w\s*[1-6]/) ||
+             nameLower.match(/[1-6]\s*week/) ||
+             nameLower.includes('9.30') || nameLower.includes('9/30') ||
+             nameLower.includes('10.7') || nameLower.includes('10/7') ||
+             nameLower.includes('10.14') || nameLower.includes('10/14') ||
+             nameLower.includes('10.21') || nameLower.includes('10/21') ||
+             nameLower.includes('10.28') || nameLower.includes('10/28')
+    }).sort()
+    
+    console.log('✅ WEEK SHEETS DETECTED:', availableWeeks);
     
     // Handle "all" weeks case
     if (week === 'all') {
@@ -30,21 +42,46 @@ export async function GET(request: NextRequest) {
         const worksheet = workbook.Sheets[weekSheet]
         const csvData = XLSX.utils.sheet_to_csv(worksheet)
         
-        // Add week identifier to each line for aggregation
+        // Extract week number from sheet name for game numbering
+        const weekMatch = weekSheet.match(/week\s*(\d+)/i)
+        const weekNum = weekMatch ? weekMatch[1] : availableWeeks.indexOf(weekSheet) + 1
+        
+        // Process CSV data to make game numbers unique across weeks
         const lines = csvData.split('\n')
-        const modifiedLines = lines.map((line, index) => {
-          if (index === 0 || !line.trim()) return line // Keep header and empty lines as is
-          if (line.includes('Game ')) {
-            return line // Keep game lines as is - they already have game numbers
+        const processedLines = lines.map(line => {
+          if (line.includes('Game ') && !line.includes('Game Number')) {
+            // Replace "Game X" with "Week Y Game X" to make it unique
+            return line.replace(/Game\s+(\d+)/i, `Week ${weekNum} Game $1`)
           }
-          return line // Keep other lines as is
+          return line
         })
         
-        weekData.push(modifiedLines.join('\n'))
+        weekData.push(processedLines.join('\n'))
+        console.log(`Processed ${weekSheet}: ${lines.length} lines, week ${weekNum}`)
       }
       
-      // Combine all weeks data
-      combinedCsvData = weekData.join('\n\n')
+      // Combine data: take header from first week, then all data lines from all weeks
+      const allLines: string[] = []
+      let headerAdded = false
+      
+      for (const csvData of weekData) {
+        const lines = csvData.split('\n')
+        for (const line of lines) {
+          if (line.includes('Game Number') || line.includes('Court 1 Team 1')) {
+            // This is a header line
+            if (!headerAdded) {
+              allLines.push(line)
+              headerAdded = true
+            }
+            // Skip additional headers
+          } else if (line.trim()) {
+            // This is a data line
+            allLines.push(line)
+          }
+        }
+      }
+      
+      combinedCsvData = allLines.join('\n')
       
       return NextResponse.json({
         success: true,
@@ -52,7 +89,13 @@ export async function GET(request: NextRequest) {
         sheetName: 'All Weeks Combined',
         availableWeeks,
         csvData: combinedCsvData,
-        weekCount: availableWeeks.length
+        weekCount: availableWeeks.length,
+        debug: {
+          allSheetNames: workbook.SheetNames,
+          filteredWeeks: availableWeeks,
+          combinedDataLength: combinedCsvData.length,
+          totalLines: combinedCsvData.split('\n').length
+        }
       })
     }
     
