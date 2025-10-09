@@ -31,9 +31,21 @@ export async function GET(request: NextRequest) {
     try {
       // Get all available sheets first
       const availableSheets = await fetchAllSheets(googleAuth);
-      const weekSheets = availableSheets.filter(sheet => 
-        sheet.name.toLowerCase().includes('week')
-      );
+      console.log('🔍 ALL SHEETS FOUND:', availableSheets.map(s => s.name));
+      
+      const weekSheets = availableSheets.filter(sheet => {
+        const name = sheet.name.toLowerCase();
+        return name.includes('week') || 
+               name.match(/w\s*[1-6]/) || 
+               name.match(/[1-6]\s*week/) ||
+               name.includes('9.30') || name.includes('9/30') ||
+               name.includes('10.7') || name.includes('10/7') ||
+               name.includes('10.14') || name.includes('10/14') ||
+               name.includes('10.21') || name.includes('10/21') ||
+               name.includes('10.28') || name.includes('10/28');
+      });
+      
+      console.log('✅ WEEK SHEETS DETECTED:', weekSheets.map(s => s.name));
 
       if (week === 'all') {
         // Get all sheets and combine data
@@ -42,15 +54,22 @@ export async function GET(request: NextRequest) {
         
         for (const sheet of weekSheets) {
           try {
+            console.log(`🔍 Fetching data for sheet: ${sheet.name}`);
             const sheetData = await fetchSheetData(googleAuth, SHEET_ID, sheet.name);
+            console.log(`📊 Raw sheet data rows for ${sheet.name}:`, sheetData.length);
+            
             const csvData = convertToCsv(sheetData);
+            console.log(`📝 CSV data for ${sheet.name} (length: ${csvData.length}, first 200 chars):`, csvData.substring(0, 200));
             
             // Extract week number from sheet name for game numbering
             const weekMatch = sheet.name.match(/week\s*(\d+)/i);
             const weekNum = weekMatch ? weekMatch[1] : weekSheets.indexOf(sheet) + 1;
+            console.log(`🔢 Detected week number for ${sheet.name}: ${weekNum}`);
             
             // Process CSV data to make game numbers unique across weeks
             const lines = csvData.split('\n');
+            console.log(`📏 Total lines in ${sheet.name}:`, lines.length);
+            
             const processedLines = lines.map(line => {
               if (line.includes('Game ') && !line.includes('Game Number')) {
                 // Replace "Game X" with "Week Y Game X" to make it unique
@@ -59,8 +78,9 @@ export async function GET(request: NextRequest) {
               return line;
             });
             
-            weekData.push(processedLines.join('\n'));
-            console.log(`Processed ${sheet.name}: ${lines.length} lines, week ${weekNum}`);
+            const processedCsv = processedLines.join('\n');
+            weekData.push(processedCsv);
+            console.log(`✅ Processed ${sheet.name}: ${lines.length} lines, week ${weekNum}, processed length: ${processedCsv.length}`);
           } catch (error) {
             console.error(`Error fetching sheet ${sheet.name}:`, error);
           }

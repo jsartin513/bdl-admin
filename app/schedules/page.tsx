@@ -30,7 +30,7 @@ export default function SchedulesPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedWeek, setSelectedWeek] = useState('1')
+  const [selectedWeek, setSelectedWeek] = useState('all')
 
   useEffect(() => {
     const parseScheduleCSV = (csvText: string) => {

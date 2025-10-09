@@ -13,7 +13,7 @@ import {
   TeamStatsCards
 } from '../components/schedule'
 
-const DEFAULT_SELECTED_WEEK = '1';
+const DEFAULT_SELECTED_WEEK = 'all';
 
 export default function SchedulesStatic() {
   const [selectedWeek, setSelectedWeek] = useState(DEFAULT_SELECTED_WEEK)

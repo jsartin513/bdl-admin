@@ -15,18 +15,22 @@ export async function GET(request: NextRequest) {
     // Parse the Excel file
     const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
     
-    // Get available sheet names (include all weeks 1-6)
+    // Get available sheet names (include all weeks 1-6 with flexible naming)
+    console.log('🔍 ALL EXCEL SHEETS:', workbook.SheetNames);
+    
     const availableWeeks = workbook.SheetNames.filter(name => {
       const nameLower = name.toLowerCase()
-      return nameLower.includes('week') && (
-        nameLower.includes('week 1') ||
-        nameLower.includes('week 2') ||
-        nameLower.includes('week 3') ||
-        nameLower.includes('week 4') ||
-        nameLower.includes('week 5') ||
-        nameLower.includes('week 6')
-      )
+      return nameLower.includes('week') ||
+             nameLower.match(/w\s*[1-6]/) ||
+             nameLower.match(/[1-6]\s*week/) ||
+             nameLower.includes('9.30') || nameLower.includes('9/30') ||
+             nameLower.includes('10.7') || nameLower.includes('10/7') ||
+             nameLower.includes('10.14') || nameLower.includes('10/14') ||
+             nameLower.includes('10.21') || nameLower.includes('10/21') ||
+             nameLower.includes('10.28') || nameLower.includes('10/28')
     }).sort()
+    
+    console.log('✅ WEEK SHEETS DETECTED:', availableWeeks);
     
     // Handle "all" weeks case
     if (week === 'all') {
