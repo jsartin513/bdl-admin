@@ -1,44 +1,92 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TimerComponent } from '../components/timer';
 import { GameInfo, NextGameInfo } from '../components/timer/types';
+import { Game } from '../components/schedule/types';
 import Link from 'next/link';
-
-// Mock data for demonstration - in real implementation, this would come from your schedule API
-const MOCK_GAMES: GameInfo[] = [
-  {
-    gameNumber: "Week 4 Game 1",
-    court1Team1: "Thunder Bolts",
-    court1Team2: "Lightning Strike", 
-    court2Team1: "Storm Chasers",
-    court2Team2: "Wind Riders",
-    week: 4
-  },
-  {
-    gameNumber: "Week 4 Game 2", 
-    court1Team1: "Fire Dragons",
-    court1Team2: "Ice Phoenix",
-    court2Team1: "Earth Movers", 
-    court2Team2: "Water Warriors",
-    week: 4
-  },
-  {
-    gameNumber: "Week 4 Game 3",
-    court1Team1: "Speed Demons", 
-    court1Team2: "Power Rangers",
-    court2Team1: "Night Hawks",
-    court2Team2: "Day Walkers", 
-    week: 4
-  }
-];
 
 export default function TimerPage() {
   const [currentGameIndex, setCurrentGameIndex] = useState(0);
+  const [games, setGames] = useState<GameInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const currentGame = MOCK_GAMES[currentGameIndex];
-  const nextGame: NextGameInfo | undefined = MOCK_GAMES[currentGameIndex + 1] 
-    ? { ...MOCK_GAMES[currentGameIndex + 1], timeUntilStart: 300 } // 5 minutes until next game
+  // Convert Game objects from schedule API to GameInfo for timer
+  const convertToGameInfo = (game: Game): GameInfo => {
+    // Since we're only showing Week 4 for now, set week to 4
+    const week = 4;
+    
+    return {
+      gameNumber: game.gameNumber,
+      court1Team1: game.court1Team1,
+      court1Team2: game.court1Team2,
+      court2Team1: game.court2Team1,
+      court2Team2: game.court2Team2,
+      week
+    };
+  };
+
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        setLoading(true);
+        // For now, only fetch Week 4 games
+        const response = await fetch('/api/schedules-static?week=4');
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch schedule');
+        }
+
+        // Parse CSV data to extract games
+        const csvData = data.csvData || '';
+        const lines = csvData.split('\n').filter((line: string) => line.trim() !== '');
+        const gameList: Game[] = [];
+
+        for (let i = 1; i < lines.length; i += 2) {
+          const gameLine = lines[i];
+          const refLine = lines[i + 1];
+
+          if (!gameLine || !gameLine.includes('Game ')) {
+            continue;
+          }
+
+          const gameData = gameLine.split(',');
+          const refData = refLine ? refLine.split(',') : [];
+
+          const game: Game = {
+            gameNumber: gameData[0]?.trim() || '',
+            court1Team1: gameData[1]?.trim() || '',
+            court1Team2: gameData[3]?.trim() || '',
+            court1Ref: refData[1]?.replace(/Refs:\s*/g, '')?.trim() || '',
+            court2Team1: gameData[6]?.trim() || '',
+            court2Team2: gameData[8]?.trim() || '',
+            court2Ref: refData[6]?.replace(/Refs:\s*/g, '')?.trim() || ''
+          };
+
+          if (game.gameNumber) {
+            gameList.push(game);
+          }
+        }
+
+        const convertedGames = gameList.map(convertToGameInfo);
+        setGames(convertedGames);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching games:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load games');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchGames();
+  }, []);
+
+  const currentGame = games[currentGameIndex];
+  const nextGame: NextGameInfo | undefined = games[currentGameIndex + 1] 
+    ? { ...games[currentGameIndex + 1], timeUntilStart: 300 } // 5 minutes until next game
     : undefined;
 
   const handleTimerComplete = () => {
@@ -52,7 +100,7 @@ export default function TimerPage() {
 
   // Manual game navigation
   const goToGame = (index: number) => {
-    if (index >= 0 && index < MOCK_GAMES.length) {
+    if (index >= 0 && index < games.length) {
       setCurrentGameIndex(index);
     }
   };
@@ -65,15 +113,52 @@ export default function TimerPage() {
     goToGame(currentGameIndex + 1);
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Loading Games...</h1>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state  
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Error Loading Games</h1>
+            <p className="text-red-600 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* Navigation Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Dodgeball League Timer
-            </h1>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Dodgeball League Timer
+              </h1>
+              <p className="text-lg text-gray-600">Week 4 Games</p>
+            </div>
             <Link 
               href="/schedules-static" 
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -81,6 +166,8 @@ export default function TimerPage() {
               Back to Schedule
             </Link>
           </div>
+          
+          {/* TODO: After November 5, add week selector dropdown here for weeks 5 & 6 */}
           
           {/* Game Selection */}
           <div className="bg-white rounded-lg p-4 shadow-sm">
@@ -93,7 +180,7 @@ export default function TimerPage() {
                   onChange={(e) => goToGame(parseInt(e.target.value))}
                   className="px-3 py-2 border border-gray-300 rounded-md"
                 >
-                  {MOCK_GAMES.map((game, index) => (
+                  {games.map((game, index) => (
                     <option key={index} value={index}>
                       {game.gameNumber}
                     </option>
@@ -110,12 +197,12 @@ export default function TimerPage() {
           nextGame={nextGame}
           onTimerComplete={handleTimerComplete}
           onTimerStart={handleTimerStart}
-          onNextGame={currentGameIndex < MOCK_GAMES.length - 1 ? goToNextGame : undefined}
+          onNextGame={currentGameIndex < games.length - 1 ? goToNextGame : undefined}
           onPreviousGame={currentGameIndex > 0 ? goToPreviousGame : undefined}
-          canGoNext={currentGameIndex < MOCK_GAMES.length - 1}
+          canGoNext={currentGameIndex < games.length - 1}
           canGoPrevious={currentGameIndex > 0}
           currentGameIndex={currentGameIndex}
-          totalGames={MOCK_GAMES.length}
+          totalGames={games.length}
           className="mb-6"
         />
 
