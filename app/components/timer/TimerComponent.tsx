@@ -11,6 +11,11 @@ interface TimerComponentProps {
   onTimerComplete?: () => void;
   onTimerStart?: () => void;
   onNextGame?: () => void;
+  onPreviousGame?: () => void;
+  canGoNext?: boolean;
+  canGoPrevious?: boolean;
+  currentGameIndex?: number;
+  totalGames?: number;
   className?: string;
 }
 
@@ -20,6 +25,11 @@ export default function TimerComponent({
   onTimerComplete,
   onTimerStart,
   onNextGame,
+  onPreviousGame,
+  canGoNext,
+  canGoPrevious,
+  currentGameIndex,
+  totalGames,
   className = ''
 }: TimerComponentProps) {
   const timer = DodgeballTimer({
@@ -42,7 +52,16 @@ export default function TimerComponent({
 
   return (
     <div className={className}>
-      <TimerDisplay timer={timer} currentGame={currentGame} onNextGame={handleNextGame} />
+      <TimerDisplay 
+        timer={timer} 
+        currentGame={currentGame} 
+        onNextGame={handleNextGame}
+        onPreviousGame={onPreviousGame}
+        canGoNext={canGoNext}
+        canGoPrevious={canGoPrevious}
+        currentGameIndex={currentGameIndex}
+        totalGames={totalGames}
+      />
     </div>
   );
 }

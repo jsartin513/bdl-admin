@@ -8,13 +8,28 @@ interface TimerDisplayProps {
   timer: ReturnType<typeof DodgeballTimer>;
   currentGame?: GameInfo;
   onNextGame?: () => void;
+  onPreviousGame?: () => void;
+  canGoNext?: boolean;
+  canGoPrevious?: boolean;
+  currentGameIndex?: number;
+  totalGames?: number;
 }
 
-export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDisplayProps) {
+export default function TimerDisplay({ 
+  timer, 
+  currentGame, 
+  onNextGame, 
+  onPreviousGame,
+  canGoNext,
+  canGoPrevious,
+  currentGameIndex,
+  totalGames
+}: TimerDisplayProps) {
   const {
     timerState,
     audioConfig,
     isAudioInitialized,
+    isPlayingStartAnnouncement,
     startTimer,
     pauseTimer,
     resetTimer,
@@ -49,7 +64,11 @@ export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDi
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
+    <div className={`max-w-4xl mx-auto p-6 rounded-lg shadow-lg transition-all duration-500 ${
+      isPlayingStartAnnouncement 
+        ? 'bg-gradient-to-br from-green-100 via-blue-100 to-green-100 shadow-2xl border-4 border-green-400' 
+        : 'bg-white'
+    }`}>
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -62,9 +81,38 @@ export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDi
         )}
       </div>
 
+      {/* Game Navigation */}
+      <div className="flex items-center justify-center gap-4 mb-6">
+        <button
+          onClick={onPreviousGame}
+          disabled={!canGoPrevious}
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2"
+        >
+          ⬅️ Previous Game
+        </button>
+        
+        <div className="bg-blue-100 px-4 py-2 rounded-lg">
+          <span className="font-semibold text-blue-900">
+            Game {(currentGameIndex ?? 0) + 1} of {totalGames ?? 0}
+          </span>
+        </div>
+        
+        <button
+          onClick={onNextGame}
+          disabled={!canGoNext}
+          className="px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2"
+        >
+          Next Game ➡️
+        </button>
+      </div>
+
       {/* Current Teams Playing - Prominent Display */}
       {currentGame && (
-        <div className="bg-blue-600 text-white rounded-lg p-6 mb-6 shadow-lg">
+        <div className={`text-white rounded-lg p-6 mb-6 shadow-lg transition-all duration-500 ${
+          isPlayingStartAnnouncement 
+            ? 'bg-gradient-to-r from-green-600 via-blue-600 to-green-600 animate-pulse transform scale-105' 
+            : 'bg-blue-600'
+        }`}>
           <h2 className="text-2xl font-bold text-center mb-4">🏐 CURRENTLY PLAYING</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-blue-700 rounded-lg p-4 text-center">
@@ -91,8 +139,27 @@ export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDi
         </div>
       )}
 
+      {/* Game Starting Overlay */}
+      {isPlayingStartAnnouncement && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-pulse">
+          <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-12 rounded-2xl shadow-2xl transform scale-110">
+            <div className="text-center">
+              <div className="text-6xl font-bold mb-4 animate-bounce">🏁</div>
+              <div className="text-4xl font-bold mb-2">GAME STARTING!</div>
+              <div className="text-2xl font-semibold opacity-90">
+                Side ready, side ready, dodgeball!
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Timer Display */}
-      <div className={`text-center p-8 rounded-lg border-2 mb-6 ${getPhaseColors(timerState.phase)}`}>
+      <div className={`text-center p-8 rounded-lg border-2 mb-6 transition-all duration-300 ${
+        isPlayingStartAnnouncement 
+          ? 'bg-gradient-to-br from-green-50 to-blue-50 border-green-400 shadow-xl transform scale-105' 
+          : getPhaseColors(timerState.phase)
+      }`}>
         <div className={`${getTimeDisplaySize(timerState.phase)} mb-4`}>
           {formatTime(timerState.currentTime)}
         </div>
@@ -111,7 +178,7 @@ export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDi
         {!timerState.isRunning && timerState.currentTime > 0 && (
           <button
             onClick={startTimer}
-            className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-bold text-xl shadow-lg transform hover:scale-105"
+            className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-300 font-bold text-xl shadow-lg transform hover:scale-105 animate-pulse"
           >
             🏁 START ROUND
           </button>
@@ -139,12 +206,14 @@ export default function TimerDisplay({ timer, currentGame, onNextGame }: TimerDi
           </button>
         )}
 
-        <button
-          onClick={resetTimer}
-          className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-semibold text-lg shadow-lg"
-        >
-          🔄 RESET
-        </button>
+        {timerState.phase !== TimerPhase.FINISHED && (
+          <button
+            onClick={resetTimer}
+            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-semibold text-lg shadow-lg"
+          >
+            🔄 RESET
+          </button>
+        )}
       </div>
 
       {/* End of Round - Next Game Section */}

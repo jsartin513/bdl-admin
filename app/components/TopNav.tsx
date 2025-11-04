@@ -14,6 +14,9 @@ export default async function TopNav() {
         <Link href="/schedules-static" className="hover:underline">
           League Schedules (Static)
         </Link>
+        <Link href="/timer" className="hover:underline">
+          Round Timer
+        </Link>
         <Link href="/test" className="hover:underline">
           Show Permissions (debugging)
         </Link>

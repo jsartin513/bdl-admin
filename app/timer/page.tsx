@@ -82,43 +82,24 @@ export default function TimerPage() {
             </Link>
           </div>
           
-          {/* Game Navigation */}
+          {/* Game Selection */}
           <div className="bg-white rounded-lg p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={goToPreviousGame}
-                  disabled={currentGameIndex === 0}
-                  className="px-4 py-2 bg-gray-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-                >
-                  ← Previous Game
-                </button>
-                
-                <div className="text-lg font-semibold text-gray-900">
-                  Game {currentGameIndex + 1} of {MOCK_GAMES.length}
-                </div>
-                
-                <button
-                  onClick={goToNextGame}
-                  disabled={currentGameIndex === MOCK_GAMES.length - 1}
-                  className="px-4 py-2 bg-gray-600 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-                >
-                  Next Game →
-                </button>
-              </div>
-              
+            <div className="flex items-center justify-center">
               {/* Game Selection Dropdown */}
-              <select
-                value={currentGameIndex}
-                onChange={(e) => goToGame(parseInt(e.target.value))}
-                className="px-3 py-2 border border-gray-300 rounded-md"
-              >
-                {MOCK_GAMES.map((game, index) => (
-                  <option key={index} value={index}>
-                    {game.gameNumber}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-3">
+                <label className="font-medium text-gray-700">Quick Jump:</label>
+                <select
+                  value={currentGameIndex}
+                  onChange={(e) => goToGame(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  {MOCK_GAMES.map((game, index) => (
+                    <option key={index} value={index}>
+                      {game.gameNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -130,6 +111,11 @@ export default function TimerPage() {
           onTimerComplete={handleTimerComplete}
           onTimerStart={handleTimerStart}
           onNextGame={currentGameIndex < MOCK_GAMES.length - 1 ? goToNextGame : undefined}
+          onPreviousGame={currentGameIndex > 0 ? goToPreviousGame : undefined}
+          canGoNext={currentGameIndex < MOCK_GAMES.length - 1}
+          canGoPrevious={currentGameIndex > 0}
+          currentGameIndex={currentGameIndex}
+          totalGames={MOCK_GAMES.length}
           className="mb-6"
         />
 

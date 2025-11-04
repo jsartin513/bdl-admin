@@ -38,6 +38,7 @@ export default function DodgeballTimer({
 
   const [audioConfig, setAudioConfig] = useState<AudioConfig>(DEFAULT_AUDIO_CONFIG);
   const [isAudioInitialized, setIsAudioInitialized] = useState(false);
+  const [isPlayingStartAnnouncement, setIsPlayingStartAnnouncement] = useState(false);
   const [announcements, setAnnouncements] = useState<AnnouncementConfig[]>([]);
 
   const audioManagerRef = useRef<DodgeballAudioManager | null>(null);
@@ -213,6 +214,9 @@ export default function DodgeballTimer({
       phase: TimerPhase.READY
     });
     
+    // Reset start announcement state
+    setIsPlayingStartAnnouncement(false);
+    
     // Clear announcement queue
     announcementQueueRef.current.clear();
     setIsAudioInitialized(false);
@@ -235,11 +239,16 @@ export default function DodgeballTimer({
   const startTimer = useCallback(async () => {
     await initializeAudio();
     
+    // Show visual start indication
+    setIsPlayingStartAnnouncement(true);
+    
     // Play start announcement
     if (audioManagerRef.current) {
       await audioManagerRef.current.announce(STANDARD_ANNOUNCEMENTS.START);
     }
 
+    // Hide visual start indication and start timer
+    setIsPlayingStartAnnouncement(false);
     setTimerState(prev => ({
       ...prev,
       isRunning: true,
@@ -267,6 +276,9 @@ export default function DodgeballTimer({
       isPaused: false,
       phase: TimerPhase.READY
     });
+    
+    // Reset start announcement state
+    setIsPlayingStartAnnouncement(false);
     
     // Clear announcement queue
     announcementQueueRef.current.clear();
@@ -337,6 +349,7 @@ export default function DodgeballTimer({
     timerState,
     audioConfig,
     isAudioInitialized,
+    isPlayingStartAnnouncement,
     
     // Controls
     startTimer,
