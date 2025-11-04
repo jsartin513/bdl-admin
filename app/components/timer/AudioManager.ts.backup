@@ -1,0 +1,217 @@
+// Audio management for the dodgeball timer
+import { AudioConfig, SpeechOptions, TimerAudioManager } from './types';
+
+export class DodgeballAudioManager implements TimerAudioManager {
+  private audioContext: AudioContext | null = null;
+  private buzzerSound: HTMLAudioElement | null = null;
+  private buzzerBuffer: AudioBuffer | null = null;
+  private config: AudioConfig;
+
+  constructor(config: AudioConfig) {
+    this.config = config;
+    this.initializeAudio();
+  }
+
+  private async initializeAudio(): Promise<void> {
+    try {
+      // Create audio context (requires user interaction in most browsers)
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      this.audioContext = new AudioContextClass();
+      
+      // Create buzzer sound
+      this.buzzerSound = new Audio();
+      this.buzzerSound.volume = this.config.masterVolume;
+      
+      // Generate buzzer sound programmatically
+      this.generateBuzzerSound();
+      
+    } catch (error) {
+      console.warn('Audio initialization failed:', error);
+    }
+  }
+
+  private generateBuzzerSound(): void {
+    if (!this.audioContext) return;
+
+    // Create a buzzer sound using Web Audio API
+    const createBuzzer = () => {
+      if (!this.audioContext) return null;
+      
+      const buffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 1, this.audioContext.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      // Generate buzzer tone (mix of frequencies for harsh sound)
+      for (let i = 0; i < data.length; i++) {
+        const t = i / this.audioContext.sampleRate;
+        data[i] = (
+          Math.sin(2 * Math.PI * 800 * t) * 0.5 +  // Primary tone
+          Math.sin(2 * Math.PI * 1200 * t) * 0.3 +  // Harmonic
+          Math.sin(2 * Math.PI * 600 * t) * 0.2     // Lower harmonic
+        ) * Math.exp(-t * 3); // Decay envelope
+      }
+      
+      return buffer;
+    };
+
+    const buzzerBuffer = createBuzzer();
+    if (buzzerBuffer) {
+      // Store the buffer for later playback
+      this.buzzerBuffer = buzzerBuffer;
+    }
+  }
+
+  async playBackgroundMusic(src: string): Promise<void> {
+    if (!this.backgroundMusic) {
+      await this.initializeAudio();
+    }
+
+    if (this.backgroundMusic) {
+      try {
+        this.backgroundMusic.src = src;
+        await this.backgroundMusic.play();
+      } catch (error) {
+        console.warn('Failed to play background music:', error);
+      }
+    }
+  }
+
+  stopBackgroundMusic(): void {
+    if (this.backgroundMusic) {
+      this.backgroundMusic.pause();
+      this.backgroundMusic.currentTime = 0;
+    }
+  }
+
+  setMusicVolume(volume: number): void {
+    this.config.musicVolume = Math.max(0, Math.min(1, volume));
+    this.originalMusicVolume = this.config.musicVolume;
+    
+    if (this.musicGainNode && !this.isDucking) {
+      this.musicGainNode.gain.setValueAtTime(
+        this.config.musicVolume * this.config.masterVolume,
+        this.audioContext?.currentTime || 0
+      );
+    }
+    
+    if (this.backgroundMusic) {
+      this.backgroundMusic.volume = this.config.musicVolume * this.config.masterVolume;
+    }
+  }
+
+  async announce(text: string, options: SpeechOptions = {}): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!('speechSynthesis' in window)) {
+        console.warn('Speech synthesis not supported');
+        resolve();
+        return;
+      }
+
+      // Duck the music during announcement
+      this.duckMusic(true);
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Configure speech options
+      utterance.rate = options.rate || this.config.speechRate;
+      utterance.pitch = options.pitch || this.config.speechPitch;
+      utterance.volume = this.config.announcementVolume * this.config.masterVolume;
+      
+      if (options.voice) {
+        utterance.voice = options.voice;
+      }
+
+      utterance.onend = () => {
+        // Restore music volume after announcement
+        setTimeout(() => {
+          this.duckMusic(false);
+          resolve();
+        }, 500); // Small delay before restoring music
+      };
+
+      utterance.onerror = (error) => {
+        this.duckMusic(false);
+        reject(error);
+      };
+
+      speechSynthesis.speak(utterance);
+    });
+  }
+
+  async playBuzzer(): Promise<void> {
+    if (this.buzzerBuffer && this.audioContext) {
+      // Play generated buzzer sound
+      const source = this.audioContext.createBufferSource();
+      const gainNode = this.audioContext.createGain();
+      
+      source.buffer = this.buzzerBuffer;
+      source.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+      gainNode.gain.value = this.config.masterVolume;
+      
+      source.start();
+    } else if (this.buzzerSound) {
+      // Fallback to audio element
+      try {
+        this.buzzerSound.currentTime = 0;
+        await this.buzzerSound.play();
+      } catch (error) {
+        console.warn('Failed to play buzzer:', error);
+      }
+    }
+  }
+
+  duckMusic(enable: boolean): void {
+    if (!this.musicGainNode || !this.audioContext) return;
+
+    this.isDucking = enable;
+    const targetVolume = enable 
+      ? this.originalMusicVolume * this.config.musicDuckingLevel
+      : this.originalMusicVolume;
+
+    // Smooth volume transition
+    this.musicGainNode.gain.setTargetAtTime(
+      targetVolume * this.config.masterVolume,
+      this.audioContext.currentTime,
+      0.1 // Time constant for smooth transition
+    );
+  }
+
+  // Update configuration
+  updateConfig(newConfig: Partial<AudioConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+    
+    // Apply changes immediately
+    if (newConfig.musicVolume !== undefined) {
+      this.setMusicVolume(newConfig.musicVolume);
+    }
+  }
+
+  // Get available voices for text-to-speech
+  getAvailableVoices(): SpeechSynthesisVoice[] {
+    if (!('speechSynthesis' in window)) return [];
+    return speechSynthesis.getVoices();
+  }
+
+  // Resume audio context if suspended (required after user interaction)
+  async resumeAudioContext(): Promise<void> {
+    if (this.audioContext?.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+  }
+
+  // Cleanup resources
+  dispose(): void {
+    if (this.backgroundMusic) {
+      this.backgroundMusic.pause();
+      this.backgroundMusic = null;
+    }
+    
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
+    this.buzzerSound = null;
+    this.musicGainNode = null;
+  }
+}
