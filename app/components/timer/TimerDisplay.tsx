@@ -124,6 +124,14 @@ export default function TimerDisplay({
               <div className="text-xl font-semibold">
                 {currentGame.court1Team2}
               </div>
+              {currentGame.court1Ref && (
+                <div className="mt-3 pt-2 border-t border-blue-500">
+                  <div className="text-sm text-blue-200">Referee:</div>
+                  <div className="text-base font-medium text-blue-100">
+                    {currentGame.court1Ref}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="bg-blue-700 rounded-lg p-4 text-center">
               <h3 className="text-lg font-bold mb-2">🏀 COURT 2</h3>
@@ -134,6 +142,14 @@ export default function TimerDisplay({
               <div className="text-xl font-semibold">
                 {currentGame.court2Team2}
               </div>
+              {currentGame.court2Ref && (
+                <div className="mt-3 pt-2 border-t border-blue-500">
+                  <div className="text-sm text-blue-200">Referee:</div>
+                  <div className="text-base font-medium text-blue-100">
+                    {currentGame.court2Ref}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -294,12 +310,30 @@ export default function TimerDisplay({
           <h3 className="font-bold text-lg mb-3 text-blue-900">Next Round</h3>
           <div className="text-blue-800">
             <div className="font-medium mb-2">{nextGame.gameNumber}</div>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div>
-                Court 1: {nextGame.court1Team1} vs {nextGame.court1Team2}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-blue-100 rounded-lg p-3">
+                <div className="font-medium text-sm mb-1">Court 1:</div>
+                <div className="text-sm">
+                  {nextGame.court1Team1} vs {nextGame.court1Team2}
+                </div>
+                {nextGame.court1Ref && (
+                  <div className="mt-2 pt-2 border-t border-blue-200">
+                    <div className="text-xs text-blue-600">Referee:</div>
+                    <div className="text-sm font-medium">{nextGame.court1Ref}</div>
+                  </div>
+                )}
               </div>
-              <div>
-                Court 2: {nextGame.court2Team1} vs {nextGame.court2Team2}
+              <div className="bg-blue-100 rounded-lg p-3">
+                <div className="font-medium text-sm mb-1">Court 2:</div>
+                <div className="text-sm">
+                  {nextGame.court2Team1} vs {nextGame.court2Team2}
+                </div>
+                {nextGame.court2Ref && (
+                  <div className="mt-2 pt-2 border-t border-blue-200">
+                    <div className="text-xs text-blue-600">Referee:</div>
+                    <div className="text-sm font-medium">{nextGame.court2Ref}</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

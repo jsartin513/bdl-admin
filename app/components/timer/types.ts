@@ -64,6 +64,8 @@ export interface GameInfo {
   court1Team2: string;
   court2Team1: string;
   court2Team2: string;
+  court1Ref?: string;
+  court2Ref?: string;
   week?: number;
 }
 

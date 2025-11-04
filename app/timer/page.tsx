@@ -23,6 +23,8 @@ export default function TimerPage() {
       court1Team2: game.court1Team2,
       court2Team1: game.court2Team1,
       court2Team2: game.court2Team2,
+      court1Ref: game.court1Ref,
+      court2Ref: game.court2Ref,
       week
     };
   };
