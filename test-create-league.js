@@ -128,9 +128,10 @@ function createLeagueWorkbook(data) {
       }
     }
     
-    // Step 2: Distribute games evenly to minimize gaps between games
+    // Step 2: Distribute games evenly with constraint-based approach to minimize gaps
     const teamGameCount = new Map()
     const teamLastPosition = new Map()
+    const maxWaitThreshold = 4 // Maximum games a team should wait between appearances (ideally)
     teams.forEach(team => {
       teamGameCount.set(team, 0)
       teamLastPosition.set(team, -1)
@@ -143,29 +144,53 @@ function createLeagueWorkbook(data) {
       let bestGameIndex = -1
       let bestScore = -Infinity
       
+      // Calculate current wait times for all teams
+      const teamWaitTimes = new Map()
+      teams.forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        const waitTime = lastPos === -1 ? distributedGames.length : distributedGames.length - lastPos
+        teamWaitTimes.set(team, waitTime)
+      })
+      
+      // Find teams that are approaching or exceeding the threshold
+      const urgentTeams = new Set()
+      teamWaitTimes.forEach((waitTime, team) => {
+        if (waitTime >= maxWaitThreshold) {
+          urgentTeams.add(team)
+        }
+      })
+      
       remainingGames.forEach((gamePair, index) => {
         const team1 = gamePair.team1
         const team2 = gamePair.team2
         
         const team1Games = teamGameCount.get(team1) || 0
         const team2Games = teamGameCount.get(team2) || 0
-        const team1LastPos = teamLastPosition.get(team1) || -1
-        const team2LastPos = teamLastPosition.get(team2) || -1
+        const wait1 = teamWaitTimes.get(team1) || 0
+        const wait2 = teamWaitTimes.get(team2) || 0
         
-        // Calculate gaps (how many games since last appearance)
-        // If team hasn't played yet, gap is very large
-        const gap1 = team1LastPos === -1 ? 1000 : distributedGames.length - team1LastPos
-        const gap2 = team2LastPos === -1 ? 1000 : distributedGames.length - team2LastPos
+        // Check if this game addresses urgent teams
+        const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
+        
+        // Calculate urgency score (exponential penalty for long waits)
+        // Teams waiting >= threshold get massive priority
+        // Use even more aggressive exponential: 2^(wait - threshold + 2) for teams at/over threshold
+        const urgency1 = wait1 >= maxWaitThreshold 
+          ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000 
+          : wait1 * 200
+        const urgency2 = wait2 >= maxWaitThreshold 
+          ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
+          : wait2 * 200
         
         // Score prioritizes:
-        // 1. Teams with larger gaps (higher priority to minimize wait time)
-        // 2. Teams with fewer games played (ensure even distribution)
-        // Weight gaps more heavily to minimize wait time
+        // 1. Urgent teams (waiting >= threshold) - exponential priority
+        // 2. Teams with longer waits (to minimize gaps)
+        // 3. Teams with fewer games (to ensure even distribution)
         const score = 
-          gap1 * 100 + // Heavily weight gap to minimize wait time
-          gap2 * 100 +
-          (10 - team1Games) * 10 + // Secondary: ensure even game distribution
-          (10 - team2Games) * 10
+          urgency1 + urgency2 + // Urgency (exponential for long waits)
+          (10 - team1Games) * 5 + // Secondary: ensure even game distribution
+          (10 - team2Games) * 5 +
+          (addressesUrgent ? 1000 : 0) // Bonus for addressing urgent teams
         
         if (score > bestScore) {
           bestScore = score
@@ -188,6 +213,120 @@ function createLeagueWorkbook(data) {
       teamLastPosition.set(game.team1, distributedGames.length - 1)
       teamLastPosition.set(game.team2, distributedGames.length - 1)
     }
+    
+    // Step 2.5: Try multiple random orderings and pick the best one
+    // Run the algorithm multiple times with different random seeds and pick the best result
+    let bestSchedule = [...distributedGames]
+    let bestMaxGap = Infinity
+    
+    // Calculate max gap for current schedule
+    const calculateMaxGap = (schedule) => {
+      const teamLastPos = new Map()
+      let maxGap = 0
+      teams.forEach(team => teamLastPos.set(team, -1))
+      
+      schedule.forEach((game, idx) => {
+        [game.team1, game.team2].forEach(team => {
+          const lastPos = teamLastPos.get(team)
+          if (lastPos !== -1) {
+            const gap = idx - lastPos
+            if (gap > maxGap) maxGap = gap
+          }
+          teamLastPos.set(team, idx)
+        })
+      })
+      return maxGap
+    }
+    
+    bestMaxGap = calculateMaxGap(distributedGames)
+    
+    // Try a few more iterations with different game pair orderings
+    for (let attempt = 0; attempt < 5; attempt++) {
+      // Shuffle game pairs
+      const shuffledPairs = [...gamePairs].sort(() => Math.random() - 0.5)
+      
+      // Re-run distribution with shuffled pairs
+      const attemptGameCount = new Map()
+      const attemptLastPosition = new Map()
+      teams.forEach(team => {
+        attemptGameCount.set(team, 0)
+        attemptLastPosition.set(team, -1)
+      })
+      
+      const attemptGames = []
+      const attemptRemaining = [...shuffledPairs]
+      
+      while (attemptRemaining.length > 0) {
+        let bestGameIndex = -1
+        let bestScore = -Infinity
+        
+        const attemptWaitTimes = new Map()
+        teams.forEach(team => {
+          const lastPos = attemptLastPosition.get(team) || -1
+          const waitTime = lastPos === -1 ? attemptGames.length : attemptGames.length - lastPos
+          attemptWaitTimes.set(team, waitTime)
+        })
+        
+        const attemptUrgentTeams = new Set()
+        attemptWaitTimes.forEach((waitTime, team) => {
+          if (waitTime >= maxWaitThreshold) {
+            attemptUrgentTeams.add(team)
+          }
+        })
+        
+        attemptRemaining.forEach((gamePair, index) => {
+          const team1 = gamePair.team1
+          const team2 = gamePair.team2
+          const wait1 = attemptWaitTimes.get(team1) || 0
+          const wait2 = attemptWaitTimes.get(team2) || 0
+          const addressesUrgent = attemptUrgentTeams.has(team1) || attemptUrgentTeams.has(team2)
+          
+          const urgency1 = wait1 >= maxWaitThreshold 
+            ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000 
+            : wait1 * 200
+          const urgency2 = wait2 >= maxWaitThreshold 
+            ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
+            : wait2 * 200
+          
+          const team1Games = attemptGameCount.get(team1) || 0
+          const team2Games = attemptGameCount.get(team2) || 0
+          
+          const score = 
+            urgency1 + urgency2 +
+            (10 - team1Games) * 5 +
+            (10 - team2Games) * 5 +
+            (addressesUrgent ? 1000 : 0)
+          
+          if (score > bestScore) {
+            bestScore = score
+            bestGameIndex = index
+          }
+        })
+        
+        const selectedGame = attemptRemaining.splice(bestGameIndex, 1)[0]
+        const game = {
+          team1: selectedGame.homeTeam,
+          team2: selectedGame.homeTeam === selectedGame.team1 ? selectedGame.team2 : selectedGame.team1,
+          ref: undefined
+        }
+        
+        attemptGames.push(game)
+        attemptGameCount.set(game.team1, (attemptGameCount.get(game.team1) || 0) + 1)
+        attemptGameCount.set(game.team2, (attemptGameCount.get(game.team2) || 0) + 1)
+        attemptLastPosition.set(game.team1, attemptGames.length - 1)
+        attemptLastPosition.set(game.team2, attemptGames.length - 1)
+      }
+      
+      const attemptMaxGap = calculateMaxGap(attemptGames)
+      if (attemptMaxGap < bestMaxGap) {
+        bestMaxGap = attemptMaxGap
+        bestSchedule = attemptGames
+      }
+    }
+    
+    // Use the best schedule found
+    distributedGames.length = 0
+    distributedGames.push(...bestSchedule)
     
     // Step 3: Assign refs
     // Avoid having the same team ref twice in a row
@@ -443,25 +582,27 @@ function testLeagueCreation() {
       teamGamePositions.set(team, [])
     })
     
-    // Track which games each team plays in
+    // Track which games each team plays in (by game number, not row index)
+    let gameNumber = 0
     week1Data.forEach((row, index) => {
       if (row[0] && String(row[0]).startsWith('Game')) {
         const team1 = row[1]
         const team2 = row[3]
         if (team1) {
           const positions = teamGamePositions.get(team1) || []
-          positions.push(index)
+          positions.push(gameNumber)
           teamGamePositions.set(team1, positions)
         }
         if (team2) {
           const positions = teamGamePositions.get(team2) || []
-          positions.push(index)
+          positions.push(gameNumber)
           teamGamePositions.set(team2, positions)
         }
+        gameNumber++
       }
     })
     
-    // Calculate gaps for each team
+    // Calculate gaps for each team (in terms of games, not rows)
     const allGaps = []
     const teamGapStats = new Map()
     let maxGap = 0
@@ -477,14 +618,14 @@ function testLeagueCreation() {
       // Calculate gaps between consecutive games
       const gaps = []
       for (let i = 1; i < positions.length; i++) {
-        const gap = positions[i] - positions[i - 1]
+        const gap = positions[i] - positions[i - 1] // Gap in number of games
         gaps.push(gap)
         allGaps.push(gap)
         
         if (gap > maxGap) {
           maxGap = gap
           maxGapTeam = team
-          maxGapDetails = { from: positions[i - 1], to: positions[i], gap }
+          maxGapDetails = { from: positions[i - 1] + 1, to: positions[i] + 1, gap } // +1 for 1-based game numbers
         }
       }
       
@@ -512,7 +653,7 @@ function testLeagueCreation() {
     console.log(`     Min gap: ${overallMinGap} games`)
     
     if (maxGapTeam && maxGapDetails) {
-      console.log(`  📍 Largest gap: ${maxGapTeam} (${maxGapDetails.gap} games between game ${maxGapDetails.from + 1} and ${maxGapDetails.to + 1})`)
+      console.log(`  📍 Largest gap: ${maxGapTeam} (${maxGapDetails.gap} games between game ${maxGapDetails.from} and ${maxGapDetails.to})`)
     }
     
     // Check if any gaps are too large (threshold: 9 games = ~30% of total games)

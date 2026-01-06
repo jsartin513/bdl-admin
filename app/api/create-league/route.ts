@@ -162,10 +162,11 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       }
     }
     
-    // Step 2: Distribute games evenly to avoid long gaps
+    // Step 2: Distribute games evenly with constraint-based approach to minimize gaps
     // Track game counts and last game positions for each team
     const teamGameCount: Map<string, number> = new Map()
     const teamLastPosition: Map<string, number> = new Map()
+    const maxWaitThreshold = 4 // Maximum games a team should wait between appearances (ideally)
     teams.forEach(team => {
       teamGameCount.set(team, 0)
       teamLastPosition.set(team, -1)
@@ -179,31 +180,54 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       let bestGameIndex = -1
       let bestScore = -Infinity
       
+      // Calculate current wait times for all teams
+      const teamWaitTimes: Map<string, number> = new Map()
+      teams.forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        const waitTime = lastPos === -1 ? distributedGames.length : distributedGames.length - lastPos
+        teamWaitTimes.set(team, waitTime)
+      })
+      
+      // Find teams that are approaching or exceeding the threshold
+      const urgentTeams = new Set<string>()
+      teamWaitTimes.forEach((waitTime, team) => {
+        if (waitTime >= maxWaitThreshold) {
+          urgentTeams.add(team)
+        }
+      })
+      
       // Score each remaining game based on how evenly it distributes play
       remainingGames.forEach((gamePair, index) => {
         const team1 = gamePair.team1
         const team2 = gamePair.team2
         
-        // Calculate score: prioritize minimizing gaps between games
         const team1Games = teamGameCount.get(team1) || 0
         const team2Games = teamGameCount.get(team2) || 0
-        const team1LastPos = teamLastPosition.get(team1) || -1
-        const team2LastPos = teamLastPosition.get(team2) || -1
+        const wait1 = teamWaitTimes.get(team1) || 0
+        const wait2 = teamWaitTimes.get(team2) || 0
         
-        // Calculate gaps (how many games since last appearance)
-        // If team hasn't played yet, gap is very large
-        const gap1 = team1LastPos === -1 ? 1000 : distributedGames.length - team1LastPos
-        const gap2 = team2LastPos === -1 ? 1000 : distributedGames.length - team2LastPos
+        // Check if this game addresses urgent teams
+        const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
+        
+        // Calculate urgency score (exponential penalty for long waits)
+        // Teams waiting >= threshold get massive priority
+        // Use even more aggressive exponential: 2^(wait - threshold + 2) for teams at/over threshold
+        const urgency1 = wait1 >= maxWaitThreshold 
+          ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000 
+          : wait1 * 200
+        const urgency2 = wait2 >= maxWaitThreshold 
+          ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
+          : wait2 * 200
         
         // Score prioritizes:
-        // 1. Teams with larger gaps (higher priority to minimize wait time)
-        // 2. Teams with fewer games played (ensure even distribution)
-        // Weight gaps more heavily to minimize wait time
+        // 1. Urgent teams (waiting >= threshold) - exponential priority
+        // 2. Teams with longer waits (to minimize gaps)
+        // 3. Teams with fewer games (to ensure even distribution)
         const score = 
-          gap1 * 100 + // Heavily weight gap to minimize wait time
-          gap2 * 100 +
-          (10 - team1Games) * 10 + // Secondary: ensure even game distribution
-          (10 - team2Games) * 10
+          urgency1 + urgency2 + // Urgency (exponential for long waits)
+          (10 - team1Games) * 5 + // Secondary: ensure even game distribution
+          (10 - team2Games) * 5 +
+          (addressesUrgent ? 1000 : 0) // Bonus for addressing urgent teams
         
         if (score > bestScore) {
           bestScore = score
