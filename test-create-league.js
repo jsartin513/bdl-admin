@@ -131,10 +131,12 @@ function createLeagueWorkbook(data) {
     // Step 2: Distribute games evenly with constraint-based approach to minimize gaps
     const teamGameCount = new Map()
     const teamLastPosition = new Map()
+    const teamLargeGapCount = new Map() // Track how many large gaps each team has already had
     const maxWaitThreshold = 4 // Maximum games a team should wait between appearances (ideally)
     teams.forEach(team => {
       teamGameCount.set(team, 0)
       teamLastPosition.set(team, -1)
+      teamLargeGapCount.set(team, 0)
     })
     
     const distributedGames = []
@@ -168,6 +170,8 @@ function createLeagueWorkbook(data) {
         const team2Games = teamGameCount.get(team2) || 0
         const wait1 = teamWaitTimes.get(team1) || 0
         const wait2 = teamWaitTimes.get(team2) || 0
+        const largeGapCount1 = teamLargeGapCount.get(team1) || 0
+        const largeGapCount2 = teamLargeGapCount.get(team2) || 0
         
         // Check if this game addresses urgent teams
         const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
@@ -182,15 +186,22 @@ function createLeagueWorkbook(data) {
           ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
           : wait2 * 200
         
+        // Penalize teams that already have large gaps
+        // Teams with existing large gaps get additional penalty to avoid multiple large gaps
+        const largeGapPenalty1 = largeGapCount1 > 0 ? largeGapCount1 * 5000 : 0
+        const largeGapPenalty2 = largeGapCount2 > 0 ? largeGapCount2 * 5000 : 0
+        
         // Score prioritizes:
         // 1. Urgent teams (waiting >= threshold) - exponential priority
         // 2. Teams with longer waits (to minimize gaps)
         // 3. Teams with fewer games (to ensure even distribution)
+        // 4. Penalize teams that already have large gaps (to avoid multiple large gaps)
         const score = 
           urgency1 + urgency2 + // Urgency (exponential for long waits)
           (10 - team1Games) * 5 + // Secondary: ensure even game distribution
           (10 - team2Games) * 5 +
-          (addressesUrgent ? 1000 : 0) // Bonus for addressing urgent teams
+          (addressesUrgent ? 1000 : 0) - // Bonus for addressing urgent teams
+          largeGapPenalty1 - largeGapPenalty2 // Penalty for teams with existing large gaps
         
         if (score > bestScore) {
           bestScore = score
@@ -198,7 +209,16 @@ function createLeagueWorkbook(data) {
         }
       })
       
+      if (bestGameIndex === -1) {
+        // Fallback: just take the first game if scoring failed
+        bestGameIndex = 0
+      }
+      
       const selectedGame = remainingGames.splice(bestGameIndex, 1)[0]
+      
+      if (!selectedGame) {
+        throw new Error('No game selected from remaining games')
+      }
       
       const game = {
         team1: selectedGame.homeTeam,
@@ -206,7 +226,24 @@ function createLeagueWorkbook(data) {
         ref: undefined
       }
       
+      if (!game.team1 || !game.team2) {
+        throw new Error(`Invalid game: team1=${game.team1}, team2=${game.team2}, selectedGame=${JSON.stringify(selectedGame)}`)
+      }
+      
       distributedGames.push(game)
+      
+      // Check if this game creates a large gap for either team
+      const teamsInGame = [game.team1, game.team2].filter(t => t) // Filter out any undefined
+      teamsInGame.forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        if (lastPos !== -1) {
+          const gap = distributedGames.length - 1 - lastPos
+          if (gap >= maxWaitThreshold) {
+            // This team just experienced a large gap
+            teamLargeGapCount.set(team, (teamLargeGapCount.get(team) || 0) + 1)
+          }
+        }
+      })
       
       teamGameCount.set(game.team1, (teamGameCount.get(game.team1) || 0) + 1)
       teamGameCount.set(game.team2, (teamGameCount.get(game.team2) || 0) + 1)
@@ -217,13 +254,18 @@ function createLeagueWorkbook(data) {
     // Step 2.5: Try multiple random orderings and pick the best one
     // Run the algorithm multiple times with different random seeds and pick the best result
     let bestSchedule = [...distributedGames]
-    let bestMaxGap = Infinity
+    let bestScore = Infinity
     
-    // Calculate max gap for current schedule
-    const calculateMaxGap = (schedule) => {
+    // Calculate schedule quality score (lower is better)
+    // Penalizes: max gap, teams with multiple large gaps
+    const calculateScheduleScore = (schedule, teamList) => {
       const teamLastPos = new Map()
+      const teamLargeGaps = new Map()
       let maxGap = 0
-      teams.forEach(team => teamLastPos.set(team, -1))
+      teamList.forEach(team => {
+        teamLastPos.set(team, -1)
+        teamLargeGaps.set(team, 0)
+      })
       
       schedule.forEach((game, idx) => {
         [game.team1, game.team2].forEach(team => {
@@ -231,14 +273,25 @@ function createLeagueWorkbook(data) {
           if (lastPos !== -1) {
             const gap = idx - lastPos
             if (gap > maxGap) maxGap = gap
+            if (gap >= maxWaitThreshold) {
+              teamLargeGaps.set(team, (teamLargeGaps.get(team) || 0) + 1)
+            }
           }
           teamLastPos.set(team, idx)
         })
       })
-      return maxGap
+      
+      // Count teams with multiple large gaps
+      let teamsWithMultipleLargeGaps = 0
+      teamLargeGaps.forEach((count) => {
+        if (count > 1) teamsWithMultipleLargeGaps++
+      })
+      
+      // Score: prioritize schedules with lower max gap and fewer teams with multiple large gaps
+      return maxGap * 1000 + teamsWithMultipleLargeGaps * 100
     }
     
-    bestMaxGap = calculateMaxGap(distributedGames)
+    bestScore = calculateScheduleScore(distributedGames, teams)
     
     // Try a few more iterations with different game pair orderings
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -248,9 +301,11 @@ function createLeagueWorkbook(data) {
       // Re-run distribution with shuffled pairs
       const attemptGameCount = new Map()
       const attemptLastPosition = new Map()
+      const attemptLargeGapCount = new Map()
       teams.forEach(team => {
         attemptGameCount.set(team, 0)
         attemptLastPosition.set(team, -1)
+        attemptLargeGapCount.set(team, 0)
       })
       
       const attemptGames = []
@@ -258,7 +313,7 @@ function createLeagueWorkbook(data) {
       
       while (attemptRemaining.length > 0) {
         let bestGameIndex = -1
-        let bestScore = -Infinity
+        let bestGameScore = -Infinity
         
         const attemptWaitTimes = new Map()
         teams.forEach(team => {
@@ -280,6 +335,8 @@ function createLeagueWorkbook(data) {
           const wait1 = attemptWaitTimes.get(team1) || 0
           const wait2 = attemptWaitTimes.get(team2) || 0
           const addressesUrgent = attemptUrgentTeams.has(team1) || attemptUrgentTeams.has(team2)
+          const largeGapCount1 = attemptLargeGapCount.get(team1) || 0
+          const largeGapCount2 = attemptLargeGapCount.get(team2) || 0
           
           const urgency1 = wait1 >= maxWaitThreshold 
             ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000 
@@ -291,14 +348,18 @@ function createLeagueWorkbook(data) {
           const team1Games = attemptGameCount.get(team1) || 0
           const team2Games = attemptGameCount.get(team2) || 0
           
+          const largeGapPenalty1 = largeGapCount1 > 0 ? largeGapCount1 * 5000 : 0
+          const largeGapPenalty2 = largeGapCount2 > 0 ? largeGapCount2 * 5000 : 0
+          
           const score = 
             urgency1 + urgency2 +
             (10 - team1Games) * 5 +
             (10 - team2Games) * 5 +
-            (addressesUrgent ? 1000 : 0)
+            (addressesUrgent ? 1000 : 0) -
+            largeGapPenalty1 - largeGapPenalty2
           
-          if (score > bestScore) {
-            bestScore = score
+          if (score > bestGameScore) {
+            bestGameScore = score
             bestGameIndex = index
           }
         })
@@ -311,15 +372,28 @@ function createLeagueWorkbook(data) {
         }
         
         attemptGames.push(game)
+        
+        // Track large gaps
+        const attemptTeamsInGame = [game.team1, game.team2].filter(t => t) // Filter out any undefined
+        attemptTeamsInGame.forEach(team => {
+          const lastPos = attemptLastPosition.get(team) || -1
+          if (lastPos !== -1) {
+            const gap = attemptGames.length - 1 - lastPos
+            if (gap >= maxWaitThreshold) {
+              attemptLargeGapCount.set(team, (attemptLargeGapCount.get(team) || 0) + 1)
+            }
+          }
+        })
+        
         attemptGameCount.set(game.team1, (attemptGameCount.get(game.team1) || 0) + 1)
         attemptGameCount.set(game.team2, (attemptGameCount.get(game.team2) || 0) + 1)
         attemptLastPosition.set(game.team1, attemptGames.length - 1)
         attemptLastPosition.set(game.team2, attemptGames.length - 1)
       }
       
-      const attemptMaxGap = calculateMaxGap(attemptGames)
-      if (attemptMaxGap < bestMaxGap) {
-        bestMaxGap = attemptMaxGap
+      const attemptScore = calculateScheduleScore(attemptGames, teams)
+      if (attemptScore < bestScore) {
+        bestScore = attemptScore
         bestSchedule = attemptGames
       }
     }
@@ -577,6 +651,7 @@ function testLeagueCreation() {
     
     // Check game distribution gaps (minimize time between games)
     console.log('\n🔍 Checking game distribution gaps...')
+    const largeGapThreshold = 4 // Same threshold used in scheduling algorithm
     const teamGamePositions = new Map()
     testData.teams.forEach(team => {
       teamGamePositions.set(team, [])
@@ -632,12 +707,14 @@ function testLeagueCreation() {
       const avgGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0
       const maxTeamGap = gaps.length > 0 ? Math.max(...gaps) : 0
       const minTeamGap = gaps.length > 0 ? Math.min(...gaps) : 0
+      const largeGaps = gaps.filter(g => g >= largeGapThreshold).length
       
       teamGapStats.set(team, {
         avgGap: avgGap,
         maxGap: maxTeamGap,
         minGap: minTeamGap,
-        gaps: gaps
+        gaps: gaps,
+        largeGapCount: largeGaps
       })
     })
     
@@ -676,6 +753,23 @@ function testLeagueCreation() {
       })
     } else {
       console.log(`  ✓ No gaps larger than ${gapThreshold} games`)
+    }
+    
+    // Check for teams with multiple large gaps
+    const teamsWithMultipleLargeGaps = []
+    teamGapStats.forEach((stats, team) => {
+      if (stats.largeGapCount > 1) {
+        teamsWithMultipleLargeGaps.push({ team, count: stats.largeGapCount })
+      }
+    })
+    
+    if (teamsWithMultipleLargeGaps.length > 0) {
+      console.warn(`  ⚠️  Teams with multiple large gaps (>= ${largeGapThreshold} games):`)
+      teamsWithMultipleLargeGaps.forEach(({ team, count }) => {
+        console.warn(`     ${team}: ${count} large gap(s)`)
+      })
+    } else {
+      console.log(`  ✓ No teams have multiple large gaps`)
     }
     
     // Show per-team statistics for teams with above-average gaps

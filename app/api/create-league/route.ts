@@ -166,10 +166,12 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     // Track game counts and last game positions for each team
     const teamGameCount: Map<string, number> = new Map()
     const teamLastPosition: Map<string, number> = new Map()
+    const teamLargeGapCount: Map<string, number> = new Map() // Track how many large gaps each team has already had
     const maxWaitThreshold = 4 // Maximum games a team should wait between appearances (ideally)
     teams.forEach(team => {
       teamGameCount.set(team, 0)
       teamLastPosition.set(team, -1)
+      teamLargeGapCount.set(team, 0)
     })
     
     // Sort games to distribute evenly
@@ -205,6 +207,8 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
         const team2Games = teamGameCount.get(team2) || 0
         const wait1 = teamWaitTimes.get(team1) || 0
         const wait2 = teamWaitTimes.get(team2) || 0
+        const largeGapCount1 = teamLargeGapCount.get(team1) || 0
+        const largeGapCount2 = teamLargeGapCount.get(team2) || 0
         
         // Check if this game addresses urgent teams
         const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
@@ -219,15 +223,22 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
           ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
           : wait2 * 200
         
+        // Penalize teams that already have large gaps
+        // Teams with existing large gaps get additional penalty to avoid multiple large gaps
+        const largeGapPenalty1 = largeGapCount1 > 0 ? largeGapCount1 * 5000 : 0
+        const largeGapPenalty2 = largeGapCount2 > 0 ? largeGapCount2 * 5000 : 0
+        
         // Score prioritizes:
         // 1. Urgent teams (waiting >= threshold) - exponential priority
         // 2. Teams with longer waits (to minimize gaps)
         // 3. Teams with fewer games (to ensure even distribution)
+        // 4. Penalize teams that already have large gaps (to avoid multiple large gaps)
         const score = 
           urgency1 + urgency2 + // Urgency (exponential for long waits)
           (10 - team1Games) * 5 + // Secondary: ensure even game distribution
           (10 - team2Games) * 5 +
-          (addressesUrgent ? 1000 : 0) // Bonus for addressing urgent teams
+          (addressesUrgent ? 1000 : 0) - // Bonus for addressing urgent teams
+          largeGapPenalty1 - largeGapPenalty2 // Penalty for teams with existing large gaps
         
         if (score > bestScore) {
           bestScore = score
@@ -246,6 +257,18 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       }
       
       distributedGames.push(game)
+      
+      // Check if this game creates a large gap for either team
+      [game.team1, game.team2].forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        if (lastPos !== -1) {
+          const gap = distributedGames.length - 1 - lastPos
+          if (gap >= maxWaitThreshold) {
+            // This team just experienced a large gap
+            teamLargeGapCount.set(team, (teamLargeGapCount.get(team) || 0) + 1)
+          }
+        }
+      })
       
       // Update counts and positions for both teams
       teamGameCount.set(game.team1, (teamGameCount.get(game.team1) || 0) + 1)
