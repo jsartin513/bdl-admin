@@ -18,27 +18,37 @@ export default async function middleware(req: NextRequest) {
   const token = await getToken(tokenParams);
   const { pathname, search } = req.nextUrl;
 
-  // Regex to match paths that should be protected
-  const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|schedules-static$|api\/.*$).*/;
-
-  if (protectedPaths.test(pathname)) {
-    if (token) {
-      // User is authenticated, allow access
-      return NextResponse.next();
-    } else {
-      // User is not authenticated
-      if (pathname === "/logout") {
-        // Redirect users coming from /logout to /test
-        return NextResponse.redirect(new URL("/registration", req.nextUrl.origin));
-      }
-
-      // Redirect unauthenticated users to the login page
-      const newUrl = new URL("/login", req.nextUrl.origin);
-      newUrl.searchParams.set("redirect", pathname + search); // Save the original path and query
-      return NextResponse.redirect(newUrl);
-    }
+  // Public paths that don't require authentication
+  const publicPaths = [
+    '/login',
+    '/schedules-static',
+    '/create-league',
+    '/timer-standalone',
+  ];
+  
+  // System paths that should always be allowed
+  const systemPaths = ['/_next/', '/static/', '/favicon.ico'];
+  const isSystemPath = systemPaths.some(path => pathname.startsWith(path) || pathname === path);
+  
+  // Allow public paths, API routes, and system paths
+  if (publicPaths.includes(pathname) || pathname.startsWith('/api/') || isSystemPath) {
+    return NextResponse.next();
   }
 
-  // Remove unused cookie handling for API routes
-  return NextResponse.next();
+  // All other paths require authentication
+  if (token) {
+    // User is authenticated, allow access
+    return NextResponse.next();
+  } else {
+    // User is not authenticated
+    if (pathname === "/logout") {
+      // Redirect users coming from /logout to /registration
+      return NextResponse.redirect(new URL("/registration", req.nextUrl.origin));
+    }
+
+    // Redirect unauthenticated users to the login page
+    const newUrl = new URL("/login", req.nextUrl.origin);
+    newUrl.searchParams.set("redirect", pathname + search); // Save the original path and query
+    return NextResponse.redirect(newUrl);
+  }
 }

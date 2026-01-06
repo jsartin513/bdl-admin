@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth"; // Import the `auth` object from your auth.ts file
+import TopNavDropdown from "./TopNavDropdown";
 
 export default async function TopNav() {
   // Fetch the user's session using the `auth` object
@@ -7,18 +8,18 @@ export default async function TopNav() {
 
   return (
     <nav className="bg-gray-800 text-blue-300 p-4 flex justify-between items-center">
-      <div className="flex space-x-4">
-        <Link href="/schedules-live" className="hover:underline">
-          League Schedules (Live)
-        </Link>
+      <div className="flex space-x-4 items-center">
+        {/* Dropdown menu for auth-required pages */}
+        <TopNavDropdown />
+        {/* Public pages remain top-level */}
         <Link href="/schedules-static" className="hover:underline">
           League Schedules (Static)
         </Link>
-        <Link href="/timer" className="hover:underline">
-          Round Timer
+        <Link href="/create-league" className="hover:underline">
+          Create League
         </Link>
-        <Link href="/test" className="hover:underline">
-          Show Permissions (debugging)
+        <Link href="/timer-standalone" className="hover:underline">
+          Standalone Timer
         </Link>
       </div>
       <div>
