@@ -42,12 +42,9 @@ export function parseScheduleCSV(
     const base: TeamStats = {
       gamesPlayed: 0,
       gamesReffed: 0,
+      homeGames: 0,
+      awayGames: 0,
     };
-
-    if (includeHomeAway) {
-      base.homeGames = 0;
-      base.awayGames = 0;
-    }
 
     if (includeMatchups && selectedWeek === 'all') {
       base.matchups = {};
@@ -174,9 +171,9 @@ export function parseScheduleCSV(
         stats[team].gamesPlayed++;
         if (includeHomeAway) {
           if (isHome) {
-            stats[team].homeGames!++;
+            stats[team].homeGames++;
           } else {
-            stats[team].awayGames!++;
+            stats[team].awayGames++;
           }
         }
         teamsInGame.add(team);

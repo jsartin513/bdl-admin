@@ -3,6 +3,9 @@
 import { useState } from 'react'
 import { useScheduleData } from '../components/schedule/useScheduleData'
 
+export default function SchedulesPage() {
+  const [selectedWeek, setSelectedWeek] = useState('all')
+
   const { games, teamStats, conflicts, loading, error } = useScheduleData({
     apiEndpoint: '/api/schedules',
     selectedWeek,
