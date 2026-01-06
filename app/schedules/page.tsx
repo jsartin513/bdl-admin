@@ -1,186 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-
-interface Game {
-  gameNumber: string
-  court1Team1: string
-  court1Team2: string
-  court1Ref: string
-  court2Team1: string
-  court2Team2: string
-  court2Ref: string
-}
-
-interface TeamStats {
-  gamesPlayed: number
-  gamesReffed: number
-  matchups?: Record<string, number>
-}
-
-interface Conflict {
-  gameNumber: string
-  team: string
-  conflicts: string[]
-}
+import { useState } from 'react'
+import { useScheduleData } from '../components/schedule/useScheduleData'
 
 export default function SchedulesPage() {
-  const [games, setGames] = useState<Game[]>([])
-  const [teamStats, setTeamStats] = useState<Record<string, TeamStats>>({})
-  const [conflicts, setConflicts] = useState<Conflict[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selectedWeek, setSelectedWeek] = useState('all')
 
-  useEffect(() => {
-    const parseScheduleCSV = (csvText: string) => {
-      const lines = csvText.split('\n').filter(line => line.trim())
-      const parsedGames: Game[] = []
-      const stats: Record<string, TeamStats> = {}
-      const detectedConflicts: Conflict[] = []
-
-      const initializeTeamStats = (team: string) => {
-        const cleanTeam = team.trim()
-        if (cleanTeam && cleanTeam !== '' && cleanTeam !== 'Refs:' && !stats[cleanTeam]) {
-          stats[cleanTeam] = { 
-            gamesPlayed: 0, 
-            gamesReffed: 0,
-            ...(selectedWeek === 'all' ? { matchups: {} } : {})
-          }
-        }
-        return cleanTeam
-      }
-
-      const recordMatchup = (team1: string, team2: string) => {
-        if (selectedWeek === 'all' && team1 && team2 && team1 !== team2) {
-          if (stats[team1]?.matchups) {
-            stats[team1].matchups![team2] = (stats[team1].matchups![team2] || 0) + 1
-          }
-          if (stats[team2]?.matchups) {
-            stats[team2].matchups![team1] = (stats[team2].matchups![team1] || 0) + 1
-          }
-        }
-      }
-
-      for (let i = 1; i < lines.length; i += 2) {
-        const gameLine = lines[i]
-        const refLine = lines[i + 1]
-
-        if (!gameLine || !gameLine.includes('Game ')) {
-          continue
-        }
-
-        const gameData = gameLine.split(',')
-        const refData = refLine ? refLine.split(',') : []
-
-        const gameNumber = gameData[0]?.trim()
-        
-        const court1Team1 = initializeTeamStats(gameData[1] || '')
-        const court1Team2 = initializeTeamStats(gameData[3] || '')
-        const court2Team1 = initializeTeamStats(gameData[6] || '')
-        const court2Team2 = initializeTeamStats(gameData[8] || '')
-
-        const court1Ref = initializeTeamStats(refData[1]?.replace(/Refs:\s*/g, '') || '')
-        const court2Ref = initializeTeamStats(refData[6]?.replace(/Refs:\s*/g, '') || '')
-
-        if (!court1Team1 && !court1Team2 && !court2Team1 && !court2Team2) {
-          continue
-        }
-
-        const game: Game = {
-          gameNumber: gameNumber || '',
-          court1Team1,
-          court1Team2,
-          court1Ref,
-          court2Team1,
-          court2Team2,
-          court2Ref
-        }
-
-        parsedGames.push(game)
-
-        const teamsInGame = new Set<string>()
-        
-        if (court1Team1) {
-          stats[court1Team1].gamesPlayed++
-          teamsInGame.add(court1Team1)
-        }
-        if (court1Team2) {
-          stats[court1Team2].gamesPlayed++
-          teamsInGame.add(court1Team2)
-        }
-        if (court2Team1) {
-          stats[court2Team1].gamesPlayed++
-          teamsInGame.add(court2Team1)
-        }
-        if (court2Team2) {
-          stats[court2Team2].gamesPlayed++
-          teamsInGame.add(court2Team2)
-        }
-
-        recordMatchup(court1Team1, court1Team2)
-        recordMatchup(court2Team1, court2Team2)
-
-        if (court1Ref) {
-          stats[court1Ref].gamesReffed++
-          
-          if (teamsInGame.has(court1Ref)) {
-            detectedConflicts.push({
-              gameNumber: gameNumber || '',
-              team: court1Ref,
-              conflicts: ['Playing and reffing Court 1']
-            })
-          }
-        }
-
-        if (court2Ref) {
-          stats[court2Ref].gamesReffed++
-          
-          if (teamsInGame.has(court2Ref)) {
-            detectedConflicts.push({
-              gameNumber: gameNumber || '',
-              team: court2Ref,
-              conflicts: ['Playing and reffing Court 2']
-            })
-          }
-        }
-      }
-
-      return { parsedGames, stats, detectedConflicts }
-    }
-
-    const loadScheduleData = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        
-        console.log('Loading schedule data for week', selectedWeek)
-        
-        const response = await fetch('/api/schedules?week=' + selectedWeek)
-        const data = await response.json()
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'HTTP ' + response.status)
-        }
-        
-        console.log('API Response received')
-        
-        const { parsedGames, stats, detectedConflicts } = parseScheduleCSV(data.csvData)
-        
-        setGames(parsedGames)
-        setTeamStats(stats)
-        setConflicts(detectedConflicts)
-      } catch (err) {
-        const errorMessage = `Failed to load schedule data: ${err instanceof Error ? err.message : 'Unknown error'}`
-        setError(errorMessage)
-        console.error('Error loading schedule data:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadScheduleData()
-  }, [selectedWeek])
+  const { games, teamStats, conflicts, loading, error } = useScheduleData({
+    apiEndpoint: '/api/schedules',
+    selectedWeek,
+    requiresAuth: true,
+    parseOptions: {
+      includeHomeAway: true, // Set to true to match TeamStats type requirements and track home/away game counts
+      includeMatchups: true,
+      detectCourtConflicts: false, // Referee conflicts are always detected; this only controls court conflict detection
+    },
+  })
 
   if (loading) return (
     <div className="p-6">
@@ -277,12 +112,18 @@ export default function SchedulesPage() {
                       <div className="text-sm text-gray-700 mb-2 font-medium">Games vs. other teams:</div>
                       {Object.entries(teamStats[team].matchups || {})
                         .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([opponent, gameCount]) => (
-                          <div key={opponent} className="flex justify-between text-sm">
-                            <span className="text-gray-900">vs {opponent}</span>
-                            <span className="font-medium text-blue-700">{gameCount} games</span>
-                          </div>
-                        ))}
+                        .map(([opponent, matchupData]) => {
+                          // Handle both old format (number) and new format (MatchupDetail)
+                          const gameCount = typeof matchupData === 'number' 
+                            ? matchupData 
+                            : matchupData.total;
+                          return (
+                            <div key={opponent} className="flex justify-between text-sm">
+                              <span className="text-gray-900">vs {opponent}</span>
+                              <span className="font-medium text-blue-700">{gameCount} games</span>
+                            </div>
+                          );
+                        })}
                     </div>
                   ) : (
                     <div className="space-y-2">
