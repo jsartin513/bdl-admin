@@ -3,12 +3,13 @@ import * as XLSX from 'xlsx'
 
 interface CreateLeagueRequest {
   leagueName: string
+  numTeams: 4 | 6
   teams: string[]
   numWeeks: number
 }
 
 function createLeagueWorkbook(data: CreateLeagueRequest) {
-  const { leagueName, teams, numWeeks } = data
+  const { numTeams, teams, numWeeks } = data
 
   // Create a new workbook
   const workbook = XLSX.utils.book_new()
@@ -41,24 +42,32 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   XLSX.utils.book_append_sheet(workbook, scheduleGenSheet, 'Schedule Generator')
 
   // 3. League Standings Sheet
-  const standingsData = [
+  const standingsRows = numTeams === 4 ? 4 : 6
+  const standingsData: (string | number)[][] = [
     ['LEAGUE STANDINGS', '', '', '', ''],
     ['Team Name', 'Points For', 'Points Against', 'Point Differential', ''],
     ['', '', '', '', ''], // Row 3 - 1st place
     ['', '', '', '', ''], // Row 4 - 2nd place
     ['', '', '', '', ''], // Row 5 - 3rd place
     ['', '', '', '', ''], // Row 6 - 4th place
-    ['', '', '', '', ''], // Row 7 - 5th place
-    ['', '', '', '', ''], // Row 8 - 6th place
+  ]
+  
+  // Add rows 7-8 only for 6 teams
+  if (numTeams === 6) {
+    standingsData.push(['', '', '', '', ''], // Row 7 - 5th place
+                       ['', '', '', '', '']) // Row 8 - 6th place
+  }
+  
+  standingsData.push(
     ['', '', '', '', ''],
     ['', '', '', '', ''],
     ['Week #', 0, '', '', ''],
     ['', '', '', '', ''],
-    ['', '=SUM(B3:B8)', '=SUM(C3:C8)', '', ''], // Sum for 6 teams
+    ['', `=SUM(B3:B${2 + standingsRows})`, `=SUM(C3:C${2 + standingsRows})`, '', ''], // Sum for all teams
     ['', '', '', '', ''],
     ['', '', '', '', ''],
     ['Teams', 'Wins', '', '', 'Losses'],
-  ]
+  )
 
   // Add team rows (17-20 or based on number of teams)
   const startRow = 17
@@ -67,10 +76,18 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     const team = teams[i]
     
     // Build wins formula (sum from all week sheets)
+    // Row calculation: 
+    // - Row 1: Header "Court 1"
+    // - Rows 2-25 (4 teams) or 2-61 (6 teams): Games (12 or 30 games × 2 rows each = game + ref)
+    // - Row 26 or 62: Empty spacing
+    // - Row 27 or 63: "Team Wins/Losses This Week"
+    // - Row 28 or 64: "Team Name", "Wins", "Losses" header
+    // - Row 29+ or 65+: Team rows
+    const gamesPerWeek = numTeams === 4 ? 12 : 30
+    const teamFormulaStartRow = 1 + gamesPerWeek * 2 + 3 + 1 // 1 header + games*2 + spacing(1) + header(1) + header(1) + 1
     const winsParts: string[] = []
     for (let week = 1; week <= numWeeks; week++) {
-      // Try to match existing week sheet names, or use default pattern
-      winsParts.push(`'Week ${week}'!B${32 + i}`)
+      winsParts.push(`'Week ${week}'!B${teamFormulaStartRow + i}`)
     }
     const winsFormula = `=${winsParts.join('+')}`
     
@@ -80,7 +97,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     // Build losses formula
     const lossesParts: string[] = []
     for (let week = 1; week <= numWeeks; week++) {
-      lossesParts.push(`'Week ${week}'!C${32 + i}`)
+      lossesParts.push(`'Week ${week}'!C${teamFormulaStartRow + i}`)
     }
     const lossesFormula = `=${lossesParts.join('+')}`
     
@@ -145,7 +162,165 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   // }
   // ============================================================================
 
-  // NEW ALGORITHM: 6 teams, each plays each opponent twice per week
+  // 4-TEAM SCHEDULE: Each team plays each opponent twice per week
+  // This generates 12 games per week (6 unique pairs × 2 games each)
+  // Each team plays 6 games per week, refs 3 games per week
+  function generate4TeamSchedule(teams: string[]): Array<{ team1: string; team2: string; ref?: string }> {
+    // Step 1: Generate all game pairs with home/away alternation
+    const gamePairs: Array<{ team1: string; team2: string; homeTeam: string }> = []
+    
+    // Generate all unique pairs (4 choose 2 = 6 pairs)
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        // Each pair plays twice, alternating home/away
+        gamePairs.push({ team1: teams[i], team2: teams[j], homeTeam: teams[i] })
+        gamePairs.push({ team1: teams[i], team2: teams[j], homeTeam: teams[j] })
+      }
+    }
+    
+    // Step 2: Distribute games evenly (same algorithm as 6-team)
+    const teamGameCount: Map<string, number> = new Map()
+    const teamLastPosition: Map<string, number> = new Map()
+    const teamLargeGapCount: Map<string, number> = new Map()
+    const maxWaitThreshold = 3 // Lower threshold for 4 teams (fewer games)
+    teams.forEach(team => {
+      teamGameCount.set(team, 0)
+      teamLastPosition.set(team, -1)
+      teamLargeGapCount.set(team, 0)
+    })
+    
+    const distributedGames: Array<{ team1: string; team2: string; ref?: string }> = []
+    const remainingGames = [...gamePairs]
+    
+    while (remainingGames.length > 0) {
+      let bestGameIndex = -1
+      let bestScore = -Infinity
+      
+      const teamWaitTimes: Map<string, number> = new Map()
+      const currentLength: number = distributedGames.length
+      teams.forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
+        teamWaitTimes.set(team, waitTime)
+      })
+      
+      const urgentTeams = new Set<string>()
+      teamWaitTimes.forEach((waitTime, team) => {
+        if (waitTime >= maxWaitThreshold) {
+          urgentTeams.add(team)
+        }
+      })
+      
+      remainingGames.forEach((gamePair, index) => {
+        const team1 = gamePair.team1
+        const team2 = gamePair.team2
+        const team1Games = teamGameCount.get(team1) || 0
+        const team2Games = teamGameCount.get(team2) || 0
+        const wait1 = teamWaitTimes.get(team1) || 0
+        const wait2 = teamWaitTimes.get(team2) || 0
+        const largeGapCount1 = teamLargeGapCount.get(team1) || 0
+        const largeGapCount2 = teamLargeGapCount.get(team2) || 0
+        const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
+        
+        const urgency1 = wait1 >= maxWaitThreshold 
+          ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000 
+          : wait1 * 200
+        const urgency2 = wait2 >= maxWaitThreshold 
+          ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000 
+          : wait2 * 200
+        
+        const largeGapPenalty1 = largeGapCount1 > 0 ? largeGapCount1 * 5000 : 0
+        const largeGapPenalty2 = largeGapCount2 > 0 ? largeGapCount2 * 5000 : 0
+        
+        const score = 
+          urgency1 + urgency2 +
+          (6 - team1Games) * 5 + // 6 games per team for 4-team league
+          (6 - team2Games) * 5 +
+          (addressesUrgent ? 1000 : 0) -
+          largeGapPenalty1 - largeGapPenalty2
+        
+      if (score > bestScore) {
+        bestScore = score
+        bestGameIndex = index
+      }
+    })
+    
+    if (bestGameIndex === -1) {
+      // Fallback: just take the first game if scoring failed
+      bestGameIndex = 0
+    }
+    
+    const selectedGame = remainingGames.splice(bestGameIndex, 1)[0]
+    if (!selectedGame) {
+      throw new Error('No game selected from remaining games')
+    }
+    
+    const game: { team1: string; team2: string; ref?: string } = {
+      team1: selectedGame.homeTeam,
+      team2: selectedGame.homeTeam === selectedGame.team1 ? selectedGame.team2 : selectedGame.team1,
+      ref: undefined
+    }
+    
+    distributedGames.push(game)
+      
+      const gamesLength: number = distributedGames.length as number
+      [game.team1, game.team2].forEach(team => {
+        const lastPos = teamLastPosition.get(team) || -1
+        if (lastPos !== -1) {
+          const gap = gamesLength - 1 - lastPos
+          if (gap >= maxWaitThreshold) {
+            teamLargeGapCount.set(team, (teamLargeGapCount.get(team) || 0) + 1)
+          }
+        }
+      })
+      
+      teamGameCount.set(game.team1, (teamGameCount.get(game.team1) || 0) + 1)
+      teamGameCount.set(game.team2, (teamGameCount.get(game.team2) || 0) + 1)
+      teamLastPosition.set(game.team1, gamesLength - 1)
+      teamLastPosition.set(game.team2, gamesLength - 1)
+    }
+    
+    // Step 3: Assign refs (3 refs per team for 4-team league)
+    const refPool: Map<string, number> = new Map()
+    teams.forEach(team => refPool.set(team, 3)) // Each team refs 3 games
+    
+    let lastRef: string | undefined = undefined
+    
+    distributedGames.forEach((game) => {
+      const allAvailableRefs = teams.filter(team => 
+        team !== game.team1 && 
+        team !== game.team2 && 
+        (refPool.get(team) || 0) > 0
+      )
+      
+      if (allAvailableRefs.length === 0) {
+        const anyAvailable = teams.find(team => 
+          team !== game.team1 && 
+          team !== game.team2 && 
+          (refPool.get(team) || 0) > 0
+        )
+        if (anyAvailable) {
+          game.ref = anyAvailable
+          refPool.set(anyAvailable, (refPool.get(anyAvailable) || 0) - 1)
+          lastRef = anyAvailable
+        }
+        return
+      }
+      
+      const preferredRefs = allAvailableRefs.filter(team => team !== lastRef)
+      const refsToChooseFrom = preferredRefs.length > 0 ? preferredRefs : allAvailableRefs
+      
+      const refIndex = Math.floor(Math.random() * refsToChooseFrom.length)
+      const selectedRef = refsToChooseFrom[refIndex]
+      game.ref = selectedRef
+      refPool.set(selectedRef, (refPool.get(selectedRef) || 0) - 1)
+      lastRef = selectedRef
+    })
+    
+    return distributedGames
+  }
+
+  // 6-TEAM SCHEDULE: Each team plays each opponent twice per week
   // This generates 30 games per week (15 unique pairs × 2 games each)
   // Home/away alternates for each pair's two games
   // Games are distributed evenly so teams don't sit out too many games in a row
@@ -184,9 +359,10 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       
       // Calculate current wait times for all teams
       const teamWaitTimes: Map<string, number> = new Map()
+      const currentLength: number = distributedGames.length as number
       teams.forEach(team => {
         const lastPos = teamLastPosition.get(team) || -1
-        const waitTime = lastPos === -1 ? distributedGames.length : distributedGames.length - lastPos
+        const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
         teamWaitTimes.set(team, waitTime)
       })
       
@@ -259,10 +435,11 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       distributedGames.push(game)
       
       // Check if this game creates a large gap for either team
+      const gamesLength: number = distributedGames.length as number
       [game.team1, game.team2].forEach(team => {
         const lastPos = teamLastPosition.get(team) || -1
         if (lastPos !== -1) {
-          const gap = distributedGames.length - 1 - lastPos
+          const gap = gamesLength - 1 - lastPos
           if (gap >= maxWaitThreshold) {
             // This team just experienced a large gap
             teamLargeGapCount.set(team, (teamLargeGapCount.get(team) || 0) + 1)
@@ -273,8 +450,8 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
       // Update counts and positions for both teams
       teamGameCount.set(game.team1, (teamGameCount.get(game.team1) || 0) + 1)
       teamGameCount.set(game.team2, (teamGameCount.get(game.team2) || 0) + 1)
-      teamLastPosition.set(game.team1, distributedGames.length - 1)
-      teamLastPosition.set(game.team2, distributedGames.length - 1)
+      teamLastPosition.set(game.team1, gamesLength - 1)
+      teamLastPosition.set(game.team2, gamesLength - 1)
     }
     
     // Step 3: Assign refs: each team refs 5 games per week
@@ -288,7 +465,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     let lastRef: string | undefined = undefined
     
     // Assign refs to games, prioritizing schedule quality over avoiding consecutive refs
-    distributedGames.forEach((game, index) => {
+    distributedGames.forEach((game) => {
       // Find all teams that can ref (not playing in this game and still need to ref)
       const allAvailableRefs = teams.filter(team => 
         team !== game.team1 && 
@@ -327,10 +504,11 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     return distributedGames
   }
 
-  // Generate games for each week (same schedule structure each week)
+  // Generate games for each week using the appropriate schedule function
   const weekGames: Array<Array<{ team1: string; team2: string; ref?: string }>> = []
+  const generateSchedule = numTeams === 4 ? generate4TeamSchedule : generate6TeamSchedule
   for (let week = 0; week < numWeeks; week++) {
-    weekGames.push(generate6TeamSchedule(teams))
+    weekGames.push(generateSchedule(teams))
   }
 
   // Create week sheets
@@ -382,10 +560,24 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateLeagueRequest = await request.json()
 
-    // Validation - currently only support 6 teams and 6 weeks
-    if (!body.leagueName || !body.teams || body.teams.length !== 6) {
+    // Validation - support 4 or 6 teams and 6 weeks
+    if (!body.leagueName || !body.teams || !body.numTeams) {
       return NextResponse.json(
-        { error: 'League name and exactly 6 teams are required' },
+        { error: 'League name, number of teams, and teams are required' },
+        { status: 400 }
+      )
+    }
+
+    if (body.numTeams !== 4 && body.numTeams !== 6) {
+      return NextResponse.json(
+        { error: 'Number of teams must be 4 or 6' },
+        { status: 400 }
+      )
+    }
+
+    if (body.teams.length !== body.numTeams) {
+      return NextResponse.json(
+        { error: `Number of teams must match: expected ${body.numTeams}, got ${body.teams.length}` },
         { status: 400 }
       )
     }
