@@ -15,7 +15,7 @@
     "google-auth-library": "^9.15.1",
     "google-spreadsheet": "^4.1.4",
     "googleapis": "^146.0.0",
-    "next": "15.2.2",
+    "next": "15.2.8",
     "next-auth": "^5.0.0-beta.25",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
