@@ -18,8 +18,21 @@ export default async function middleware(req: NextRequest) {
   const token = await getToken(tokenParams);
   const { pathname, search } = req.nextUrl;
 
+  // Public paths that don't require authentication
+  const publicPaths = [
+    '/login',
+    '/schedules-static',
+    '/create-league',
+    '/timer-standalone',
+  ];
+  
+  // Allow public paths and API routes
+  if (publicPaths.includes(pathname) || pathname.startsWith('/api/') || pathname.startsWith('/_next/') || pathname.startsWith('/static/') || pathname === '/favicon.ico') {
+    return NextResponse.next();
+  }
+
   // Regex to match paths that should be protected
-  const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|schedules-static$|api\/.*$).*/;
+  const protectedPaths = /^\/(?!_next\/|static\/|favicon\.ico|login$|schedules-static$|create-league$|timer-standalone$|api\/.*$).*/;
 
   if (protectedPaths.test(pathname)) {
     if (token) {
