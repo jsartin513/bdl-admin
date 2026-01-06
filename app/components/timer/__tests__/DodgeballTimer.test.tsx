@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import DodgeballTimer from '../DodgeballTimer';
 import { TimerPhase, DEFAULT_TIMER_CONFIG } from '../types';
 
@@ -75,58 +75,77 @@ describe('DodgeballTimer', () => {
     const onTimerComplete = vi.fn();
     const { result } = renderHook(() => DodgeballTimer({ onTimerComplete }));
 
-    await result.current.startTimer();
-    await result.current.skipToEnd();
+    await act(async () => {
+      await result.current.startTimer();
+      await result.current.skipToEnd();
+    });
+
+    // Wait for the setTimeout in skipToEnd
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
 
     expect(result.current.timerState.currentTime).toBe(0);
     expect(result.current.timerState.phase).toBe(TimerPhase.FINISHED);
     expect(result.current.timerState.isRunning).toBe(false);
-    
-    await waitFor(() => {
-      expect(onTimerComplete).toHaveBeenCalled();
-    });
+    expect(onTimerComplete).toHaveBeenCalled();
   });
 
   it('should count down when running', async () => {
     const { result } = renderHook(() => DodgeballTimer({}));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
+
     const initialTime = result.current.timerState.currentTime;
 
-    // Advance time by 5 seconds
-    vi.advanceTimersByTime(5000);
-
-    await waitFor(() => {
-      expect(result.current.timerState.currentTime).toBeLessThan(initialTime);
+    // Advance time by 5 seconds - this will trigger the interval
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
     });
+
+    expect(result.current.timerState.currentTime).toBeLessThan(initialTime);
+    expect(result.current.timerState.currentTime).toBe(initialTime - 5);
   });
 
   it('should transition to NO_BLOCKING phase at 10 seconds', async () => {
     const { result } = renderHook(() => DodgeballTimer({}));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
 
     // Fast-forward to 10 seconds remaining
-    vi.advanceTimersByTime((DEFAULT_TIMER_CONFIG.ROUND_DURATION - 10) * 1000);
-
-    await waitFor(() => {
-      expect(result.current.timerState.phase).toBe(TimerPhase.NO_BLOCKING);
+    await act(async () => {
+      vi.advanceTimersByTime((DEFAULT_TIMER_CONFIG.ROUND_DURATION - 10) * 1000);
     });
+
+    expect(result.current.timerState.phase).toBe(TimerPhase.NO_BLOCKING);
+    expect(result.current.timerState.currentTime).toBe(10);
   });
 
   it('should transition to FINISHED phase when timer reaches 0', async () => {
     const onTimerComplete = vi.fn();
     const { result } = renderHook(() => DodgeballTimer({ onTimerComplete }));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
 
     // Fast-forward to end
-    vi.advanceTimersByTime(DEFAULT_TIMER_CONFIG.ROUND_DURATION * 1000);
-
-    await waitFor(() => {
-      expect(result.current.timerState.phase).toBe(TimerPhase.FINISHED);
-      expect(result.current.timerState.currentTime).toBe(0);
+    await act(async () => {
+      vi.advanceTimersByTime(DEFAULT_TIMER_CONFIG.ROUND_DURATION * 1000);
     });
+
+    // Wait for the setTimeout in the tick function
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(result.current.timerState.phase).toBe(TimerPhase.FINISHED);
+    expect(result.current.timerState.currentTime).toBe(0);
+    expect(onTimerComplete).toHaveBeenCalled();
   });
 
   it('should format time correctly', () => {
@@ -171,16 +190,18 @@ describe('DodgeballTimer', () => {
       { initialProps: { game: game1 } }
     );
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
     expect(result.current.timerState.isRunning).toBe(true);
 
     // Change game
-    rerender({ game: { ...game1, gameNumber: 'Game 2' } });
-
-    await waitFor(() => {
-      expect(result.current.timerState.isRunning).toBe(false);
-      expect(result.current.timerState.currentTime).toBe(DEFAULT_TIMER_CONFIG.ROUND_DURATION);
+    await act(async () => {
+      rerender({ game: { ...game1, gameNumber: 'Game 2' } });
     });
+
+    expect(result.current.timerState.isRunning).toBe(false);
+    expect(result.current.timerState.currentTime).toBe(DEFAULT_TIMER_CONFIG.ROUND_DURATION);
   });
 });
 
