@@ -166,7 +166,10 @@ export function parseScheduleCSV(
       continue;
     }
 
-    // Preserve original values (including BYE/TBD) for Game objects
+    // Preserve original values for Game objects
+    // - If CSV contains "BYE" or "TBD" as literal strings, they are preserved
+    // - If CSV has empty values, they become empty strings
+    // - UI components handle empty strings by displaying "BYE" or "TBD" as fallbacks
     // This allows UI components to display these special values correctly
     const game: Game = {
       gameNumber,
