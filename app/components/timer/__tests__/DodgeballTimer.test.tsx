@@ -4,16 +4,26 @@ import DodgeballTimer from '../DodgeballTimer';
 import { TimerPhase, DEFAULT_TIMER_CONFIG } from '../types';
 
 // Mock the audio manager
-vi.mock('../EnhancedAudioManager', () => ({
-  DodgeballAudioManager: vi.fn().mockImplementation(() => ({
+vi.mock('../EnhancedAudioManager', () => {
+  const mockInstance = {
     announce: vi.fn().mockResolvedValue(undefined),
     playBuzzer: vi.fn().mockResolvedValue(undefined),
     resumeAudioContext: vi.fn().mockResolvedValue(undefined),
     requestAudioFocus: vi.fn().mockResolvedValue(true),
     updateConfig: vi.fn(),
     dispose: vi.fn(),
-  })),
-}));
+  };
+  
+  class MockDodgeballAudioManager {
+    constructor() {
+      return mockInstance;
+    }
+  }
+  
+  return {
+    DodgeballAudioManager: MockDodgeballAudioManager,
+  };
+});
 
 describe('DodgeballTimer', () => {
   beforeEach(() => {
@@ -38,7 +48,9 @@ describe('DodgeballTimer', () => {
     const onTimerStart = vi.fn();
     const { result } = renderHook(() => DodgeballTimer({ onTimerStart }));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
 
     expect(result.current.timerState.isRunning).toBe(true);
     expect(result.current.timerState.isPaused).toBe(false);
@@ -49,23 +61,33 @@ describe('DodgeballTimer', () => {
   it('should pause and resume the timer', async () => {
     const { result } = renderHook(() => DodgeballTimer({}));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
     expect(result.current.timerState.isRunning).toBe(true);
 
-    result.current.pauseTimer();
+    act(() => {
+      result.current.pauseTimer();
+    });
     expect(result.current.timerState.isPaused).toBe(true);
 
-    result.current.pauseTimer();
+    act(() => {
+      result.current.pauseTimer();
+    });
     expect(result.current.timerState.isPaused).toBe(false);
   });
 
   it('should reset the timer', async () => {
     const { result } = renderHook(() => DodgeballTimer({}));
 
-    await result.current.startTimer();
+    await act(async () => {
+      await result.current.startTimer();
+    });
     expect(result.current.timerState.isRunning).toBe(true);
 
-    result.current.resetTimer();
+    act(() => {
+      result.current.resetTimer();
+    });
     expect(result.current.timerState.isRunning).toBe(false);
     expect(result.current.timerState.currentTime).toBe(DEFAULT_TIMER_CONFIG.ROUND_DURATION);
     expect(result.current.timerState.phase).toBe(TimerPhase.READY);
@@ -171,7 +193,9 @@ describe('DodgeballTimer', () => {
     const { result } = renderHook(() => DodgeballTimer({}));
 
     const newVolume = 0.5;
-    result.current.updateAudioConfig({ masterVolume: newVolume });
+    act(() => {
+      result.current.updateAudioConfig({ masterVolume: newVolume });
+    });
 
     expect(result.current.audioConfig.masterVolume).toBe(newVolume);
   });
