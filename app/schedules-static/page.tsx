@@ -19,6 +19,7 @@ export default function SchedulesStatic() {
   const { games, teamStats, conflicts, loading, error } = useScheduleData({
     apiEndpoint: '/api/schedules-static',
     selectedWeek,
+    requiresAuth: false,
     parseOptions: {
       includeHomeAway: true,
       includeMatchups: true,

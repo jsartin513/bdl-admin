@@ -9,8 +9,9 @@ export default function SchedulesPage() {
   const { games, teamStats, conflicts, loading, error } = useScheduleData({
     apiEndpoint: '/api/schedules',
     selectedWeek,
+    requiresAuth: true,
     parseOptions: {
-      includeHomeAway: false,
+      includeHomeAway: true, // Set to true to match TeamStats type requirements and enable matchup home/away tracking
       includeMatchups: true,
       detectCourtConflicts: false,
     },

@@ -39,6 +39,9 @@ export function parseScheduleCSV(
   const detectedConflicts: Conflict[] = [];
 
   const getInitialTeamStats = (): TeamStats => {
+    // Note: homeGames and awayGames are always included because TeamStats type requires them
+    // and components (TeamStatsTable, TeamStatsCards) use them. They will be 0 when
+    // includeHomeAway is false, but only incremented when includeHomeAway is true.
     const base: TeamStats = {
       gamesPlayed: 0,
       gamesReffed: 0,
@@ -55,10 +58,13 @@ export function parseScheduleCSV(
 
   const initializeTeamStats = (team: string): string => {
     const cleanTeam = team.trim();
+    // Don't initialize stats for special values that are filtered out later
     if (
       cleanTeam &&
       cleanTeam !== '' &&
       cleanTeam !== 'Refs:' &&
+      cleanTeam !== 'BYE' &&
+      cleanTeam !== 'TBD' &&
       !stats[cleanTeam]
     ) {
       stats[cleanTeam] = getInitialTeamStats();

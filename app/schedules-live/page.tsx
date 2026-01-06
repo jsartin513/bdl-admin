@@ -25,6 +25,7 @@ export default function SchedulesPage() {
   const { games, teamStats, conflicts, loading, error, refetch } = useScheduleData({
     apiEndpoint: '/api/schedules',
     selectedWeek,
+    requiresAuth: true,
     parseOptions: {
       includeHomeAway: true,
       includeMatchups: true,

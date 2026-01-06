@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Game, TeamStats, Conflict } from './types';
 import { parseScheduleCSV, ParseScheduleOptions } from '@/app/lib/scheduleParser';
 
@@ -6,6 +6,7 @@ export interface UseScheduleDataOptions {
   apiEndpoint: string; // e.g., '/api/schedules' or '/api/schedules-static'
   selectedWeek: string;
   parseOptions?: ParseScheduleOptions;
+  requiresAuth?: boolean; // Explicit flag for authentication handling
   onError?: (error: Error) => void;
 }
 
@@ -26,13 +27,21 @@ export function useScheduleData({
   apiEndpoint,
   selectedWeek,
   parseOptions = {},
+  requiresAuth = false,
   onError,
 }: UseScheduleDataOptions): UseScheduleDataResult {
   const [games, setGames] = useState<Game[]>([]);
   const [teamStats, setTeamStats] = useState<Record<string, TeamStats>>({});
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with true for immediate loading indication
   const [error, setError] = useState<string | null>(null);
+
+  // Memoize parseOptions to prevent unnecessary re-renders
+  const memoizedParseOptions = useMemo(() => parseOptions, [
+    parseOptions?.includeHomeAway,
+    parseOptions?.includeMatchups,
+    parseOptions?.detectCourtConflicts,
+  ]);
 
   const fetchSchedule = useCallback(async (retryCount = 0) => {
     setLoading(true);
@@ -45,7 +54,7 @@ export function useScheduleData({
       if (!response.ok) {
         // Handle authentication errors for live schedules
         if (response.status === 401 && data.message?.includes('Please log in')) {
-          if (apiEndpoint.includes('/schedules') && !apiEndpoint.includes('static')) {
+          if (requiresAuth) {
             window.location.href =
               '/login?redirect=' +
               encodeURIComponent(window.location.pathname + window.location.search);
@@ -53,7 +62,7 @@ export function useScheduleData({
           }
         }
         // For session expired, try once more to allow JWT callback to refresh token
-        if (response.status === 401 && retryCount === 0 && apiEndpoint.includes('/schedules') && !apiEndpoint.includes('static')) {
+        if (response.status === 401 && retryCount === 0 && requiresAuth) {
           console.log('Session may have expired, retrying...');
           return fetchSchedule(1);
         }
@@ -67,7 +76,7 @@ export function useScheduleData({
       // Parse the CSV data using the shared parser
       const { games: parsedGames, teamStats: parsedStats, conflicts: parsedConflicts } =
         parseScheduleCSV(data.csvData || '', {
-          ...parseOptions,
+          ...memoizedParseOptions,
           selectedWeek,
         });
 
@@ -90,7 +99,7 @@ export function useScheduleData({
     } finally {
       setLoading(false);
     }
-  }, [apiEndpoint, selectedWeek, parseOptions, onError]);
+  }, [apiEndpoint, selectedWeek, memoizedParseOptions, requiresAuth, onError]);
 
   useEffect(() => {
     fetchSchedule();
