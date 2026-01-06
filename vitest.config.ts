@@ -5,7 +5,7 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'jsdom',
+    environment: 'happy-dom', // Use happy-dom instead of jsdom for better compatibility
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
     testTimeout: 10000, // 10 second timeout to prevent hanging
