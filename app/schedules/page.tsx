@@ -11,9 +11,9 @@ export default function SchedulesPage() {
     selectedWeek,
     requiresAuth: true,
     parseOptions: {
-      includeHomeAway: true, // Set to true to match TeamStats type requirements and enable matchup home/away tracking
+      includeHomeAway: true, // Set to true to match TeamStats type requirements and track home/away game counts
       includeMatchups: true,
-      detectCourtConflicts: false,
+      detectCourtConflicts: false, // Referee conflicts are always detected; this only controls court conflict detection
     },
   })
 

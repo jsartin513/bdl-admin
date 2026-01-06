@@ -16,7 +16,7 @@ export interface UseScheduleDataResult {
   conflicts: Conflict[];
   loading: boolean;
   error: string | null;
-  refetch: () => void;
+  refetch: () => void; // Refetches schedule data, resetting retry count
 }
 
 /**
@@ -59,6 +59,10 @@ export function useScheduleData({
               '/login?redirect=' +
               encodeURIComponent(window.location.pathname + window.location.search);
             return;
+          } else {
+            // For non-authenticated endpoints, a 401 with "Please log in" is unexpected
+            // This shouldn't normally happen, but if it does, throw a specific error
+            throw new Error('Unexpected authentication required. This endpoint should be publicly accessible.');
           }
         }
         // For session expired, try once more to allow JWT callback to refresh token
@@ -111,7 +115,7 @@ export function useScheduleData({
     conflicts,
     loading,
     error,
-    refetch: fetchSchedule,
+    refetch: () => fetchSchedule(), // Wrapper to ensure retry count is reset
   };
 }
 

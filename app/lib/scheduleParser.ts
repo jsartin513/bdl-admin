@@ -84,7 +84,9 @@ export function parseScheduleCSV(
       team2 &&
       team1 !== team2 &&
       team1 !== 'BYE' &&
-      team2 !== 'BYE'
+      team2 !== 'BYE' &&
+      team1 !== 'TBD' &&
+      team2 !== 'TBD'
     ) {
       if (stats[team1]?.matchups) {
         if (!stats[team1].matchups![team2]) {
@@ -127,24 +129,31 @@ export function parseScheduleCSV(
     const refLine = i + 1 < lines.length ? lines[i + 1] : '';
     
     // Check if we should skip the next line (paired format)
-    const isPairedFormat = refLine && !refLine.includes('Game ');
+    // Treat it as paired only if the next line looks like a refs line
+    const isPairedFormat = !!refLine && refLine.includes('Refs:');
 
     const gameData = gameLine.split(',');
-    const refData = refLine ? refLine.split(',') : [];
+    const refData = isPairedFormat ? refLine.split(',') : [];
 
     const gameNumber = gameData[0]?.trim() || '';
 
-    const court1Team1 = initializeTeamStats(gameData[1] || '');
-    const court1Team2 = initializeTeamStats(gameData[3] || '');
-    const court2Team1 = initializeTeamStats(gameData[6] || '');
-    const court2Team2 = initializeTeamStats(gameData[8] || '');
+    // Extract team names - preserve BYE/TBD values for Game objects
+    // but only initialize stats for real teams
+    const court1Team1Raw = (gameData[1] || '').trim();
+    const court1Team2Raw = (gameData[3] || '').trim();
+    const court2Team1Raw = (gameData[6] || '').trim();
+    const court2Team2Raw = (gameData[8] || '').trim();
 
-    const court1Ref = initializeTeamStats(
-      refData[1]?.replace(/Refs:\s*/g, '') || ''
-    );
-    const court2Ref = initializeTeamStats(
-      refData[6]?.replace(/Refs:\s*/g, '') || ''
-    );
+    const court1RefRaw = (refData[1]?.replace(/Refs:\s*/g, '') || '').trim();
+    const court2RefRaw = (refData[6]?.replace(/Refs:\s*/g, '') || '').trim();
+
+    // Initialize stats only for real teams (not BYE, TBD, empty, or 'Refs:')
+    const court1Team1 = initializeTeamStats(court1Team1Raw);
+    const court1Team2 = initializeTeamStats(court1Team2Raw);
+    const court2Team1 = initializeTeamStats(court2Team1Raw);
+    const court2Team2 = initializeTeamStats(court2Team2Raw);
+    const court1Ref = initializeTeamStats(court1RefRaw);
+    const court2Ref = initializeTeamStats(court2RefRaw);
 
     // Skip if no teams found
     if (!court1Team1 && !court1Team2 && !court2Team1 && !court2Team2) {
@@ -157,14 +166,16 @@ export function parseScheduleCSV(
       continue;
     }
 
+    // Preserve original values (including BYE/TBD) for Game objects
+    // This allows UI components to display these special values correctly
     const game: Game = {
       gameNumber,
-      court1Team1,
-      court1Team2,
-      court1Ref,
-      court2Team1,
-      court2Team2,
-      court2Ref,
+      court1Team1: court1Team1Raw || '',
+      court1Team2: court1Team2Raw || '',
+      court1Ref: court1RefRaw || '',
+      court2Team1: court2Team1Raw || '',
+      court2Team2: court2Team2Raw || '',
+      court2Ref: court2RefRaw || '',
     };
 
     games.push(game);
@@ -172,6 +183,7 @@ export function parseScheduleCSV(
     const teamsInGame = new Set<string>();
 
     // Count games played and track home/away
+    // Use the cleaned team names (from initializeTeamStats) for stats tracking
     const processTeam = (team: string, isHome: boolean) => {
       if (team && team !== 'BYE' && team !== 'TBD' && stats[team]) {
         stats[team].gamesPlayed++;
@@ -196,6 +208,7 @@ export function parseScheduleCSV(
     recordMatchup(court2Team1, court2Team2, true);
 
     // Detect conflicts: teams playing on both courts simultaneously
+    // Use cleaned team names for conflict detection
     if (detectCourtConflicts) {
       const court1Teams = new Set(
         [court1Team1, court1Team2].filter(
