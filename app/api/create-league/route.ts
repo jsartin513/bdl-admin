@@ -256,8 +256,12 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
         refPool.set(selectedRef, (refPool.get(selectedRef) || 0) - 1)
         lastRef = selectedRef
       } else {
-        // Fallback: if no perfect match, use any team that still needs refs
-        const anyAvailable = teams.find(team => (refPool.get(team) || 0) > 0)
+        // Fallback: find any team that's not playing and still needs to ref
+        const anyAvailable = teams.find(team => 
+          team !== game.team1 && 
+          team !== game.team2 && 
+          (refPool.get(team) || 0) > 0
+        )
         if (anyAvailable) {
           game.ref = anyAvailable
           refPool.set(anyAvailable, (refPool.get(anyAvailable) || 0) - 1)

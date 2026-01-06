@@ -210,7 +210,12 @@ function createLeagueWorkbook(data) {
         refPool.set(selectedRef, (refPool.get(selectedRef) || 0) - 1)
         lastRef = selectedRef
       } else {
-        const anyAvailable = teams.find(team => (refPool.get(team) || 0) > 0)
+        // Fallback: find any team that's not playing and still needs to ref
+        const anyAvailable = teams.find(team => 
+          team !== game.team1 && 
+          team !== game.team2 && 
+          (refPool.get(team) || 0) > 0
+        )
         if (anyAvailable) {
           game.ref = anyAvailable
           refPool.set(anyAvailable, (refPool.get(anyAvailable) || 0) - 1)
@@ -393,6 +398,31 @@ function testLeagueCreation() {
     })
     if (!consecutiveRefs) {
       console.log('  ✓ No consecutive ref assignments')
+    }
+    
+    // Check that teams don't ref games they're playing in
+    console.log('\n🔍 Checking ref/player conflicts...')
+    let refPlayerConflicts = false
+    week1Data.forEach((row, index) => {
+      if (row[1] && String(row[1]).startsWith('Refs: ')) {
+        // Previous row should be the game row
+        if (index > 0) {
+          const gameRow = week1Data[index - 1]
+          if (gameRow[0] && String(gameRow[0]).startsWith('Game')) {
+            const team1 = gameRow[1]
+            const team2 = gameRow[3]
+            const refTeam = String(row[1]).replace('Refs: ', '').trim()
+            
+            if (refTeam === team1 || refTeam === team2) {
+              refPlayerConflicts = true
+              console.warn(`  ⚠️  Conflict at row ${index + 1}: ${refTeam} is reffing their own game (${team1} vs ${team2})`)
+            }
+          }
+        }
+      }
+    })
+    if (!refPlayerConflicts) {
+      console.log('  ✓ No teams ref games they are playing in')
     }
     
     // Save file
