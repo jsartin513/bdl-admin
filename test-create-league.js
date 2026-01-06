@@ -128,7 +128,7 @@ function createLeagueWorkbook(data) {
       }
     }
     
-    // Step 2: Distribute games evenly to avoid long gaps
+    // Step 2: Distribute games evenly to minimize gaps between games
     const teamGameCount = new Map()
     const teamLastPosition = new Map()
     teams.forEach(team => {
@@ -152,9 +152,20 @@ function createLeagueWorkbook(data) {
         const team1LastPos = teamLastPosition.get(team1) || -1
         const team2LastPos = teamLastPosition.get(team2) || -1
         
-        const gap1 = distributedGames.length - team1LastPos
-        const gap2 = distributedGames.length - team2LastPos
-        const score = (10 - team1Games) * 10 + (10 - team2Games) * 10 + gap1 + gap2
+        // Calculate gaps (how many games since last appearance)
+        // If team hasn't played yet, gap is very large
+        const gap1 = team1LastPos === -1 ? 1000 : distributedGames.length - team1LastPos
+        const gap2 = team2LastPos === -1 ? 1000 : distributedGames.length - team2LastPos
+        
+        // Score prioritizes:
+        // 1. Teams with larger gaps (higher priority to minimize wait time)
+        // 2. Teams with fewer games played (ensure even distribution)
+        // Weight gaps more heavily to minimize wait time
+        const score = 
+          gap1 * 100 + // Heavily weight gap to minimize wait time
+          gap2 * 100 +
+          (10 - team1Games) * 10 + // Secondary: ensure even game distribution
+          (10 - team2Games) * 10
         
         if (score > bestScore) {
           bestScore = score
@@ -423,6 +434,120 @@ function testLeagueCreation() {
     })
     if (!refPlayerConflicts) {
       console.log('  ✓ No teams ref games they are playing in')
+    }
+    
+    // Check game distribution gaps (minimize time between games)
+    console.log('\n🔍 Checking game distribution gaps...')
+    const teamGamePositions = new Map()
+    testData.teams.forEach(team => {
+      teamGamePositions.set(team, [])
+    })
+    
+    // Track which games each team plays in
+    week1Data.forEach((row, index) => {
+      if (row[0] && String(row[0]).startsWith('Game')) {
+        const team1 = row[1]
+        const team2 = row[3]
+        if (team1) {
+          const positions = teamGamePositions.get(team1) || []
+          positions.push(index)
+          teamGamePositions.set(team1, positions)
+        }
+        if (team2) {
+          const positions = teamGamePositions.get(team2) || []
+          positions.push(index)
+          teamGamePositions.set(team2, positions)
+        }
+      }
+    })
+    
+    // Calculate gaps for each team
+    const allGaps = []
+    const teamGapStats = new Map()
+    let maxGap = 0
+    let maxGapTeam = null
+    let maxGapDetails = null
+    
+    teamGamePositions.forEach((positions, team) => {
+      if (positions.length === 0) return
+      
+      // Sort positions
+      positions.sort((a, b) => a - b)
+      
+      // Calculate gaps between consecutive games
+      const gaps = []
+      for (let i = 1; i < positions.length; i++) {
+        const gap = positions[i] - positions[i - 1]
+        gaps.push(gap)
+        allGaps.push(gap)
+        
+        if (gap > maxGap) {
+          maxGap = gap
+          maxGapTeam = team
+          maxGapDetails = { from: positions[i - 1], to: positions[i], gap }
+        }
+      }
+      
+      const avgGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0
+      const maxTeamGap = gaps.length > 0 ? Math.max(...gaps) : 0
+      const minTeamGap = gaps.length > 0 ? Math.min(...gaps) : 0
+      
+      teamGapStats.set(team, {
+        avgGap: avgGap,
+        maxGap: maxTeamGap,
+        minGap: minTeamGap,
+        gaps: gaps
+      })
+    })
+    
+    // Calculate overall statistics
+    const overallAvgGap = allGaps.length > 0 ? allGaps.reduce((a, b) => a + b, 0) / allGaps.length : 0
+    const overallMaxGap = allGaps.length > 0 ? Math.max(...allGaps) : 0
+    const overallMinGap = allGaps.length > 0 ? Math.min(...allGaps) : 0
+    
+    // Report statistics
+    console.log(`  📊 Overall gap statistics:`)
+    console.log(`     Average gap: ${overallAvgGap.toFixed(2)} games`)
+    console.log(`     Max gap: ${overallMaxGap} games`)
+    console.log(`     Min gap: ${overallMinGap} games`)
+    
+    if (maxGapTeam && maxGapDetails) {
+      console.log(`  📍 Largest gap: ${maxGapTeam} (${maxGapDetails.gap} games between game ${maxGapDetails.from + 1} and ${maxGapDetails.to + 1})`)
+    }
+    
+    // Check if any gaps are too large (threshold: 9 games = ~30% of total games)
+    // With 30 games and 10 games per team, ideal average gap is ~3 games
+    // Gaps > 9 indicate a team is waiting too long between games
+    const gapThreshold = 9
+    const largeGaps = []
+    teamGapStats.forEach((stats, team) => {
+      stats.gaps.forEach((gap, idx) => {
+        if (gap > gapThreshold) {
+          largeGaps.push({ team, gap, index: idx })
+        }
+      })
+    })
+    
+    if (largeGaps.length > 0) {
+      console.warn(`  ⚠️  Found ${largeGaps.length} gap(s) larger than ${gapThreshold} games:`)
+      largeGaps.forEach(({ team, gap }) => {
+        console.warn(`     ${team}: ${gap} games`)
+      })
+    } else {
+      console.log(`  ✓ No gaps larger than ${gapThreshold} games`)
+    }
+    
+    // Show per-team statistics for teams with above-average gaps
+    console.log(`  📋 Teams with above-average gaps:`)
+    let teamsWithLargeGaps = 0
+    teamGapStats.forEach((stats, team) => {
+      if (stats.avgGap > overallAvgGap * 1.2) { // 20% above average
+        teamsWithLargeGaps++
+        console.log(`     ${team}: avg ${stats.avgGap.toFixed(2)}, max ${stats.maxGap}, min ${stats.minGap}`)
+      }
+    })
+    if (teamsWithLargeGaps === 0) {
+      console.log(`     (All teams have well-distributed games)`)
     }
     
     // Save file

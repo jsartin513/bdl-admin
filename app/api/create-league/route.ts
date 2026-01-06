@@ -184,16 +184,26 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
         const team1 = gamePair.team1
         const team2 = gamePair.team2
         
-        // Calculate score: prefer teams that have played fewer games and haven't played recently
+        // Calculate score: prioritize minimizing gaps between games
         const team1Games = teamGameCount.get(team1) || 0
         const team2Games = teamGameCount.get(team2) || 0
         const team1LastPos = teamLastPosition.get(team1) || -1
         const team2LastPos = teamLastPosition.get(team2) || -1
         
-        // Score favors: fewer games played, longer gap since last game
-        const gap1 = distributedGames.length - team1LastPos
-        const gap2 = distributedGames.length - team2LastPos
-        const score = (10 - team1Games) * 10 + (10 - team2Games) * 10 + gap1 + gap2
+        // Calculate gaps (how many games since last appearance)
+        // If team hasn't played yet, gap is very large
+        const gap1 = team1LastPos === -1 ? 1000 : distributedGames.length - team1LastPos
+        const gap2 = team2LastPos === -1 ? 1000 : distributedGames.length - team2LastPos
+        
+        // Score prioritizes:
+        // 1. Teams with larger gaps (higher priority to minimize wait time)
+        // 2. Teams with fewer games played (ensure even distribution)
+        // Weight gaps more heavily to minimize wait time
+        const score = 
+          gap1 * 100 + // Heavily weight gap to minimize wait time
+          gap2 * 100 +
+          (10 - team1Games) * 10 + // Secondary: ensure even game distribution
+          (10 - team2Games) * 10
         
         if (score > bestScore) {
           bestScore = score
