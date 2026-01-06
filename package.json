@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:league": "node test-create-league.js"
   },
   "engines": {
     "node": ">=18.0.0"
