@@ -5,6 +5,7 @@
 
 import { generateEvenDistributionSchedule, validateRoundRobinCompleteness } from './scheduleGenerator';
 import { GameFormat } from '../components/timer/types';
+import { Game } from '../components/schedule/types';
 
 // Example 1: Generate schedule with 1 matchup per team (3 games total)
 export function example1MatchupPerTeam() {
@@ -49,7 +50,7 @@ export function example2MatchupsPerTeam() {
 }
 
 // Example 3: Validate round-robin completeness
-export function exampleValidateSchedule(games: any[], teams: string[]) {
+export function exampleValidateSchedule(games: Game[], teams: string[]) {
   const validation = validateRoundRobinCompleteness(games, teams);
   
   console.log('Round-robin validation:');

@@ -19,7 +19,7 @@ export interface UseScheduleDataResult {
   conflicts: Conflict[];
   loading: boolean;
   error: string | null;
-  refetch: () => void; // Refetches schedule data, resetting retry count
+  refetch: () => void;
 }
 
 /**
@@ -47,7 +47,7 @@ export function useScheduleData({
     parseOptions?.detectCourtConflicts,
   ]);
 
-  const fetchSchedule = useCallback(async (retryCount = 0) => {
+  const fetchSchedule = useCallback(async () => {
     setLoading(true);
     setError(null);
 

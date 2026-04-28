@@ -11,7 +11,6 @@ import {
   NextGameInfo,
   GameFormat,
   GAME_FORMAT_CONFIGS,
-  DEFAULT_TIMER_CONFIG,
   DEFAULT_AUDIO_CONFIG,
   STANDARD_ANNOUNCEMENTS
 } from './types';
