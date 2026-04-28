@@ -3,10 +3,13 @@ import { Game, TeamStats, Conflict } from './types';
 import { parseScheduleCSV, ParseScheduleOptions } from '@/app/lib/scheduleParser';
 
 export interface UseScheduleDataOptions {
-  apiEndpoint: string; // e.g., '/api/schedules' or '/api/schedules-static'
+  apiEndpoint: string; // e.g., '/api/schedules-live'
   selectedWeek: string;
+  /** Optional league filename for static API (e.g. "Winter 2026 BYOT League.xlsx") */
+  league?: string | null;
+  /** Optional Google Sheets ID for the live API */
+  sheetId?: string | null;
   parseOptions?: ParseScheduleOptions;
-  requiresAuth?: boolean; // Explicit flag for authentication handling
   onError?: (error: Error) => void;
 }
 
@@ -26,8 +29,9 @@ export interface UseScheduleDataResult {
 export function useScheduleData({
   apiEndpoint,
   selectedWeek,
+  league = null,
+  sheetId = null,
   parseOptions = {},
-  requiresAuth = false,
   onError,
 }: UseScheduleDataOptions): UseScheduleDataResult {
   const [games, setGames] = useState<Game[]>([]);
@@ -48,32 +52,13 @@ export function useScheduleData({
     setError(null);
 
     try {
-      const response = await fetch(`${apiEndpoint}?week=${selectedWeek}`);
+      const params = new URLSearchParams({ week: selectedWeek });
+      if (league) params.set('league', league);
+      if (sheetId) params.set('sheetId', sheetId);
+      const response = await fetch(`${apiEndpoint}?${params.toString()}`);
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle authentication errors for live schedules
-        if (response.status === 401 && data.message?.includes('Please log in')) {
-          if (requiresAuth) {
-            window.location.href =
-              '/login?redirect=' +
-              encodeURIComponent(window.location.pathname + window.location.search);
-            return;
-          } else {
-            // For non-authenticated endpoints, a 401 with "Please log in" is unexpected
-            // This shouldn't normally happen, but if it does, throw a specific error
-            throw new Error('Unexpected authentication required. This endpoint should be publicly accessible.');
-          }
-        }
-        // For session expired, try once more to allow JWT callback to refresh token
-        if (response.status === 401 && retryCount === 0 && requiresAuth) {
-          console.log('Session may have expired, retrying...');
-          return fetchSchedule(1);
-        }
-        // For session expired after retry, suggest refresh
-        if (response.status === 401 && data.message?.includes('Session expired')) {
-          throw new Error(data.message + ' (Try refreshing the page)');
-        }
         throw new Error(data.error || `HTTP ${response.status}`);
       }
 
@@ -103,7 +88,7 @@ export function useScheduleData({
     } finally {
       setLoading(false);
     }
-  }, [apiEndpoint, selectedWeek, memoizedParseOptions, requiresAuth, onError]);
+  }, [apiEndpoint, selectedWeek, league, sheetId, memoizedParseOptions, onError]);
 
   useEffect(() => {
     fetchSchedule();

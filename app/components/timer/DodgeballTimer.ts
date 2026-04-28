@@ -9,6 +9,8 @@ import {
   AudioConfig,
   GameInfo,
   NextGameInfo,
+  GameFormat,
+  GAME_FORMAT_CONFIGS,
   DEFAULT_TIMER_CONFIG,
   DEFAULT_AUDIO_CONFIG,
   STANDARD_ANNOUNCEMENTS
@@ -28,9 +30,14 @@ export default function DodgeballTimer({
   onTimerComplete, 
   onTimerStart
 }: DodgeballTimerProps) {
+  // Get game format config (default to STANDARD)
+  const gameFormat = currentGame?.format || GameFormat.STANDARD;
+  const formatConfig = GAME_FORMAT_CONFIGS[gameFormat];
+  const totalGameDuration = formatConfig.gameDuration + formatConfig.noBlockDuration;
+
   const [timerState, setTimerState] = useState<TimerState>({
-    totalDuration: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
-    currentTime: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
+    totalDuration: totalGameDuration,
+    currentTime: totalGameDuration,
     isRunning: false,
     isPaused: false,
     phase: TimerPhase.READY
@@ -53,63 +60,52 @@ export default function DodgeballTimer({
     };
   }, [audioConfig]);
 
-  // Generate announcements based on current game and settings
+  // Generate announcements based on current game format and settings
   const generateAnnouncements = useCallback((): AnnouncementConfig[] => {
     const announcements: AnnouncementConfig[] = [];
+    const announcementTimes = formatConfig.announcementTimes;
 
-    // Time warning announcements
-    announcements.push({
-      time: 120, // 2 minutes until no blocking
-      text: STANDARD_ANNOUNCEMENTS.TWO_MINUTES,
-      type: AnnouncementType.TIME_WARNING,
-      priority: 3
+    // Generate announcements based on format config
+    announcementTimes.forEach(time => {
+      if (formatConfig.hasNoBlockPhase && time <= formatConfig.noBlockDuration) {
+        // No-blocking phase announcements
+        if (time === formatConfig.noBlockDuration) {
+          announcements.push({
+            time,
+            text: STANDARD_ANNOUNCEMENTS.NO_BLOCKING_IN,
+            type: AnnouncementType.NO_BLOCKING_WARNING,
+            priority: 5
+          });
+        } else if (time > 0) {
+          announcements.push({
+            time,
+            text: `${time}`,
+            type: AnnouncementType.FINAL_COUNTDOWN,
+            priority: 5
+          });
+        }
+      } else {
+        // Time warning announcements (for longer formats or before no-block phase)
+        const minutesRemaining = Math.floor(time / 60);
+        const secondsRemaining = time % 60;
+        let text = '';
+        
+        if (minutesRemaining > 0) {
+          text = `${minutesRemaining} minute${minutesRemaining > 1 ? 's' : ''} remaining`;
+        } else if (secondsRemaining > 0) {
+          text = `${secondsRemaining} second${secondsRemaining > 1 ? 's' : ''} remaining`;
+        } else {
+          text = 'Time up!';
+        }
+
+        announcements.push({
+          time,
+          text,
+          type: time <= 10 ? AnnouncementType.FINAL_COUNTDOWN : AnnouncementType.TIME_WARNING,
+          priority: time <= 10 ? 5 : 3
+        });
+      }
     });
-
-    announcements.push({
-      time: 90, // 90 seconds until no blocking
-      text: STANDARD_ANNOUNCEMENTS.NINETY_SECONDS,
-      type: AnnouncementType.TIME_WARNING,
-      priority: 3
-    });
-
-    announcements.push({
-      time: 60, // 1 minute until no blocking
-      text: STANDARD_ANNOUNCEMENTS.ONE_MINUTE,
-      type: AnnouncementType.TIME_WARNING,
-      priority: 3
-    });
-
-    announcements.push({
-      time: 30, // 30 seconds until no blocking
-      text: STANDARD_ANNOUNCEMENTS.THIRTY_SECONDS,
-      type: AnnouncementType.TIME_WARNING,
-      priority: 3
-    });
-
-    announcements.push({
-      time: 20, // 20 seconds until no blocking
-      text: STANDARD_ANNOUNCEMENTS.TWENTY_SECONDS,
-      type: AnnouncementType.TIME_WARNING,
-      priority: 3
-    });
-
-    // "No blocking in" announcement - start at 13 seconds
-    announcements.push({
-      time: 13,
-      text: STANDARD_ANNOUNCEMENTS.NO_BLOCKING_IN,
-      type: AnnouncementType.NO_BLOCKING_WARNING,
-      priority: 5
-    });
-
-    // Final countdown from 10
-    for (let i = 10; i >= 1; i--) {
-      announcements.push({
-        time: i,
-        text: i.toString(),
-        type: AnnouncementType.FINAL_COUNTDOWN,
-        priority: 10
-      });
-    }
 
     // End buzzer
     announcements.push({
@@ -119,8 +115,9 @@ export default function DodgeballTimer({
       priority: 10
     });
 
-    return announcements;
-  }, []);
+    // Sort by time (descending) so earlier announcements come first
+    return announcements.sort((a, b) => b.time - a.time);
+  }, [formatConfig]);
 
   // Initialize announcements
   useEffect(() => {
@@ -152,12 +149,14 @@ export default function DodgeballTimer({
       const newTime = Math.max(0, prevState.currentTime - 1);
       let newPhase = prevState.phase;
 
-      // Determine phase based on time remaining
+      // Determine phase based on time remaining and format config
       if (newTime <= 0) {
         newPhase = TimerPhase.FINISHED;
-      } else if (newTime <= 10) {
+      } else if (formatConfig.hasNoBlockPhase && newTime <= formatConfig.noBlockDuration) {
         newPhase = TimerPhase.NO_BLOCKING;
       } else if (prevState.phase === TimerPhase.READY && prevState.isRunning) {
+        newPhase = TimerPhase.GAME_ACTIVE;
+      } else if (prevState.phase === TimerPhase.GAME_ACTIVE && newTime > formatConfig.noBlockDuration) {
         newPhase = TimerPhase.GAME_ACTIVE;
       }
 
@@ -204,11 +203,12 @@ export default function DodgeballTimer({
     };
   }, [timerState.isRunning, timerState.isPaused, tick]);
 
-  // Reset timer when game changes
+  // Reset timer when game changes or format changes
   useEffect(() => {
+    const newTotalDuration = formatConfig.gameDuration + formatConfig.noBlockDuration;
     setTimerState({
-      totalDuration: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
-      currentTime: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
+      totalDuration: newTotalDuration,
+      currentTime: newTotalDuration,
       isRunning: false,
       isPaused: false,
       phase: TimerPhase.READY
@@ -220,7 +220,7 @@ export default function DodgeballTimer({
     // Clear announcement queue
     announcementQueueRef.current.clear();
     setIsAudioInitialized(false);
-  }, [currentGame?.gameNumber, currentGame?.court1Team1, currentGame?.court2Team1]); // Reset when game changes
+  }, [currentGame?.gameNumber, currentGame?.court1Team1, currentGame?.court2Team1, currentGame?.format, formatConfig]);
 
   // Initialize audio on first user interaction
   const initializeAudio = useCallback(async () => {
@@ -269,9 +269,10 @@ export default function DodgeballTimer({
   }, []);
 
   const resetTimer = useCallback(() => {
+    const newTotalDuration = formatConfig.gameDuration + formatConfig.noBlockDuration;
     setTimerState({
-      totalDuration: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
-      currentTime: DEFAULT_TIMER_CONFIG.ROUND_DURATION,
+      totalDuration: newTotalDuration,
+      currentTime: newTotalDuration,
       isRunning: false,
       isPaused: false,
       phase: TimerPhase.READY
@@ -283,7 +284,7 @@ export default function DodgeballTimer({
     // Clear announcement queue
     announcementQueueRef.current.clear();
     setIsAudioInitialized(false);
-  }, []);
+  }, [formatConfig]);
 
   const skipToEnd = useCallback(async () => {
     // Play buzzer and end announcement

@@ -6,10 +6,12 @@ interface CreateLeagueRequest {
   numTeams: 4 | 6
   teams: string[]
   numWeeks: number
+  /** Team that should not play in the very first game slot (setup constraint) */
+  avoidFirstRound?: string
 }
 
 function createLeagueWorkbook(data: CreateLeagueRequest) {
-  const { numTeams, teams, numWeeks } = data
+  const { numTeams, teams, numWeeks, avoidFirstRound } = data
 
   // Create a new workbook
   const workbook = XLSX.utils.book_new()
@@ -91,8 +93,8 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     }
     const winsFormula = `=${winsParts.join('+')}`
     
-    // Magic number formula
-    const magicFormula = `=B${row}+ROW(B${row})/10000`
+    // Tie-break: literal row (not ROW(B)) — merged B column breaks ROW()-based tiebreak
+    const magicFormula = `=ROUND(B${row}+${row}/10000,8)`
     
     // Build losses formula
     const lossesParts: string[] = []
@@ -112,12 +114,13 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
 
   // Add standings display formulas (rows 3-8 for 6 teams)
   const endRow = startRow + teams.length - 1 // Row 22 for 6 teams
+  const cRng = `C${startRow}:C${endRow}`
   for (let rank = 1; rank <= teams.length; rank++) {
     const row = 2 + rank // Row 3, 4, 5, 6, 7, 8
-    
-    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
+    const largeK = `ROUND(LARGE(${cRng},${rank}),8)`
+    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(${largeK},${cRng},0))`
+    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(${largeK},${cRng},0))`
+    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(${largeK},${cRng},0))`
     const diffFormula = `=B${row}-C${row}`
     
     standingsData[row] = [teamNameFormula, winsFormula, lossesFormula, diffFormula, '']
@@ -508,7 +511,23 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   const weekGames: Array<Array<{ team1: string; team2: string; ref?: string }>> = []
   const generateSchedule = numTeams === 4 ? generate4TeamSchedule : generate6TeamSchedule
   for (let week = 0; week < numWeeks; week++) {
-    weekGames.push(generateSchedule(teams))
+    const games = generateSchedule(teams)
+
+    // For Week 1 only: ensure the avoidFirstRound team doesn't appear in game 1
+    if (week === 0 && avoidFirstRound && games.length > 0) {
+      const firstGameInvolves =
+        games[0].team1 === avoidFirstRound || games[0].team2 === avoidFirstRound
+      if (firstGameInvolves) {
+        const swapIndex = games.findIndex(
+          (g) => g.team1 !== avoidFirstRound && g.team2 !== avoidFirstRound
+        )
+        if (swapIndex > 0) {
+          ;[games[0], games[swapIndex]] = [games[swapIndex], games[0]]
+        }
+      }
+    }
+
+    weekGames.push(games)
   }
 
   // Create week sheets

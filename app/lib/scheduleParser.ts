@@ -49,7 +49,7 @@ export function parseScheduleCSV(
       awayGames: 0,
     };
 
-    if (includeMatchups && selectedWeek === 'all') {
+    if (includeMatchups) {
       base.matchups = {};
     }
 
@@ -79,7 +79,6 @@ export function parseScheduleCSV(
   ) => {
     if (
       includeMatchups &&
-      selectedWeek === 'all' &&
       team1 &&
       team2 &&
       team1 !== team2 &&
@@ -230,6 +229,8 @@ export function parseScheduleCSV(
             gameNumber,
             team,
             conflicts: ['Playing on both Court 1 and Court 2'],
+            severity: 'error',
+            conflictType: 'double-court',
           });
         }
       }
@@ -246,6 +247,8 @@ export function parseScheduleCSV(
             gameNumber,
             team: ref,
             conflicts: [`Playing and reffing ${court}`],
+            severity: 'error',
+            conflictType: 'ref-and-play',
           });
         }
       }
@@ -259,6 +262,257 @@ export function parseScheduleCSV(
       i += 2; // Skip both game and ref lines
     } else {
       i++; // Move to next line
+    }
+  }
+
+  /** Bucket so "one night" = one league week (single-week views use selectedWeek). */
+  function weekBucketKey(gameNumber: string): string {
+    const m = gameNumber.match(/^Week\s*(\d+)\s+Game\s*/i);
+    if (m) return `week-${m[1]}`;
+    if (selectedWeek !== 'all' && selectedWeek !== 'weeks5-6' && /^\d+$/.test(selectedWeek)) {
+      return `week-${selectedWeek}`;
+    }
+    return 'week-combined';
+  }
+
+  function validMatchupSide(home: string, away: string): boolean {
+    return (
+      !!home &&
+      !!away &&
+      home !== 'BYE' &&
+      away !== 'BYE' &&
+      home !== 'TBD' &&
+      away !== 'TBD'
+    );
+  }
+
+  function teamIsPlaying(team: string, g: Game): boolean {
+    const slots = [g.court1Team1, g.court1Team2, g.court2Team1, g.court2Team2].map((s) =>
+      (s || '').trim()
+    );
+    return slots.some((s) => s === team && s !== '' && s !== 'BYE' && s !== 'TBD');
+  }
+
+  function roundHasTwoCourts(g: Game): boolean {
+    return validMatchupSide(g.court1Team1, g.court1Team2) && validMatchupSide(g.court2Team1, g.court2Team2);
+  }
+
+  const isTwoCourtLeague = games.some(roundHasTwoCourts);
+
+  /**
+   * Two-court leagues: each row with both courts active = one round (both courts run at once).
+   * Warn if a team plays neither court in 2+ consecutive two-court rounds; error at 3+.
+   * Rows that are not two-court rounds end the streak (flush if already 2+).
+   */
+  if (isTwoCourtLeague) {
+    const byWeek = new Map<string, Game[]>();
+    for (const g of games) {
+      const wk = weekBucketKey(g.gameNumber);
+      if (!byWeek.has(wk)) byWeek.set(wk, []);
+      byWeek.get(wk)!.push(g);
+    }
+
+    const idleOffTeamStatus = (team: string, g: Game): string => {
+      const r1 = (g.court1Ref || '').trim();
+      const r2 = (g.court2Ref || '').trim();
+      if (team === r1) return 'Reffing Court 1 (not playing this round)';
+      if (team === r2) return 'Reffing Court 2 (not playing this round)';
+      return 'Off — not on either court or ref line';
+    };
+
+    const buildIdleStreakRounds = (team: string, streakRounds: Game[]): NonNullable<Conflict['idleStreakRounds']> =>
+      streakRounds.map((g) => ({
+        gameNumber: g.gameNumber,
+        offTeam: team,
+        offTeamStatus: idleOffTeamStatus(team, g),
+        court1: { home: g.court1Team1, away: g.court1Team2, ref: g.court1Ref },
+        court2: { home: g.court2Team1, away: g.court2Team2, ref: g.court2Ref },
+      }));
+
+    const flushStreak = (team: string, streakRounds: Game[]) => {
+      const n = streakRounds.length;
+      if (n < 2) return;
+      const roundList = streakRounds.map((g) => g.gameNumber).join(', ');
+      const severity: Conflict['severity'] = n >= 3 ? 'error' : 'warning';
+      const label = n >= 3 ? `${n} consecutive two-court rounds` : '2 consecutive two-court rounds';
+      detectedConflicts.push({
+        gameNumber: streakRounds[n - 1]!.gameNumber,
+        team,
+        conflicts: [
+          `${label} without playing on either court (${roundList}) — breaks player rest fairness. See rounds below.`,
+        ],
+        severity,
+        conflictType: 'consecutive-without-playing',
+        idleStreakRounds: buildIdleStreakRounds(team, streakRounds),
+      });
+    };
+
+    for (const [, weekGames] of byWeek) {
+      const weekUsesTwoCourts = weekGames.some(roundHasTwoCourts);
+      if (!weekUsesTwoCourts) continue;
+
+      for (const team of Object.keys(stats)) {
+        let streakRounds: Game[] = [];
+        for (const g of weekGames) {
+          if (!roundHasTwoCourts(g)) {
+            flushStreak(team, streakRounds);
+            streakRounds = [];
+            continue;
+          }
+          if (teamIsPlaying(team, g)) {
+            flushStreak(team, streakRounds);
+            streakRounds = [];
+          } else {
+            streakRounds.push(g);
+          }
+        }
+        flushStreak(team, streakRounds);
+      }
+    }
+  }
+
+  // Same two teams, same home/away columns, twice (or more) in the same week/night
+  type MatchupOccurrence = {
+    gameNumber: string;
+    court: 1 | 2;
+    home: string;
+    away: string;
+  };
+  const orientationGroups = new Map<string, MatchupOccurrence[]>();
+  for (const g of games) {
+    const wk = weekBucketKey(g.gameNumber);
+    if (validMatchupSide(g.court1Team1, g.court1Team2)) {
+      const key = `${wk}\0${g.court1Team1}\0${g.court1Team2}`;
+      const list = orientationGroups.get(key) ?? [];
+      list.push({
+        gameNumber: g.gameNumber,
+        court: 1,
+        home: g.court1Team1,
+        away: g.court1Team2,
+      });
+      orientationGroups.set(key, list);
+    }
+    if (validMatchupSide(g.court2Team1, g.court2Team2)) {
+      const key = `${wk}\0${g.court2Team1}\0${g.court2Team2}`;
+      const list = orientationGroups.get(key) ?? [];
+      list.push({
+        gameNumber: g.gameNumber,
+        court: 2,
+        home: g.court2Team1,
+        away: g.court2Team2,
+      });
+      orientationGroups.set(key, list);
+    }
+  }
+  for (const [, occ] of orientationGroups) {
+    if (occ.length < 2) continue;
+    const { home, away } = occ[0];
+    const where = occ
+      .map((o) => `${o.gameNumber} (court ${o.court})`)
+      .join(', ');
+    detectedConflicts.push({
+      gameNumber: occ[0].gameNumber,
+      team: `${home} (home) & ${away} (away)`,
+      conflicts: [
+        `Same home/away matchup ${occ.length} times in one night: ${where}`,
+      ],
+      severity: 'warning',
+      conflictType: 'duplicate-orientation-same-night',
+    });
+  }
+
+  // Detect same two teams playing each other in consecutive games
+  const sameMatchup = (a: Set<string>, b: Set<string>) =>
+    a.size === 2 && b.size === 2 && [...a].every((t) => b.has(t));
+  for (let idx = 0; idx < games.length - 1; idx++) {
+    const curr = games[idx];
+    const next = games[idx + 1];
+    const currC1 = new Set([curr.court1Team1, curr.court1Team2].filter(Boolean));
+    const currC2 = new Set([curr.court2Team1, curr.court2Team2].filter(Boolean));
+    const nextC1 = new Set([next.court1Team1, next.court1Team2].filter(Boolean));
+    const nextC2 = new Set([next.court2Team1, next.court2Team2].filter(Boolean));
+    let currCourt: 1 | 2 | null = null;
+    let nextCourt: 1 | 2 | null = null;
+    if (sameMatchup(currC1, nextC1)) {
+      currCourt = 1;
+      nextCourt = 1;
+    } else if (sameMatchup(currC1, nextC2)) {
+      currCourt = 1;
+      nextCourt = 2;
+    } else if (sameMatchup(currC2, nextC1)) {
+      currCourt = 2;
+      nextCourt = 1;
+    } else if (sameMatchup(currC2, nextC2)) {
+      currCourt = 2;
+      nextCourt = 2;
+    }
+    if (currCourt !== null && nextCourt !== null) {
+      const courtDetails: Conflict['courtDetails'] = [
+        {
+          gameNumber: curr.gameNumber,
+          court: currCourt,
+          home: currCourt === 1 ? curr.court1Team1 : curr.court2Team1,
+          away: currCourt === 1 ? curr.court1Team2 : curr.court2Team2,
+          ref: currCourt === 1 ? curr.court1Ref : curr.court2Ref,
+        },
+        {
+          gameNumber: next.gameNumber,
+          court: nextCourt,
+          home: nextCourt === 1 ? next.court1Team1 : next.court2Team1,
+          away: nextCourt === 1 ? next.court1Team2 : next.court2Team2,
+          ref: nextCourt === 1 ? next.court1Ref : next.court2Ref,
+        },
+      ];
+      const matchup = [...(currCourt === 1 ? currC1 : currC2)].sort();
+      detectedConflicts.push({
+        gameNumber: next.gameNumber,
+        team: `${matchup[0]} & ${matchup[1]}`,
+        conflicts: [
+          `Played each other in consecutive games (${curr.gameNumber} and ${next.gameNumber})`,
+        ],
+        severity: 'warning',
+        conflictType: 'consecutive-matchup',
+        courtDetails,
+      });
+    }
+  }
+
+  // Home/away imbalance over the selected scope (e.g. full season on "All weeks"):
+  // - Strictly more than half of slots on one side, OR
+  // - At least 2 more games on one side than the other (catches 6–4, 7–3, etc. on even totals
+  //   where floating half can edge-case miss in weird data, and matches "skewed season" intent).
+  if (includeHomeAway) {
+    const minSlots = 4;
+    for (const [team, s] of Object.entries(stats)) {
+      const { gamesPlayed, homeGames, awayGames } = s;
+      const slots = homeGames + awayGames;
+      if (slots < minSlots) continue;
+      const diff = Math.abs(homeGames - awayGames);
+      const moreThanHalf = homeGames > slots / 2 || awayGames > slots / 2;
+      const skewByAtLeastTwo = diff >= 2;
+      if (!moreThanHalf && !skewByAtLeastTwo) continue;
+
+      let reason: string;
+      if (moreThanHalf && skewByAtLeastTwo) {
+        reason =
+          homeGames > awayGames
+            ? 'more than half at home, and 2+ games off an even split'
+            : 'more than half away, and 2+ games off an even split';
+      } else if (moreThanHalf) {
+        reason = homeGames > awayGames ? 'more than half at home' : 'more than half away';
+      } else {
+        reason = '2+ more games on one side than the other (off an even split)';
+      }
+
+      detectedConflicts.push({
+        gameNumber: games[0]?.gameNumber ?? '',
+        team,
+        conflicts: [
+          `Home/away imbalance: ${homeGames} home / ${awayGames} away (${slots} games with home/away recorded${gamesPlayed !== slots ? `; ${gamesPlayed} games played total` : ''}) — ${reason}`,
+        ],
+        severity: 'alert',
+        conflictType: 'home-away-imbalance',
+      });
     }
   }
 

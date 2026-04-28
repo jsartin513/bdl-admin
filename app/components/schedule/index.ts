@@ -8,6 +8,7 @@ export { default as LoadingState } from './LoadingState'
 export { default as ErrorState } from './ErrorState'
 export { default as TeamStatsTable } from './TeamStatsTable'
 export { default as TeamStatsCards } from './TeamStatsCards'
+export { default as RoundRobinProgress } from './RoundRobinProgress'
 
 // Export types
 export * from './types'
