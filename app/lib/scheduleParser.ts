@@ -1,5 +1,44 @@
 import { Game, TeamStats, Conflict } from '../components/schedule/types';
 
+/**
+ * Splits a single CSV line, respecting standard quoting rules:
+ * - Cells may be wrapped in double quotes (gviz always wraps every cell)
+ * - A `""` inside a quoted cell is an escaped double quote
+ * - Commas inside quoted cells are part of the value, not separators
+ * Returns an array of unquoted cell values.
+ */
+export function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  cells.push(current);
+  return cells;
+}
+
 export interface ParseScheduleOptions {
   includeHomeAway?: boolean; // Track home/away games
   includeMatchups?: boolean; // Track matchup details
@@ -131,8 +170,8 @@ export function parseScheduleCSV(
     // Treat it as paired only if the next line looks like a refs line
     const isPairedFormat = !!refLine && refLine.includes('Refs:');
 
-    const gameData = gameLine.split(',');
-    const refData = isPairedFormat ? refLine.split(',') : [];
+    const gameData = splitCsvLine(gameLine);
+    const refData = isPairedFormat ? splitCsvLine(refLine) : [];
 
     const gameNumber = gameData[0]?.trim() || '';
 
@@ -421,12 +460,17 @@ export function parseScheduleCSV(
     });
   }
 
-  // Detect same two teams playing each other in consecutive games
+  // Detect same two teams playing each other in consecutive games.
+  // Note: "consecutive" only applies WITHIN a single week — the gap between weeks
+  // is days/weeks of real time, not back-to-back rounds.
   const sameMatchup = (a: Set<string>, b: Set<string>) =>
     a.size === 2 && b.size === 2 && [...a].every((t) => b.has(t));
   for (let idx = 0; idx < games.length - 1; idx++) {
     const curr = games[idx];
     const next = games[idx + 1];
+    if (weekBucketKey(curr.gameNumber) !== weekBucketKey(next.gameNumber)) {
+      continue;
+    }
     const currC1 = new Set([curr.court1Team1, curr.court1Team2].filter(Boolean));
     const currC2 = new Set([curr.court2Team1, curr.court2Team2].filter(Boolean));
     const nextC1 = new Set([next.court1Team1, next.court1Team2].filter(Boolean));

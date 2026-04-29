@@ -5,6 +5,18 @@ export interface DriveFile {
   name: string
 }
 
+// Patterns that identify non-schedule files that should not appear in UI dropdowns.
+// Template sheets are intentionally kept so the create-league picker can use them.
+const EXCLUDE_PATTERNS = [
+  /standings/i,
+  /backup/i,
+  /import/i,
+]
+
+function isScheduleSheet(name: string): boolean {
+  return !EXCLUDE_PATTERNS.some((re) => re.test(name))
+}
+
 export async function GET() {
   const apiKey = process.env.GOOGLE_DRIVE_API_KEY
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID
@@ -34,10 +46,9 @@ export async function GET() {
   }
 
   const data = await res.json()
-  const files: DriveFile[] = (data.files ?? []).map((f: { id: string; name: string }) => ({
-    id: f.id,
-    name: f.name,
-  }))
+  const files: DriveFile[] = (data.files ?? [])
+    .map((f: { id: string; name: string }) => ({ id: f.id, name: f.name }))
+    .filter((f: DriveFile) => isScheduleSheet(f.name))
 
   return NextResponse.json(files)
 }

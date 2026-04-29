@@ -8,6 +8,7 @@ import {
   WeekSelector,
   ConflictsAlert,
   TeamStatsCards,
+  HeadToHeadMatrix,
 } from '../components/schedule'
 import { useScheduleData } from '../components/schedule/useScheduleData'
 
@@ -16,7 +17,10 @@ interface DriveFile {
   name: string
 }
 
+type ScheduleViewTab = 'overview' | 'head-to-head'
+
 export default function SchedulesPage() {
+  const [viewTab, setViewTab] = useState<ScheduleViewTab>('overview')
   const [selectedWeek, setSelectedWeek] = useState('all')
   const [sheets, setSheets] = useState<DriveFile[]>([])
   const [selectedSheetId, setSelectedSheetId] = useState<string>('')
@@ -85,6 +89,39 @@ export default function SchedulesPage() {
           </div>
         </div>
 
+        <div
+          className="mb-4 flex flex-wrap gap-2 border-b border-gray-200 pb-2"
+          role="tablist"
+          aria-label="Schedule view"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewTab === 'overview'}
+            onClick={() => setViewTab('overview')}
+            className={`rounded-t-md px-4 py-2 text-sm font-medium transition-colors ${
+              viewTab === 'overview'
+                ? 'border border-b-0 border-gray-300 bg-white text-gray-900'
+                : 'border border-transparent text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            Team overview
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewTab === 'head-to-head'}
+            onClick={() => setViewTab('head-to-head')}
+            className={`rounded-t-md px-4 py-2 text-sm font-medium transition-colors ${
+              viewTab === 'head-to-head'
+                ? 'border border-b-0 border-gray-300 bg-white text-gray-900'
+                : 'border border-transparent text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            Head-to-head schedule
+          </button>
+        </div>
+
         <div className="flex flex-wrap items-center gap-4 mb-4">
           <WeekSelector
             selectedWeek={selectedWeek}
@@ -108,29 +145,43 @@ export default function SchedulesPage() {
 
       {!loading && !error && (
         <>
-          <TeamStatsCards
-            teamStats={Object.entries(teamStats).map(([teamName, stats]) => ({
-              team: teamName,
-              ...stats,
-              matchups: stats.matchups || {},
-            }))}
-            selectedWeek={selectedWeek}
-            games={games}
-          />
+          {viewTab === 'overview' && (
+            <>
+              <TeamStatsCards
+                teamStats={Object.entries(teamStats).map(([teamName, stats]) => ({
+                  team: teamName,
+                  ...stats,
+                  matchups: stats.matchups || {},
+                }))}
+                selectedWeek={selectedWeek}
+                games={games}
+              />
 
-          <ConflictsAlert conflicts={conflicts} />
+              <ConflictsAlert conflicts={conflicts} />
 
-          {selectedWeek !== 'all' && selectedWeek !== 'weeks5-6' && (
-            <div>
-              <h2 className="text-2xl font-semibold mb-4 text-gray-900">
-                Games Schedule — Week {selectedWeek}
+              {selectedWeek !== 'all' && selectedWeek !== 'weeks5-6' && (
+                <div>
+                  <h2 className="text-2xl font-semibold mb-4 text-gray-900">
+                    Games Schedule — Week {selectedWeek}
+                  </h2>
+                  <div className="space-y-4">
+                    {games.map((game, index) => (
+                      <GameCard key={index} game={game} teamStats={teamStats} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {viewTab === 'head-to-head' && (
+            <section aria-labelledby="h2h-heading" className="space-y-4">
+              <h2 id="h2h-heading" className="text-2xl font-semibold text-gray-900">
+                Head-to-head (scheduled meetings)
               </h2>
-              <div className="space-y-4">
-                {games.map((game, index) => (
-                  <GameCard key={index} game={game} teamStats={teamStats} />
-                ))}
-              </div>
-            </div>
+              <HeadToHeadMatrix teamStats={teamStats} selectedWeek={selectedWeek} />
+              <ConflictsAlert conflicts={conflicts} />
+            </section>
           )}
         </>
       )}

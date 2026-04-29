@@ -8,16 +8,23 @@ interface CreateLeagueRequest {
   numWeeks: number
   /** Team that should not play in the very first game slot (setup constraint) */
   avoidFirstRound?: string
+  /** Google Drive sheet ID of the template the user selected (metadata only) */
+  templateId?: string
+  /** Human-readable name of the selected template (written into the workbook) */
+  templateName?: string
 }
 
 function createLeagueWorkbook(data: CreateLeagueRequest) {
-  const { numTeams, teams, numWeeks, avoidFirstRound } = data
+  const { numTeams, teams, numWeeks, avoidFirstRound, templateName } = data
 
   // Create a new workbook
   const workbook = XLSX.utils.book_new()
 
   // 1. Teams Sheet
-  const teamsData = [['Team Names', '', ...teams]]
+  const teamsData: (string | number)[][] = [['Team Names', '', ...teams]]
+  if (templateName) {
+    teamsData.push(['Based on template', templateName])
+  }
   const teamsSheet = XLSX.utils.aoa_to_sheet(teamsData)
   XLSX.utils.book_append_sheet(workbook, teamsSheet, 'Teams')
 

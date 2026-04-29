@@ -23,7 +23,10 @@ async function getSheetTabs(sheetId: string): Promise<string[]> {
 
 async function fetchTabCsv(sheetId: string, tabName: string): Promise<string> {
   const encodedTab = encodeURIComponent(tabName)
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodedTab}`
+  // headers=0 disables gviz auto header detection. Without it, gviz collapses
+  // multiple top rows into a single concatenated header row, which destroys
+  // the schedule layout (one row per game).
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodedTab}`
   const res = await fetch(url, { next: { revalidate: 120 } })
   if (!res.ok) {
     throw new Error(`gviz CSV fetch returned ${res.status} for tab "${tabName}"`)

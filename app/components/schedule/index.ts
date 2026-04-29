@@ -9,6 +9,7 @@ export { default as ErrorState } from './ErrorState'
 export { default as TeamStatsTable } from './TeamStatsTable'
 export { default as TeamStatsCards } from './TeamStatsCards'
 export { default as RoundRobinProgress } from './RoundRobinProgress'
+export { default as HeadToHeadMatrix } from './HeadToHeadMatrix'
 
 // Export types
 export * from './types'

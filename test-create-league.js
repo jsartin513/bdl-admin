@@ -74,7 +74,7 @@ function createLeagueWorkbook(data) {
     const winsFormula = `=${winsParts.join('+')}`
     
     // Magic number formula
-    const magicFormula = `=B${row}+ROW(B${row})/10000`
+    const magicFormula = `=ROUND(B${row}+${row}/10000,8)`
     
     // Build losses formula
     const lossesParts = []
@@ -94,12 +94,13 @@ function createLeagueWorkbook(data) {
 
   // Add standings display formulas (rows 3-8 for 6 teams)
   const endRow = startRow + teams.length - 1
+  const cRng = `C${startRow}:C${endRow}`
   for (let rank = 1; rank <= teams.length; rank++) {
     const row = 2 + rank
-    
-    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
+    const largeK = `ROUND(LARGE(${cRng},${rank}),8)`
+    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(${largeK},${cRng},0))`
+    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(${largeK},${cRng},0))`
+    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(${largeK},${cRng},0))`
     const diffFormula = `=B${row}-C${row}`
     
     standingsData[row] = [teamNameFormula, winsFormula, lossesFormula, diffFormula, '']

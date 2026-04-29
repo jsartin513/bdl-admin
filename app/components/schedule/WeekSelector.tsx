@@ -19,8 +19,7 @@ export default function WeekSelector({ selectedWeek, onWeekChange, showAllWeeks 
             className="px-3 py-2 border border-gray-300 rounded-md"
           >
             {showAllWeeks && <option value="all">All Weeks (Totals)</option>}
-            {showAllWeeks && <option value="weeks5-6">Weeks 5 &amp; 6 (Combined)</option>}
-            <option value="1">Week 1 (9/30)</option>
+            <option value="1">Week 1</option>
             <option value="2">Week 2</option>
             <option value="3">Week 3</option>
             <option value="4">Week 4</option>

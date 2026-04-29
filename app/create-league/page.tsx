@@ -119,6 +119,8 @@ export default function CreateLeaguePage() {
           teams: formData.teams.map((t) => t.trim()),
           numWeeks: 6,
           avoidFirstRound: formData.avoidFirstRound || undefined,
+          templateId: formData.templateId || undefined,
+          templateName: formData.templateName || undefined,
         }),
       })
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TimerComponent } from '../components/timer';
 import { GameInfo, NextGameInfo } from '../components/timer/types';
 import { Game } from '../components/schedule/types';
+import { splitCsvLine } from '../lib/scheduleParser';
 import Link from 'next/link';
 
 interface DriveFile {
@@ -67,8 +68,8 @@ export default function TimerPage() {
         const refLine = lines[i + 1]
         if (!gameLine?.includes('Game ')) continue
 
-        const gameData = gameLine.split(',')
-        const refData = refLine ? refLine.split(',') : []
+        const gameData = splitCsvLine(gameLine)
+        const refData = refLine ? splitCsvLine(refLine) : []
 
         const game: Game = {
           gameNumber: gameData[0]?.trim() || '',
