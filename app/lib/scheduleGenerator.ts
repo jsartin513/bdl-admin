@@ -1,7 +1,6 @@
 import { Game } from '../components/schedule/types';
 
 export interface ScheduleGenerationOptions {
-  teams: string[];
   matchupsPerTeam: number; // Each team must play this many matchups (even distribution)
   availableTime?: number; // Total available time in minutes (default: 90)
   setupBreakdownTime?: number; // Setup + breakdown time in minutes (default: 30)
@@ -239,11 +238,10 @@ export function generateEvenDistributionSchedule(
  */
 export function generateBalancedRotationSchedule(
   teams: string[],
-  options: ScheduleGenerationOptions = {}
+  options: Partial<ScheduleGenerationOptions> = {}
 ): ScheduleResult {
-  // Convert to new format
   return generateEvenDistributionSchedule(teams, {
-    matchupsPerTeam: 5, // Full round-robin
+    matchupsPerTeam: 5,
     ...options,
   });
 }

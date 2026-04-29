@@ -143,9 +143,9 @@ export const GAME_FORMAT_CONFIGS: Record<GameFormat, GameFormatConfig> = {
   },
 };
 
-// Default timer configuration (for backwards compatibility)
+// Default timer configuration mirrors the standard game format.
 export const DEFAULT_TIMER_CONFIG = {
-  ROUND_DURATION: 180, // 3 minutes in seconds (legacy)
+  ROUND_DURATION: 300, // 4 minutes + 1 minute no-blocking
   NO_BLOCKING_START: 10, // Start "no blocking" countdown at 10 seconds
   ANNOUNCEMENT_TIMES: [
     120, // 2 minutes until no blocking
