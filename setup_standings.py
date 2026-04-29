@@ -5,6 +5,7 @@ Detects teams and weeks, then applies all necessary formulas.
 
 import openpyxl
 import re
+from openpyxl.utils import get_column_letter
 
 def detect_teams(wb):
     """Detect team names from the Teams sheet, League Standings, or week sheets."""
@@ -113,6 +114,90 @@ def setup_week_sheet(ws, teams, week_name):
     
     return start_row + 2  # Return the first data row
 
+
+def _escape_sheet_name_for_formula(name: str) -> str:
+    return name.replace("'", "''")
+
+
+def _week_h2h_single_court(week: str, row_cell: str, col_cell: str, max_row: int) -> str:
+    """Sum of row-team wins vs col-team on one week tab (Court 1: B/D teams, C/E scores)."""
+    w = _escape_sheet_name_for_formula(week)
+    q = f"'{w}'"
+    return (
+        f"(SUMPRODUCT(--({q}!$B$2:$B${max_row}={row_cell}),"
+        f"--({q}!$D$2:$D${max_row}={col_cell}),"
+        f"--({q}!$C$2:$C${max_row}>{q}!$E$2:$E${max_row}))+"
+        f"SUMPRODUCT(--({q}!$B$2:$B${max_row}={col_cell}),"
+        f"--({q}!$D$2:$D${max_row}={row_cell}),"
+        f"--({q}!$E$2:$E${max_row}>{q}!$C$2:$C${max_row})))"
+    )
+
+
+def _week_h2h_dual_court(week: str, row_cell: str, col_cell: str, max_row: int) -> str:
+    """BYOT-style: Court 1 (B,D,C,E) + Court 2 (G,I,H,J). Same win logic as SUMIFS wins."""
+    w = _escape_sheet_name_for_formula(week)
+    q = f"'{w}'"
+    court1 = _week_h2h_single_court(week, row_cell, col_cell, max_row)
+    court2 = (
+        f"(SUMPRODUCT(--({q}!$G$2:$G${max_row}={row_cell}),"
+        f"--({q}!$I$2:$I${max_row}={col_cell}),"
+        f"--({q}!$H$2:$H${max_row}>{q}!$J$2:$J${max_row}))+"
+        f"SUMPRODUCT(--({q}!$G$2:$G${max_row}={col_cell}),"
+        f"--({q}!$I$2:$I${max_row}={row_cell}),"
+        f"--({q}!$J$2:$J${max_row}>{q}!$H$2:$H${max_row})))"
+    )
+    return f"{court1}+{court2}"
+
+
+def setup_head_to_head_matrix(
+    ws,
+    teams,
+    week_sheets,
+    *,
+    dual_court: bool = False,
+    max_row: int = 500,
+):
+    """League Standings: matrix of head-to-head wins (row team vs column team), all weeks.
+
+    Uses the same score columns as weekly wins: higher score wins. Diagonal shows \"—\".
+    Placed below the team block (row 17+). Safe to re-run: clears the H2H block first.
+    """
+    n = len(teams)
+    if n < 2:
+        return
+
+    title_row = 17 + n + 2
+    header_row = title_row + 1
+    data_start = header_row + 1
+
+    # Clear a generous block from a previous run
+    end_clear_row = data_start + n + 5
+    for r in range(title_row, end_clear_row):
+        for c in range(1, max(n + 3, 14)):
+            ws.cell(r, c).value = None
+
+    ws.cell(title_row, 1).value = "Head-to-head wins (row vs column; higher score wins the game)"
+    hdr = [""] + list(teams)
+    for c, val in enumerate(hdr, start=1):
+        ws.cell(header_row, c).value = val
+
+    week_fn = _week_h2h_dual_court if dual_court else _week_h2h_single_court
+
+    for i in range(n):
+        data_row = data_start + i
+        ws.cell(data_row, 1).value = teams[i]
+        row_cell = f"$A{data_row}"
+        for j in range(n):
+            col = 2 + j
+            col_letter = get_column_letter(col)
+            col_cell = f"${col_letter}${header_row}"
+            if i == j:
+                ws.cell(data_row, col).value = "—"
+            else:
+                parts = [week_fn(w, row_cell, col_cell, max_row) for w in week_sheets]
+                ws.cell(data_row, col).value = "=" + "+".join(parts)
+
+
 def setup_league_standings(wb, teams, week_sheets, week_start_row):
     """Set up the League Standings sheet."""
     if 'League Standings' not in wb.sheetnames:
@@ -141,8 +226,8 @@ def setup_league_standings(wb, teams, week_sheets, week_start_row):
         wins_parts = [f"'{week}'!B{wins_row}" for week in week_sheets]
         ws.cell(i, 2).value = '=' + '+'.join(wins_parts)
         
-        # Magic number for tie-breaking
-        ws.cell(i, 3).value = f'=B{i}+ROW(B{i})/10000'
+        # Tie-break: literal row i (not ROW(Bi)) — merged column B makes ROW(Bi) the same for every row.
+        ws.cell(i, 3).value = f'=ROUND(B{i}+{i}/10000,8)'
         
         # Losses aggregation (from column C of week sheets)
         losses_parts = [f"'{week}'!C{wins_row}" for week in week_sheets]
@@ -162,15 +247,13 @@ def setup_league_standings(wb, teams, week_sheets, week_start_row):
     
     # Add standings formulas (only for the number of teams we have)
     num_teams = len(teams)
+    c_lo, c_hi = 17, 16 + num_teams
+    c_rng = f'C{c_lo}:C{c_hi}'
     for i, rank in enumerate(range(1, num_teams + 1), start=3):
-        # Team name
-        ws.cell(i, 1).value = f'=INDEX(A17:A{16+num_teams},MATCH(LARGE(C17:C{16+num_teams},{rank}),C17:C{16+num_teams},0))'
-        
-        # Wins (Points For)
-        ws.cell(i, 2).value = f'=INDEX(B17:B{16+num_teams},MATCH(LARGE(C17:C{16+num_teams},{rank}),C17:C{16+num_teams},0))'
-        
-        # Points Against (Losses)
-        ws.cell(i, 3).value = f'=INDEX(E17:E{16+num_teams},MATCH(LARGE(C17:C{16+num_teams},{rank}),C17:C{16+num_teams},0))'
+        large_k = f'ROUND(LARGE({c_rng},{rank}),8)'
+        ws.cell(i, 1).value = f'=INDEX(A{c_lo}:A{c_hi},MATCH({large_k},{c_rng},0))'
+        ws.cell(i, 2).value = f'=INDEX(B{c_lo}:B{c_hi},MATCH({large_k},{c_rng},0))'
+        ws.cell(i, 3).value = f'=INDEX(E{c_lo}:E{c_hi},MATCH({large_k},{c_rng},0))'
         
         # Point Differential
         ws.cell(i, 4).value = f'=B{i}-C{i}'
@@ -179,6 +262,8 @@ def setup_league_standings(wb, teams, week_sheets, week_start_row):
     if ws.cell(11, 2).value is None:
         ws.cell(11, 1).value = 'Week #'
         ws.cell(11, 2).value = 0
+
+    setup_head_to_head_matrix(ws, teams, week_sheets, dual_court=False)
 
 def main(file_path):
     """Main function to set up standings for a league spreadsheet."""
