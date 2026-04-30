@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useMemo } from 'react'
 import {
   GameCard,
@@ -79,19 +80,29 @@ export default function SchedulesPage() {
             ) : sheetsError ? (
               <span className="text-red-600">{sheetsError}</span>
             ) : (
-              <select
-                id="league-select"
-                value={selectedSheetId}
-                onChange={(e) => setSelectedSheetId(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md min-w-[240px]"
-              >
-                {sheets.length === 0 && <option value="">No leagues found</option>}
-                {sheets.map((sheet) => (
-                  <option key={sheet.id} value={sheet.id}>
-                    {sheet.name}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  id="league-select"
+                  value={selectedSheetId}
+                  onChange={(e) => setSelectedSheetId(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md min-w-[240px]"
+                >
+                  {sheets.length === 0 && <option value="">No leagues found</option>}
+                  {sheets.map((sheet) => (
+                    <option key={sheet.id} value={sheet.id}>
+                      {sheet.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedSheetId ? (
+                  <Link
+                    href={`/create-league?templateId=${encodeURIComponent(selectedSheetId)}`}
+                    className="inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  >
+                    New league from this template
+                  </Link>
+                ) : null}
+              </>
             )}
           </div>
         </div>
