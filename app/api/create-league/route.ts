@@ -23,6 +23,22 @@ interface CreateLeagueRequest {
   templateName?: string
 }
 
+/** 502 only for Drive HTTP failures; 500 for missing config or local/mutation errors. */
+function httpStatusForTemplateBranchError(e: unknown): number {
+  if (e instanceof Error) {
+    if (
+      e.message.includes('GOOGLE_DRIVE_API_KEY') ||
+      e.message === 'Missing file id'
+    ) {
+      return 500
+    }
+    if (e.message.startsWith('Drive export failed')) {
+      return 502
+    }
+  }
+  return 500
+}
+
 /** Sheet names with quotes for formulas (escaped apostrophe). */
 function escapeSheetTitleForFormula(name: string): string {
   return name.replace(/'/g, "''")
@@ -296,7 +312,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
       const teamWaitTimes: Map<string, number> = new Map()
       const currentLength: number = distributedGames.length
       teams.forEach(team => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
         teamWaitTimes.set(team, waitTime)
       })
@@ -362,7 +378,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
       
       const gamesLength: number = distributedGames.length as number
       [game.team1, game.team2].forEach(team => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         if (lastPos !== -1) {
           const gap = gamesLength - 1 - lastPos
           if (gap >= maxWaitThreshold) {
@@ -458,7 +474,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
       const teamWaitTimes: Map<string, number> = new Map()
       const currentLength: number = distributedGames.length as number
       teams.forEach(team => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
         teamWaitTimes.set(team, waitTime)
       })
@@ -534,7 +550,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
       // Check if this game creates a large gap for either team
       const gamesLength: number = distributedGames.length as number
       [game.team1, game.team2].forEach(team => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         if (lastPos !== -1) {
           const gap = gamesLength - 1 - lastPos
           if (gap >= maxWaitThreshold) {
@@ -633,7 +649,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
       const teamWaitTimes: Map<string, number> = new Map()
       const currentLength: number = distributedGames.length as number
       teams.forEach((team) => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
         teamWaitTimes.set(team, waitTime)
       })
@@ -697,7 +713,7 @@ function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 
 
       const gamesLength: number = distributedGames.length as number
       ;[game.team1, game.team2].forEach((team) => {
-        const lastPos = teamLastPosition.get(team) || -1
+        const lastPos = teamLastPosition.get(team) ?? -1
         if (lastPos !== -1) {
           const gap = gamesLength - 1 - lastPos
           if (gap >= maxWaitThreshold) {
@@ -921,7 +937,8 @@ export async function POST(request: NextRequest) {
           e instanceof Error
             ? e.message
             : 'Could not load the Google Sheet template. Check Drive sharing and GOOGLE_DRIVE_API_KEY.'
-        return NextResponse.json({ error: message }, { status: 502 })
+        const status = httpStatusForTemplateBranchError(e)
+        return NextResponse.json({ error: message }, { status })
       }
     }
 
