@@ -10,12 +10,6 @@ export default function TopNav() {
         <Link href="/create-league" className="hover:underline">
           Create League
         </Link>
-        <Link href="/timer" className="hover:underline">
-          Round Timer
-        </Link>
-        <Link href="/timer-standalone" className="hover:underline">
-          Standalone Timer
-        </Link>
       </div>
     </nav>
   );

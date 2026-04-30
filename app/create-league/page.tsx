@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
 
 interface DriveFile {
   id: string
@@ -13,7 +15,7 @@ interface FormData {
   templateId: string
   templateName: string
   leagueName: string
-  numTeams: 4 | 6
+  numTeams: number
   teams: string[]
   avoidFirstRound: string
 }
@@ -22,12 +24,32 @@ const INITIAL_FORM: FormData = {
   templateId: '',
   templateName: '',
   leagueName: '',
-  numTeams: 6,
-  teams: ['', '', '', '', '', ''],
+  numTeams: 0,
+  teams: [],
   avoidFirstRound: '',
 }
 
-export default function CreateLeaguePage() {
+/** Per-week stats shown in the UI. Seven-team Drive template uses 35 games (not full n(n−1)). */
+function scheduleSummary(n: number) {
+  if (n === 7) {
+    return { gamesPerWeek: 35, gamesPerTeamPerWeek: 10, refsPerTeamPerWeek: 5 }
+  }
+  const gamesPerWeek = n * (n - 1)
+  const gamesPerTeamPerWeek = (n - 1) * 2
+  const refsPerTeamPerWeek = gamesPerWeek / n
+  return { gamesPerWeek, gamesPerTeamPerWeek, refsPerTeamPerWeek }
+}
+
+function teamsStateFromTemplateName(templateName: string): Pick<FormData, 'numTeams' | 'teams'> {
+  const n = parseTeamCountFromTemplateName(templateName)
+  if (n === null) return { numTeams: 0, teams: [] }
+  return { numTeams: n, teams: Array(n).fill('') }
+}
+
+function CreateLeagueForm() {
+  const searchParams = useSearchParams()
+  const prefTemplateId = searchParams.get('templateId') ?? ''
+
   const [step, setStep] = useState<Step>(1)
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM)
   const [templates, setTemplates] = useState<DriveFile[]>([])
@@ -47,25 +69,25 @@ export default function CreateLeaguePage() {
       })
       .then((data: DriveFile[]) => {
         setTemplates(data)
-        if (data.length > 0) {
-          setFormData((f) => ({
-            ...f,
-            templateId: data[0].id,
-            templateName: data[0].name,
-          }))
-        }
       })
       .catch((err) => setTemplatesError(err.message))
       .finally(() => setLoadingTemplates(false))
   }, [])
 
-  function handleNumTeamsChange(numTeams: 4 | 6) {
+  useEffect(() => {
+    if (templates.length === 0) return
+    const t = prefTemplateId ? templates.find((x) => x.id === prefTemplateId) : null
+    const sel = t ?? templates[0]
+    if (!sel) return
+    const { numTeams, teams } = teamsStateFromTemplateName(sel.name)
     setFormData((f) => ({
       ...f,
+      templateId: sel.id,
+      templateName: sel.name,
       numTeams,
-      teams: Array(numTeams).fill(''),
+      teams,
     }))
-  }
+  }, [templates, prefTemplateId])
 
   function updateTeam(index: number, value: string) {
     const newTeams = [...formData.teams]
@@ -76,6 +98,13 @@ export default function CreateLeaguePage() {
   function validateStep1(): string | null {
     if (!formData.templateId) return 'Please select a league template'
     if (!formData.leagueName.trim()) return 'Please enter a league name'
+    const n = parseTeamCountFromTemplateName(formData.templateName)
+    if (n === null) {
+      return (
+        'Could not determine team count from the template name. ' +
+        'Rename the template to include a pattern like "Six Team" or "4 Team".'
+      )
+    }
     return null
   }
 
@@ -186,11 +215,14 @@ export default function CreateLeaguePage() {
               <select
                 value={formData.templateId}
                 onChange={(e) => {
-                  const t = templates.find((t) => t.id === e.target.value)
+                  const t = templates.find((x) => x.id === e.target.value)
+                  const { numTeams, teams } = teamsStateFromTemplateName(t?.name ?? '')
                   setFormData((f) => ({
                     ...f,
                     templateId: e.target.value,
                     templateName: t?.name ?? '',
+                    numTeams,
+                    teams,
                   }))
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
@@ -203,29 +235,27 @@ export default function CreateLeaguePage() {
               </select>
             )}
             <p className="mt-1 text-xs text-gray-500">
-              Templates come from the shared Google Drive folder.
+              Templates come from the shared Google Drive folder. Team count is taken from the file
+              name. The downloaded workbook is that Google Sheet exported to Excel with your team
+              names filled in (same schedule layout as the template).
             </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Number of Teams *
-            </label>
-            <div className="flex gap-6">
-              {([4, 6] as const).map((n) => (
-                <label key={n} className="flex items-center cursor-pointer">
-                  <input
-                    type="radio"
-                    name="numTeams"
-                    value={n}
-                    checked={formData.numTeams === n}
-                    onChange={() => handleNumTeamsChange(n)}
-                    className="mr-2"
-                  />
-                  <span>{n} Teams</span>
-                </label>
-              ))}
-            </div>
+            {formData.templateName &&
+              (() => {
+                const n = parseTeamCountFromTemplateName(formData.templateName)
+                if (n === null) {
+                  return (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Could not read team count from this file name — use a name that includes the number of
+                      teams.
+                    </p>
+                  )
+                }
+                return (
+                  <p className="mt-2 text-xs text-gray-600">
+                    This template is for <strong>{n} teams</strong>.
+                  </p>
+                )
+              })()}
           </div>
 
           <div>
@@ -338,8 +368,11 @@ export default function CreateLeaguePage() {
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                This team will not be scheduled to play in game 1 of Week 1, useful if they need
-                setup time at the start of the season.
+                For templates exported from Google Drive, your choice here is matched to the team
+                that never appears in <strong>game 1</strong> on any week (e.g. the seven-team
+                template). Enter teams in step 2 in <strong>League Standings</strong> order, then
+                pick which of your names should take that “late start” slot. Leave blank to keep
+                the default name-to-slot mapping from step 2.
               </p>
             </div>
           </div>
@@ -348,17 +381,22 @@ export default function CreateLeaguePage() {
             <p className="font-semibold mb-2">Schedule summary:</p>
             <ul className="list-disc list-inside space-y-1">
               <li>{formData.numTeams} teams, 6 weeks</li>
-              <li>{formData.numTeams === 4 ? '12' : '30'} games per week</li>
-              <li>
-                Each team plays{' '}
-                {formData.numTeams === 4 ? '6' : '10'} games per week (every opponent twice)
-              </li>
-              <li>
-                Each team refs {formData.numTeams === 4 ? '3' : '5'} games per week
-              </li>
+              {(() => {
+                const s = scheduleSummary(formData.numTeams)
+                return (
+                  <>
+                    <li>{s.gamesPerWeek} games per week</li>
+                    <li>
+                      Each team plays {s.gamesPerTeamPerWeek} games per week (every opponent twice)
+                    </li>
+                    <li>Each team refs {s.refsPerTeamPerWeek} games per week</li>
+                  </>
+                )
+              })()}
               {formData.avoidFirstRound && (
                 <li>
-                  <strong>{formData.avoidFirstRound}</strong> will not appear in game 1 of Week 1
+                  <strong>{formData.avoidFirstRound}</strong> is matched to the template&rsquo;s
+                  &ldquo;never in game 1&rdquo; roster slot when that pattern exists (seven-team).
                 </li>
               )}
             </ul>
@@ -402,5 +440,17 @@ export default function CreateLeaguePage() {
         </form>
       )}
     </div>
+  )
+}
+
+export default function CreateLeaguePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto px-4 py-8 max-w-2xl text-gray-600">Loading…</div>
+      }
+    >
+      <CreateLeagueForm />
+    </Suspense>
   )
 }

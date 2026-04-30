@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
+import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
+import { exportGoogleSpreadsheetAsXlsx } from '@/app/lib/driveExportSpreadsheet'
+import {
+  applyTeamRenamesToWorkbook,
+  buildTeamRenamePairs,
+  extractTemplateTeams,
+  findTemplateTeamsNeverInGame01,
+} from '@/app/lib/mutateLeagueTemplate'
 
 interface CreateLeagueRequest {
   leagueName: string
-  numTeams: 4 | 6
+  /** Prefer deriving from `templateName`; optional for callers without a template. */
+  numTeams?: number
   teams: string[]
   numWeeks: number
   /** Team that should not play in the very first game slot (setup constraint) */
   avoidFirstRound?: string
-  /** Google Drive sheet ID of the template the user selected (metadata only) */
+  /** Google Drive spreadsheet id — when set, workbook is exported from Drive and team names are replaced */
   templateId?: string
   /** Human-readable name of the selected template (written into the workbook) */
   templateName?: string
@@ -51,7 +60,7 @@ function buildHeadToHeadCellFormula(
   return `=${parts.join('+')}`
 }
 
-function createLeagueWorkbook(data: CreateLeagueRequest) {
+function createLeagueWorkbook(data: CreateLeagueRequest & { numTeams: 4 | 6 | 7 }) {
   const { numTeams, teams, numWeeks, avoidFirstRound, templateName } = data
 
   // Create a new workbook
@@ -100,22 +109,15 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   }
 
   // 3. League Standings Sheet
-  const standingsRows = numTeams === 4 ? 4 : 6
+  const standingsRows = numTeams
   const standingsData: (string | number)[][] = [
     ['LEAGUE STANDINGS', '', '', '', ''],
     ['Team Name', 'Points For', 'Points Against', 'Point Differential', ''],
-    ['', '', '', '', ''], // Row 3 - 1st place
-    ['', '', '', '', ''], // Row 4 - 2nd place
-    ['', '', '', '', ''], // Row 5 - 3rd place
-    ['', '', '', '', ''], // Row 6 - 4th place
   ]
-  
-  // Add rows 7-8 only for 6 teams
-  if (numTeams === 6) {
-    standingsData.push(['', '', '', '', ''], // Row 7 - 5th place
-                       ['', '', '', '', '']) // Row 8 - 6th place
+  for (let r = 0; r < numTeams; r++) {
+    standingsData.push(['', '', '', '', ''])
   }
-  
+
   standingsData.push(
     ['', '', '', '', ''],
     ['', '', '', '', ''],
@@ -136,12 +138,8 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     // Build wins formula (sum from all week sheets)
     // Row calculation: 
     // - Row 1: Header "Court 1"
-    // - Rows 2-25 (4 teams) or 2-61 (6 teams): Games (12 or 30 games × 2 rows each = game + ref)
-    // - Row 26 or 62: Empty spacing
-    // - Row 27 or 63: "Team Wins/Losses This Week"
-    // - Row 28 or 64: "Team Name", "Wins", "Losses" header
-    // - Row 29+ or 65+: Team rows
-    const gamesPerWeek = numTeams === 4 ? 12 : 30
+    // - Games block: n(n−1) games/week × 2 rows (game + ref), then win/loss block
+    const gamesPerWeek = numTeams * (numTeams - 1)
     const teamFormulaStartRow = 1 + gamesPerWeek * 2 + 3 + 1 // 1 header + games*2 + spacing(1) + header(1) + header(1) + 1
     const winsParts: string[] = []
     for (let week = 1; week <= numWeeks; week++) {
@@ -603,9 +601,162 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     return distributedGames
   }
 
+  // 7-TEAM SCHEDULE: Each team plays each opponent twice per week
+  // 42 games per week (21 unique pairs × 2 games each); each team plays 12 games and refs 6
+  function generate7TeamSchedule(teams: string[]): Array<{ team1: string; team2: string; ref?: string }> {
+    const gamePairs: Array<{ team1: string; team2: string; homeTeam: string }> = []
+
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        gamePairs.push({ team1: teams[i], team2: teams[j], homeTeam: teams[i] })
+        gamePairs.push({ team1: teams[i], team2: teams[j], homeTeam: teams[j] })
+      }
+    }
+
+    const teamGameCount: Map<string, number> = new Map()
+    const teamLastPosition: Map<string, number> = new Map()
+    const teamLargeGapCount: Map<string, number> = new Map()
+    const maxWaitThreshold = 5
+    teams.forEach((team) => {
+      teamGameCount.set(team, 0)
+      teamLastPosition.set(team, -1)
+      teamLargeGapCount.set(team, 0)
+    })
+
+    const distributedGames: Array<{ team1: string; team2: string; ref?: string }> = []
+    const remainingGames = [...gamePairs]
+
+    while (remainingGames.length > 0) {
+      let bestGameIndex = -1
+      let bestScore = -Infinity
+
+      const teamWaitTimes: Map<string, number> = new Map()
+      const currentLength: number = distributedGames.length as number
+      teams.forEach((team) => {
+        const lastPos = teamLastPosition.get(team) || -1
+        const waitTime = lastPos === -1 ? currentLength : currentLength - lastPos
+        teamWaitTimes.set(team, waitTime)
+      })
+
+      const urgentTeams = new Set<string>()
+      teamWaitTimes.forEach((waitTime, team) => {
+        if (waitTime >= maxWaitThreshold) {
+          urgentTeams.add(team)
+        }
+      })
+
+      remainingGames.forEach((gamePair, index) => {
+        const team1 = gamePair.team1
+        const team2 = gamePair.team2
+
+        const team1Games = teamGameCount.get(team1) || 0
+        const team2Games = teamGameCount.get(team2) || 0
+        const wait1 = teamWaitTimes.get(team1) || 0
+        const wait2 = teamWaitTimes.get(team2) || 0
+        const largeGapCount1 = teamLargeGapCount.get(team1) || 0
+        const largeGapCount2 = teamLargeGapCount.get(team2) || 0
+
+        const addressesUrgent = urgentTeams.has(team1) || urgentTeams.has(team2)
+
+        const urgency1 =
+          wait1 >= maxWaitThreshold
+            ? Math.pow(2, wait1 - maxWaitThreshold + 2) * 50000
+            : wait1 * 200
+        const urgency2 =
+          wait2 >= maxWaitThreshold
+            ? Math.pow(2, wait2 - maxWaitThreshold + 2) * 50000
+            : wait2 * 200
+
+        const largeGapPenalty1 = largeGapCount1 > 0 ? largeGapCount1 * 5000 : 0
+        const largeGapPenalty2 = largeGapCount2 > 0 ? largeGapCount2 * 5000 : 0
+
+        const score =
+          urgency1 +
+          urgency2 +
+          (12 - team1Games) * 5 +
+          (12 - team2Games) * 5 +
+          (addressesUrgent ? 1000 : 0) -
+          largeGapPenalty1 -
+          largeGapPenalty2
+
+        if (score > bestScore) {
+          bestScore = score
+          bestGameIndex = index
+        }
+      })
+
+      const selectedGame = remainingGames.splice(bestGameIndex, 1)[0]
+
+      const game = {
+        team1: selectedGame.homeTeam,
+        team2: selectedGame.homeTeam === selectedGame.team1 ? selectedGame.team2 : selectedGame.team1,
+        ref: undefined as string | undefined,
+      }
+
+      distributedGames.push(game)
+
+      const gamesLength: number = distributedGames.length as number
+      ;[game.team1, game.team2].forEach((team) => {
+        const lastPos = teamLastPosition.get(team) || -1
+        if (lastPos !== -1) {
+          const gap = gamesLength - 1 - lastPos
+          if (gap >= maxWaitThreshold) {
+            teamLargeGapCount.set(team, (teamLargeGapCount.get(team) || 0) + 1)
+          }
+        }
+      })
+
+      teamGameCount.set(game.team1, (teamGameCount.get(game.team1) || 0) + 1)
+      teamGameCount.set(game.team2, (teamGameCount.get(game.team2) || 0) + 1)
+      teamLastPosition.set(game.team1, gamesLength - 1)
+      teamLastPosition.set(game.team2, gamesLength - 1)
+    }
+
+    const refPool: Map<string, number> = new Map()
+    teams.forEach((team) => refPool.set(team, 6))
+
+    let lastRef: string | undefined = undefined
+
+    distributedGames.forEach((game) => {
+      const allAvailableRefs = teams.filter(
+        (team) =>
+          team !== game.team1 && team !== game.team2 && (refPool.get(team) || 0) > 0
+      )
+
+      if (allAvailableRefs.length === 0) {
+        const anyAvailable = teams.find(
+          (team) =>
+            team !== game.team1 && team !== game.team2 && (refPool.get(team) || 0) > 0
+        )
+        if (anyAvailable) {
+          game.ref = anyAvailable
+          refPool.set(anyAvailable, (refPool.get(anyAvailable) || 0) - 1)
+          lastRef = anyAvailable
+        }
+        return
+      }
+
+      const preferredRefs = allAvailableRefs.filter((team) => team !== lastRef)
+      const refsToChooseFrom = preferredRefs.length > 0 ? preferredRefs : allAvailableRefs
+
+      const refIndex = Math.floor(Math.random() * refsToChooseFrom.length)
+      const selectedRef = refsToChooseFrom[refIndex]
+      game.ref = selectedRef
+      refPool.set(selectedRef, (refPool.get(selectedRef) || 0) - 1)
+      lastRef = selectedRef
+    })
+
+    return distributedGames
+  }
+
   // Generate games for each week using the appropriate schedule function
   const weekGames: Array<Array<{ team1: string; team2: string; ref?: string }>> = []
-  const generateSchedule = numTeams === 4 ? generate4TeamSchedule : generate6TeamSchedule
+  const generateSchedule =
+    numTeams === 4
+      ? generate4TeamSchedule
+      : numTeams === 7
+        ? generate7TeamSchedule
+        : generate6TeamSchedule
   for (let week = 0; week < numWeeks; week++) {
     const games = generateSchedule(teams)
 
@@ -673,25 +824,49 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateLeagueRequest = await request.json()
 
-    // Validation - support 4 or 6 teams and 6 weeks
-    if (!body.leagueName || !body.teams || !body.numTeams) {
+    if (!body.leagueName || !body.teams) {
       return NextResponse.json(
-        { error: 'League name, number of teams, and teams are required' },
+        { error: 'League name and teams are required' },
         { status: 400 }
       )
     }
 
-    if (body.numTeams !== 4 && body.numTeams !== 6) {
+    let numTeams: number
+    if (body.templateName?.trim()) {
+      const parsed = parseTeamCountFromTemplateName(body.templateName)
+      if (parsed === null) {
+        return NextResponse.json(
+          {
+            error:
+              'Could not determine team count from the template name. Use a name like "Six Team League" or "4 Team".',
+          },
+          { status: 400 },
+        )
+      }
+      numTeams = parsed
+    } else if (body.numTeams === 4 || body.numTeams === 6 || body.numTeams === 7) {
+      numTeams = body.numTeams
+    } else {
       return NextResponse.json(
-        { error: 'Number of teams must be 4 or 6' },
-        { status: 400 }
+        {
+          error:
+            'Select a league template (team count comes from its name), or send numTeams 4, 6, or 7 when calling the API without a template.',
+        },
+        { status: 400 },
       )
     }
 
-    if (body.teams.length !== body.numTeams) {
+    if (numTeams !== 4 && numTeams !== 6 && numTeams !== 7) {
       return NextResponse.json(
-        { error: `Number of teams must match: expected ${body.numTeams}, got ${body.teams.length}` },
-        { status: 400 }
+        { error: 'Only 4-, 6-, and 7-team leagues are supported.' },
+        { status: 400 },
+      )
+    }
+
+    if (body.teams.length !== numTeams) {
+      return NextResponse.json(
+        { error: `Number of teams must match: expected ${numTeams}, got ${body.teams.length}` },
+        { status: 400 },
       )
     }
 
@@ -702,13 +877,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create workbook
-    const workbook = createLeagueWorkbook(body)
+    if (body.templateId?.trim()) {
+      try {
+        const xlsxBuf = await exportGoogleSpreadsheetAsXlsx(body.templateId.trim())
+        const wb = XLSX.read(xlsxBuf, { type: 'array', cellDates: true })
+        const templateTeams = extractTemplateTeams(wb)
+        if (templateTeams.length !== numTeams) {
+          return NextResponse.json(
+            {
+              error: `This sheet has ${templateTeams.length} teams in standings / roster, but the selected template name implies ${numTeams}. Align the Drive file with the template or pick the matching entry.`,
+            },
+            { status: 400 },
+          )
+        }
+        if (templateTeams.length !== body.teams.length) {
+          return NextResponse.json(
+            {
+              error: `Template has ${templateTeams.length} team rows; you entered ${body.teams.length} names.`,
+            },
+            { status: 400 },
+          )
+        }
 
-    // Convert workbook to buffer directly (no temp file needed)
+        const neverG01 = findTemplateTeamsNeverInGame01(wb, templateTeams)
+        const pairs = buildTeamRenamePairs(
+          templateTeams,
+          body.teams,
+          body.avoidFirstRound,
+          neverG01,
+        )
+        applyTeamRenamesToWorkbook(wb, pairs)
+
+        const fileBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+        return new NextResponse(fileBuffer, {
+          headers: {
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="${body.leagueName.replace(/\s+/g, '_')}.xlsx"`,
+          },
+        })
+      } catch (e) {
+        console.error('Template export/mutate failed:', e)
+        const message =
+          e instanceof Error
+            ? e.message
+            : 'Could not load the Google Sheet template. Check Drive sharing and GOOGLE_DRIVE_API_KEY.'
+        return NextResponse.json({ error: message }, { status: 502 })
+      }
+    }
+
+    const workbook = createLeagueWorkbook({ ...body, numTeams })
     const fileBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 
-    // Return as downloadable file
     return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
