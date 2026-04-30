@@ -6,16 +6,62 @@ interface CreateLeagueRequest {
   numTeams: 4 | 6
   teams: string[]
   numWeeks: number
+  /** Team that should not play in the very first game slot (setup constraint) */
+  avoidFirstRound?: string
+  /** Google Drive sheet ID of the template the user selected (metadata only) */
+  templateId?: string
+  /** Human-readable name of the selected template (written into the workbook) */
+  templateName?: string
+}
+
+/** Sheet names with quotes for formulas (escaped apostrophe). */
+function escapeSheetTitleForFormula(name: string): string {
+  return name.replace(/'/g, "''")
+}
+
+/** 1-based Excel column index → column letter(s). */
+function colLetterOneBased(columnNumber: number): string {
+  let n = columnNumber
+  let s = ''
+  while (n > 0) {
+    const rem = (n - 1) % 26
+    s = String.fromCharCode(65 + rem) + s
+    n = Math.floor((n - 1) / 26)
+  }
+  return s
+}
+
+/** Head-to-head wins for row-team vs column-team from weekly game rows (B/D teams, C/E scores). */
+function buildHeadToHeadCellFormula(
+  rowTeamAbs: string,
+  colTeamAbs: string,
+  weekNames: string[],
+  maxRow: number,
+): string {
+  const parts = weekNames.map((wk) => {
+    const q = `'${escapeSheetTitleForFormula(wk)}'`
+    return (
+      '(' +
+      `SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${rowTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${colTeamAbs}),--(${q}!$C$2:$C$${maxRow}>${q}!$E$2:$E$${maxRow}))` +
+      '+' +
+      `SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${colTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${rowTeamAbs}),--(${q}!$E$2:$E$${maxRow}>${q}!$C$2:$C$${maxRow}))` +
+      ')'
+    )
+  })
+  return `=${parts.join('+')}`
 }
 
 function createLeagueWorkbook(data: CreateLeagueRequest) {
-  const { numTeams, teams, numWeeks } = data
+  const { numTeams, teams, numWeeks, avoidFirstRound, templateName } = data
 
   // Create a new workbook
   const workbook = XLSX.utils.book_new()
 
   // 1. Teams Sheet
-  const teamsData = [['Team Names', '', ...teams]]
+  const teamsData: (string | number)[][] = [['Team Names', '', ...teams]]
+  if (templateName) {
+    teamsData.push(['Based on template', templateName])
+  }
   const teamsSheet = XLSX.utils.aoa_to_sheet(teamsData)
   XLSX.utils.book_append_sheet(workbook, teamsSheet, 'Teams')
 
@@ -40,6 +86,18 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   
   const scheduleGenSheet = XLSX.utils.aoa_to_sheet(scheduleGenData)
   XLSX.utils.book_append_sheet(workbook, scheduleGenSheet, 'Schedule Generator')
+
+  // Tab names shared by League Standings, head-to-head, and week tabs (Scores / wins use these sheets)
+  const today = new Date()
+  const daysUntilSunday = (6 - today.getDay()) % 7 || 7
+  const leagueSunday = new Date(today)
+  leagueSunday.setDate(today.getDate() + daysUntilSunday)
+  const weekSheetNames: string[] = []
+  for (let w = 1; w <= numWeeks; w++) {
+    const weekDate = new Date(leagueSunday)
+    weekDate.setDate(leagueSunday.getDate() + (w - 1) * 7)
+    weekSheetNames.push(`Week ${w} (${weekDate.getMonth() + 1}.${weekDate.getDate()})`)
+  }
 
   // 3. League Standings Sheet
   const standingsRows = numTeams === 4 ? 4 : 6
@@ -87,17 +145,21 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     const teamFormulaStartRow = 1 + gamesPerWeek * 2 + 3 + 1 // 1 header + games*2 + spacing(1) + header(1) + header(1) + 1
     const winsParts: string[] = []
     for (let week = 1; week <= numWeeks; week++) {
-      winsParts.push(`'Week ${week}'!B${teamFormulaStartRow + i}`)
+      winsParts.push(
+        `'${escapeSheetTitleForFormula(weekSheetNames[week - 1])}'!B${teamFormulaStartRow + i}`
+      )
     }
     const winsFormula = `=${winsParts.join('+')}`
     
-    // Magic number formula
-    const magicFormula = `=B${row}+ROW(B${row})/10000`
+    // Tie-break: literal row (not ROW(B)) — merged B column breaks ROW()-based tiebreak
+    const magicFormula = `=ROUND(B${row}+${row}/10000,8)`
     
     // Build losses formula
     const lossesParts: string[] = []
     for (let week = 1; week <= numWeeks; week++) {
-      lossesParts.push(`'Week ${week}'!C${teamFormulaStartRow + i}`)
+      lossesParts.push(
+        `'${escapeSheetTitleForFormula(weekSheetNames[week - 1])}'!C${teamFormulaStartRow + i}`
+      )
     }
     const lossesFormula = `=${lossesParts.join('+')}`
     
@@ -110,27 +172,64 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     ])
   }
 
-  // Add standings display formulas (rows 3-8 for 6 teams)
-  const endRow = startRow + teams.length - 1 // Row 22 for 6 teams
-  for (let rank = 1; rank <= teams.length; rank++) {
-    const row = 2 + rank // Row 3, 4, 5, 6, 7, 8
-    
-    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(LARGE(C${startRow}:C${endRow},${rank}),C${startRow}:C${endRow},0))`
-    const diffFormula = `=B${row}-C${row}`
-    
-    standingsData[row] = [teamNameFormula, winsFormula, lossesFormula, diffFormula, '']
+  // Standings leaderboard (sheet rows 3–8): must run after team rows so LARGE/MATCH refs point at B17+:E…
+  const nt = teams.length
+  const teamBlockEndSheetRow = startRow + nt - 1
+  const cRng = `C${startRow}:C${teamBlockEndSheetRow}`
+  for (let rank = 1; rank <= nt; rank++) {
+    const sheetRow = 2 + rank
+    const idx = sheetRow - 1
+    const largeK = `ROUND(LARGE(${cRng},${rank}),8)`
+    const teamNameFormula = `=INDEX(A${startRow}:A${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const winsDisplay = `=INDEX(B${startRow}:B${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const lossesDisplay = `=INDEX(E${startRow}:E${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const diffFormula = `=B${sheetRow}-C${sheetRow}`
+    standingsData[idx] = [teamNameFormula, winsDisplay, lossesDisplay, diffFormula, '']
+  }
+
+  // Head-to-head matrix: row numbers computed from standingsData length so they stay aligned with spacer rows above
+  const h2hMaxScan = 500
+  standingsData.push([])
+  standingsData.push([
+    'Head-to-head wins (row vs column; higher score wins)',
+    '',
+    '',
+    '',
+    '',
+  ])
+  const headerRow = standingsData.length + 1
+  const h2hHead: (string | number)[] = ['']
+  for (const t of teams) h2hHead.push(t)
+  standingsData.push(h2hHead)
+
+  const dataStart = standingsData.length + 1
+  for (let i = 0; i < nt; i++) {
+    const excelDataRow = dataStart + i
+    const rowCell = `$A${excelDataRow}`
+    const rowVals: (string | number)[] = [teams[i]]
+    for (let j = 0; j < nt; j++) {
+      if (i === j) {
+        rowVals.push('—')
+      } else {
+        const colL = colLetterOneBased(j + 2)
+        rowVals.push(
+          buildHeadToHeadCellFormula(
+            rowCell,
+            `$${colL}$${headerRow}`,
+            weekSheetNames,
+            h2hMaxScan
+          )
+        )
+      }
+    }
+    standingsData.push(rowVals)
   }
 
   const standingsSheet = XLSX.utils.aoa_to_sheet(standingsData)
   XLSX.utils.book_append_sheet(workbook, standingsSheet, 'League Standings')
 
   // 4. Create Week Sheets
-  const today = new Date()
-  const daysUntilSunday = (6 - today.getDay()) % 7 || 7
-  const startDate = new Date(today)
-  startDate.setDate(today.getDate() + daysUntilSunday)
+  // (weeksheet names aligned with standings + head-to-head: weekSheetNames)
 
   // ============================================================================
   // ROUND-ROBIN ALGORITHM (preserved for future use when more options are added)
@@ -508,14 +607,28 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
   const weekGames: Array<Array<{ team1: string; team2: string; ref?: string }>> = []
   const generateSchedule = numTeams === 4 ? generate4TeamSchedule : generate6TeamSchedule
   for (let week = 0; week < numWeeks; week++) {
-    weekGames.push(generateSchedule(teams))
+    const games = generateSchedule(teams)
+
+    // For Week 1 only: ensure the avoidFirstRound team doesn't appear in game 1
+    if (week === 0 && avoidFirstRound && games.length > 0) {
+      const firstGameInvolves =
+        games[0].team1 === avoidFirstRound || games[0].team2 === avoidFirstRound
+      if (firstGameInvolves) {
+        const swapIndex = games.findIndex(
+          (g) => g.team1 !== avoidFirstRound && g.team2 !== avoidFirstRound
+        )
+        if (swapIndex > 0) {
+          ;[games[0], games[swapIndex]] = [games[swapIndex], games[0]]
+        }
+      }
+    }
+
+    weekGames.push(games)
   }
 
   // Create week sheets
   for (let week = 1; week <= numWeeks; week++) {
-    const weekDate = new Date(startDate)
-    weekDate.setDate(startDate.getDate() + (week - 1) * 7)
-    const weekName = `Week ${week} (${weekDate.getMonth() + 1}.${weekDate.getDate()})`
+    const weekName = weekSheetNames[week - 1]
     
     const weekData: (string | number)[][] = [
       ['', 'Court 1', '', '', '', '', '', '', '', ''] // Ensure 10 columns (A-J)

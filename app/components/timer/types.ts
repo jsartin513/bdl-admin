@@ -10,9 +10,15 @@ export interface TimerState {
 
 export enum TimerPhase {
   READY = 'ready',           // Before round starts
-  GAME_ACTIVE = 'active',    // During the 3-minute game
-  NO_BLOCKING = 'no-blocking', // Final 10-second countdown
+  GAME_ACTIVE = 'active',    // During the game
+  NO_BLOCKING = 'no-blocking', // Final countdown (for standard format)
   FINISHED = 'finished'      // Round complete
+}
+
+export enum GameFormat {
+  STANDARD = 'standard', // Legacy ~3-minute round + 10s no-block countdown
+  DOUBLE = 'double',       // 20 min continuous
+  EXTENDED = 'extended', // 30-40 min continuous
 }
 
 export interface AnnouncementConfig {
@@ -67,15 +73,74 @@ export interface GameInfo {
   court1Ref?: string;
   court2Ref?: string;
   week?: number;
+  format?: GameFormat; // Game format (defaults to STANDARD)
 }
 
 export interface NextGameInfo extends GameInfo {
   timeUntilStart?: number; // seconds until this game starts
 }
 
-// Default timer configuration
+// Game format configurations
+export interface GameFormatConfig {
+  gameDuration: number; // in seconds
+  noBlockDuration: number; // in seconds (0 for continuous formats)
+  transitionTime: number; // in seconds between games
+  announcementTimes: number[]; // Times in seconds when announcements should play
+  hasNoBlockPhase: boolean; // Whether this format has a no-blocking phase
+}
+
+export const GAME_FORMAT_CONFIGS: Record<GameFormat, GameFormatConfig> = {
+  [GameFormat.STANDARD]: {
+    // Round length = gameDuration + noBlockDuration (defaults to DEFAULT_TIMER_CONFIG.ROUND_DURATION)
+    gameDuration: 170, // playable timer before the final no-blocking countdown window
+    noBlockDuration: 10, // last N seconds: no-blocking phase + spoken countdown (also phase boundary)
+    transitionTime: 60, // typical break between games (manual timing)
+    hasNoBlockPhase: true,
+    announcementTimes: [
+      120, 90, 60, 30, 20, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+    ],
+  },
+  [GameFormat.DOUBLE]: {
+    gameDuration: 1200, // 20 minutes
+    noBlockDuration: 0, // No no-block phase for continuous play
+    transitionTime: 60, // 1 minute
+    hasNoBlockPhase: false,
+    announcementTimes: [
+      1080, // 18 minutes (2 min remaining)
+      900,  // 15 minutes (5 min remaining)
+      600,  // 10 minutes (10 min remaining)
+      300,  // 5 minutes (15 min remaining)
+      180,  // 3 minutes (17 min remaining)
+      60,   // 1 minute (19 min remaining)
+      30,   // 30 seconds
+      10,   // 10 seconds
+      5, 4, 3, 2, 1, 0 // Final countdown
+    ],
+  },
+  [GameFormat.EXTENDED]: {
+    gameDuration: 2100, // 35 minutes (middle of 30-40 range)
+    noBlockDuration: 0, // No no-block phase for continuous play
+    transitionTime: 60, // 1 minute
+    hasNoBlockPhase: false,
+    announcementTimes: [
+      1800, // 30 minutes (5 min remaining)
+      1500, // 25 minutes (10 min remaining)
+      1200, // 20 minutes (15 min remaining)
+      900,  // 15 minutes (20 min remaining)
+      600,  // 10 minutes (25 min remaining)
+      300,  // 5 minutes (30 min remaining)
+      180,  // 3 minutes
+      60,   // 1 minute
+      30,   // 30 seconds
+      10,   // 10 seconds
+      5, 4, 3, 2, 1, 0 // Final countdown
+    ],
+  },
+};
+
+// Default timer configuration (legacy 3-minute round + 10s no-blocking countdown).
 export const DEFAULT_TIMER_CONFIG = {
-  ROUND_DURATION: 180, // 3 minutes in seconds
+  ROUND_DURATION: 180,
   NO_BLOCKING_START: 10, // Start "no blocking" countdown at 10 seconds
   ANNOUNCEMENT_TIMES: [
     120, // 2 minutes until no blocking
