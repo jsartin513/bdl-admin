@@ -59,64 +59,87 @@ export default function DodgeballTimer({
     };
   }, [audioConfig]);
 
-  // Generate announcements based on current game format and settings
+  // Generate announcements based on current game format and settings (seconds remaining on timer)
   const generateAnnouncements = useCallback((): AnnouncementConfig[] => {
     const announcements: AnnouncementConfig[] = [];
-    const announcementTimes = formatConfig.announcementTimes;
 
-    // Generate announcements based on format config
-    announcementTimes.forEach(time => {
-      if (formatConfig.hasNoBlockPhase && time <= formatConfig.noBlockDuration) {
-        // No-blocking phase announcements
-        if (time === formatConfig.noBlockDuration) {
-          announcements.push({
-            time,
-            text: STANDARD_ANNOUNCEMENTS.NO_BLOCKING_IN,
-            type: AnnouncementType.NO_BLOCKING_WARNING,
-            priority: 5
-          });
-        } else if (time > 0) {
-          announcements.push({
-            time,
-            text: `${time}`,
-            type: AnnouncementType.FINAL_COUNTDOWN,
-            priority: 5
-          });
-        }
-      } else {
-        // Time warning announcements (for longer formats or before no-block phase)
-        const minutesRemaining = Math.floor(time / 60);
-        const secondsRemaining = time % 60;
-        let text = '';
-        
+    // Standard dodgeball round: scripted time-until-no-blocking cues (legacy UX)
+    if (gameFormat === GameFormat.STANDARD) {
+      announcements.push({
+        time: 120,
+        text: STANDARD_ANNOUNCEMENTS.TWO_MINUTES,
+        type: AnnouncementType.TIME_WARNING,
+        priority: 3,
+      });
+      announcements.push({
+        time: 90,
+        text: STANDARD_ANNOUNCEMENTS.NINETY_SECONDS,
+        type: AnnouncementType.TIME_WARNING,
+        priority: 3,
+      });
+      announcements.push({
+        time: 60,
+        text: STANDARD_ANNOUNCEMENTS.ONE_MINUTE,
+        type: AnnouncementType.TIME_WARNING,
+        priority: 3,
+      });
+      announcements.push({
+        time: 30,
+        text: STANDARD_ANNOUNCEMENTS.THIRTY_SECONDS,
+        type: AnnouncementType.TIME_WARNING,
+        priority: 3,
+      });
+      announcements.push({
+        time: 20,
+        text: STANDARD_ANNOUNCEMENTS.TWENTY_SECONDS,
+        type: AnnouncementType.TIME_WARNING,
+        priority: 3,
+      });
+      announcements.push({
+        time: 13,
+        text: STANDARD_ANNOUNCEMENTS.NO_BLOCKING_IN,
+        type: AnnouncementType.NO_BLOCKING_WARNING,
+        priority: 5,
+      });
+      for (let t = 12; t >= 1; t--) {
+        announcements.push({
+          time: t,
+          text: String(t),
+          type: AnnouncementType.FINAL_COUNTDOWN,
+          priority: 5,
+        });
+      }
+    } else {
+      for (const time of formatConfig.announcementTimes) {
+        if (time <= 0) continue
+        const minutesRemaining = Math.floor(time / 60)
+        const secondsRemaining = time % 60
+        let text = ''
         if (minutesRemaining > 0) {
-          text = `${minutesRemaining} minute${minutesRemaining > 1 ? 's' : ''} remaining`;
+          text = `${minutesRemaining} minute${minutesRemaining > 1 ? 's' : ''} remaining`
         } else if (secondsRemaining > 0) {
-          text = `${secondsRemaining} second${secondsRemaining > 1 ? 's' : ''} remaining`;
+          text = `${secondsRemaining} second${secondsRemaining > 1 ? 's' : ''} remaining`
         } else {
-          text = 'Time up!';
+          text = 'Time up!'
         }
-
         announcements.push({
           time,
           text,
           type: time <= 10 ? AnnouncementType.FINAL_COUNTDOWN : AnnouncementType.TIME_WARNING,
-          priority: time <= 10 ? 5 : 3
-        });
+          priority: time <= 10 ? 5 : 3,
+        })
       }
-    });
+    }
 
-    // End buzzer
     announcements.push({
       time: 0,
-      text: '', // No text, just buzzer
+      text: '',
       type: AnnouncementType.END,
-      priority: 10
+      priority: 10,
     });
 
-    // Sort by time (descending) so earlier announcements come first
     return announcements.sort((a, b) => b.time - a.time);
-  }, [formatConfig]);
+  }, [gameFormat, formatConfig]);
 
   // Initialize announcements
   useEffect(() => {
@@ -148,15 +171,15 @@ export default function DodgeballTimer({
       const newTime = Math.max(0, prevState.currentTime - 1);
       let newPhase = prevState.phase;
 
-      // Determine phase based on time remaining and format config
+      // Phases:
+      // - DOUBLE/EXTENDED have no blocking phase → stay GAME_ACTIVE until the end.
+      // - STANDARD: GAME_ACTIVE until the last noBlockDuration seconds → NO_BLOCKING countdown.
       if (newTime <= 0) {
-        newPhase = TimerPhase.FINISHED;
+        newPhase = TimerPhase.FINISHED
       } else if (formatConfig.hasNoBlockPhase && newTime <= formatConfig.noBlockDuration) {
-        newPhase = TimerPhase.NO_BLOCKING;
-      } else if (prevState.phase === TimerPhase.READY && prevState.isRunning) {
-        newPhase = TimerPhase.GAME_ACTIVE;
-      } else if (prevState.phase === TimerPhase.GAME_ACTIVE && newTime > formatConfig.noBlockDuration) {
-        newPhase = TimerPhase.GAME_ACTIVE;
+        newPhase = TimerPhase.NO_BLOCKING
+      } else {
+        newPhase = TimerPhase.GAME_ACTIVE
       }
 
       // Check for announcements at this time
@@ -182,7 +205,7 @@ export default function DodgeballTimer({
         isRunning: newTime > 0 && newPhase !== TimerPhase.FINISHED
       };
     });
-  }, [announcements, onTimerComplete, playAnnouncement]);
+  }, [announcements, onTimerComplete, playAnnouncement, formatConfig]);
 
   // Start timer effect
   useEffect(() => {

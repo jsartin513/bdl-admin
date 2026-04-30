@@ -16,9 +16,9 @@ export enum TimerPhase {
 }
 
 export enum GameFormat {
-  STANDARD = 'standard',     // 4 min game + 1 min no-block
-  DOUBLE = 'double',         // 20 min continuous
-  EXTENDED = 'extended'      // 30-40 min continuous
+  STANDARD = 'standard', // Legacy ~3-minute round + 10s no-block countdown
+  DOUBLE = 'double',       // 20 min continuous
+  EXTENDED = 'extended', // 30-40 min continuous
 }
 
 export interface AnnouncementConfig {
@@ -91,18 +91,13 @@ export interface GameFormatConfig {
 
 export const GAME_FORMAT_CONFIGS: Record<GameFormat, GameFormatConfig> = {
   [GameFormat.STANDARD]: {
-    gameDuration: 240, // 4 minutes
-    noBlockDuration: 60, // 1 minute
-    transitionTime: 60, // 1 minute
+    // Round length = gameDuration + noBlockDuration (defaults to DEFAULT_TIMER_CONFIG.ROUND_DURATION)
+    gameDuration: 170, // playable timer before the final no-blocking countdown window
+    noBlockDuration: 10, // last N seconds: no-blocking phase + spoken countdown (also phase boundary)
+    transitionTime: 60, // typical break between games (manual timing)
     hasNoBlockPhase: true,
     announcementTimes: [
-      120, // 2 minutes until no blocking
-      90,  // 90 seconds until no blocking
-      60,  // 1 minute until no blocking
-      30,  // 30 seconds until no blocking
-      20,  // 20 seconds until no blocking
-      10,  // "no blocking in..." then countdown
-      9, 8, 7, 6, 5, 4, 3, 2, 1, 0 // Final countdown
+      120, 90, 60, 30, 20, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
     ],
   },
   [GameFormat.DOUBLE]: {
@@ -143,9 +138,9 @@ export const GAME_FORMAT_CONFIGS: Record<GameFormat, GameFormatConfig> = {
   },
 };
 
-// Default timer configuration mirrors the standard game format.
+// Default timer configuration (legacy 3-minute round + 10s no-blocking countdown).
 export const DEFAULT_TIMER_CONFIG = {
-  ROUND_DURATION: 300, // 4 minutes + 1 minute no-blocking
+  ROUND_DURATION: 180,
   NO_BLOCKING_START: 10, // Start "no blocking" countdown at 10 seconds
   ANNOUNCEMENT_TIMES: [
     120, // 2 minutes until no blocking

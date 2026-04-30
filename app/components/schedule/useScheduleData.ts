@@ -9,6 +9,8 @@ export interface UseScheduleDataOptions {
   league?: string | null;
   /** Optional Google Sheets ID for the live API */
   sheetId?: string | null;
+  /** Skip fetching (e.g. waiting on Drive league list before we have sheetId) */
+  skipScheduleFetch?: boolean;
   parseOptions?: ParseScheduleOptions;
   onError?: (error: Error) => void;
 }
@@ -31,23 +33,29 @@ export function useScheduleData({
   selectedWeek,
   league = null,
   sheetId = null,
+  skipScheduleFetch = false,
   parseOptions = {},
   onError,
 }: UseScheduleDataOptions): UseScheduleDataResult {
   const [games, setGames] = useState<Game[]>([]);
   const [teamStats, setTeamStats] = useState<Record<string, TeamStats>>({});
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
-  const [loading, setLoading] = useState(true); // Start with true for immediate loading indication
+  const [loading, setLoading] = useState(() => !skipScheduleFetch)
   const [error, setError] = useState<string | null>(null);
 
   // Memoize parseOptions to prevent unnecessary re-renders
-  const memoizedParseOptions = useMemo(() => parseOptions, [
-    parseOptions?.includeHomeAway,
-    parseOptions?.includeMatchups,
-    parseOptions?.detectCourtConflicts,
-  ]);
+  const memoizedParseOptions = useMemo(() => parseOptions, [parseOptions]);
 
   const fetchSchedule = useCallback(async () => {
+    if (skipScheduleFetch) {
+      setLoading(false);
+      setError(null);
+      setGames([]);
+      setTeamStats({});
+      setConflicts([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -88,11 +96,22 @@ export function useScheduleData({
     } finally {
       setLoading(false);
     }
-  }, [apiEndpoint, selectedWeek, league, sheetId, memoizedParseOptions, onError]);
+  }, [apiEndpoint, selectedWeek, league, sheetId, skipScheduleFetch, memoizedParseOptions, onError]);
+
+  // When gated by skipScheduleFetch we must not spin forever showing LoadingState forever.
+  useEffect(() => {
+    if (!skipScheduleFetch) return;
+    setLoading(false);
+    setError(null);
+    setGames([]);
+    setTeamStats({});
+    setConflicts([]);
+  }, [skipScheduleFetch]);
 
   useEffect(() => {
+    if (skipScheduleFetch) return;
     fetchSchedule();
-  }, [fetchSchedule]);
+  }, [fetchSchedule, skipScheduleFetch]);
 
   return {
     games,

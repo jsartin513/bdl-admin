@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   GameCard,
   LoadingState,
@@ -42,16 +42,27 @@ export default function SchedulesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const scheduleReady =
+    !loadingSheets && !sheetsError && selectedSheetId.length > 0 && sheets.length > 0
+
+  const scheduleParseOptions = useMemo(
+    () => ({
+      includeHomeAway: true,
+      includeMatchups: true,
+      detectCourtConflicts: true,
+    }),
+    []
+  )
+
   const { games, teamStats, conflicts, loading, error, refetch } = useScheduleData({
     apiEndpoint: '/api/schedules-live',
     selectedWeek,
     sheetId: selectedSheetId || null,
-    parseOptions: {
-      includeHomeAway: true,
-      includeMatchups: true,
-      detectCourtConflicts: true,
-    },
+    skipScheduleFetch: !scheduleReady,
+    parseOptions: scheduleParseOptions,
   })
+
+  const scheduleContentVisible = scheduleReady && !loading && !error
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -94,19 +105,19 @@ export default function SchedulesPage() {
           <button
             type="button"
             onClick={() => refetch()}
-            disabled={loading}
+            disabled={!scheduleReady || loading}
             className="px-4 py-2 rounded-md border border-gray-300 bg-white font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
 
-        {loading && <LoadingState />}
+        {(loadingSheets || (scheduleReady && loading)) && <LoadingState />}
 
-        {error && <ErrorState error={error} />}
+        {error && scheduleReady && <ErrorState error={error} />}
       </div>
 
-      {!loading && !error && (
+      {scheduleContentVisible && (
         <>
           <TeamStatsCards
             teamStats={Object.entries(teamStats).map(([teamName, stats]) => ({

@@ -10,7 +10,7 @@ import {
 describe('Timer Types and Constants', () => {
   describe('DEFAULT_TIMER_CONFIG', () => {
     it('should have correct round duration', () => {
-      expect(DEFAULT_TIMER_CONFIG.ROUND_DURATION).toBe(300); // 4 minutes + 1 minute no-blocking
+      expect(DEFAULT_TIMER_CONFIG.ROUND_DURATION).toBe(180); // Legacy 3-minute round + 10s no-block countdown
     });
 
     it('should have correct no blocking start time', () => {

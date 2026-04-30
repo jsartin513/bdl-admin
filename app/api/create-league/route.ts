@@ -41,8 +41,11 @@ function buildHeadToHeadCellFormula(
   const parts = weekNames.map((wk) => {
     const q = `'${escapeSheetTitleForFormula(wk)}'`
     return (
-      `(SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${rowTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${colTeamAbs}),--(${q}!$C$2:$C$${maxRow}>${q}!$E$2:$E$${maxRow}))` +
-      `+SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${colTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${rowTeamAbs}),--(${q}!$E$2:$E$${maxRow}>${q}!$C$2:$C$${maxRow}))`
+      '(' +
+      `SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${rowTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${colTeamAbs}),--(${q}!$C$2:$C$${maxRow}>${q}!$E$2:$E$${maxRow}))` +
+      '+' +
+      `SUMPRODUCT(--(${q}!$B$2:$B$${maxRow}=${colTeamAbs}),--(${q}!$D$2:$D$${maxRow}=${rowTeamAbs}),--(${q}!$E$2:$E$${maxRow}>${q}!$C$2:$C$${maxRow}))` +
+      ')'
     )
   })
   return `=${parts.join('+')}`
@@ -169,27 +172,23 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     ])
   }
 
-  // Add standings display formulas (rows 3-8 for 6 teams)
-  const endRow = startRow + teams.length - 1 // Row 22 for 6 teams
-  const cRng = `C${startRow}:C${endRow}`
-  for (let rank = 1; rank <= teams.length; rank++) {
-    const row = 2 + rank // Row 3, 4, 5, 6, 7, 8
+  // Standings leaderboard (sheet rows 3–8): must run after team rows so LARGE/MATCH refs point at B17+:E…
+  const nt = teams.length
+  const teamBlockEndSheetRow = startRow + nt - 1
+  const cRng = `C${startRow}:C${teamBlockEndSheetRow}`
+  for (let rank = 1; rank <= nt; rank++) {
+    const sheetRow = 2 + rank
+    const idx = sheetRow - 1
     const largeK = `ROUND(LARGE(${cRng},${rank}),8)`
-    const teamNameFormula = `=INDEX(A${startRow}:A${endRow},MATCH(${largeK},${cRng},0))`
-    const winsFormula = `=INDEX(B${startRow}:B${endRow},MATCH(${largeK},${cRng},0))`
-    const lossesFormula = `=INDEX(E${startRow}:E${endRow},MATCH(${largeK},${cRng},0))`
-    const diffFormula = `=B${row}-C${row}`
-    
-    standingsData[row] = [teamNameFormula, winsFormula, lossesFormula, diffFormula, '']
+    const teamNameFormula = `=INDEX(A${startRow}:A${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const winsDisplay = `=INDEX(B${startRow}:B${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const lossesDisplay = `=INDEX(E${startRow}:E${teamBlockEndSheetRow},MATCH(${largeK},${cRng},0))`
+    const diffFormula = `=B${sheetRow}-C${sheetRow}`
+    standingsData[idx] = [teamNameFormula, winsDisplay, lossesDisplay, diffFormula, '']
   }
 
-  // Head-to-head matrix (below team block): same score columns as wins (C/E); diagonal "—"
-  const nt = teams.length
+  // Head-to-head matrix: row numbers computed from standingsData length so they stay aligned with spacer rows above
   const h2hMaxScan = 500
-  const titleRow = startRow + nt + 2
-  const headerRow = titleRow + 1
-  const dataStart = headerRow + 1
-
   standingsData.push([])
   standingsData.push([
     'Head-to-head wins (row vs column; higher score wins)',
@@ -198,11 +197,12 @@ function createLeagueWorkbook(data: CreateLeagueRequest) {
     '',
     '',
   ])
-
+  const headerRow = standingsData.length + 1
   const h2hHead: (string | number)[] = ['']
   for (const t of teams) h2hHead.push(t)
   standingsData.push(h2hHead)
 
+  const dataStart = standingsData.length + 1
   for (let i = 0; i < nt; i++) {
     const excelDataRow = dataStart + i
     const rowCell = `$A${excelDataRow}`

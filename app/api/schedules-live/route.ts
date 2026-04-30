@@ -113,6 +113,37 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    if (week === 'weeks5-6') {
+      const paired = weekTabs
+        .map((name, idx) => ({
+          name,
+          weekNum: parseInt(availableWeeks[idx] || '0', 10),
+        }))
+        .filter((x) => x.weekNum >= 5 && x.weekNum <= 6)
+        .sort((a, b) => a.weekNum - b.weekNum)
+
+      if (paired.length === 0) {
+        return NextResponse.json(
+          { error: 'No week 5–6 tabs found in this spreadsheet', availableWeeks },
+          { status: 404 }
+        )
+      }
+
+      const weekCsvs: string[] = []
+      for (const p of paired) {
+        const raw = await fetchTabCsv(sheetId, p.name)
+        weekCsvs.push(processWeekCsv(raw, p.weekNum))
+      }
+
+      return NextResponse.json({
+        success: true,
+        week,
+        sheetName: 'Weeks 5-6 Combined',
+        availableWeeks,
+        csvData: combineCsvWeeks(weekCsvs),
+      })
+    }
+
     // Single week — find matching tab
     const tabName = weekTabs.find((name) => {
       const m = name.match(/(\d+)/)
