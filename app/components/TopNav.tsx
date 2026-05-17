@@ -10,6 +10,9 @@ export default function TopNav() {
         <Link href="/create-league" className="hover:underline">
           Create League
         </Link>
+        <Link href="/open-gym" className="hover:underline">
+          Open Gym
+        </Link>
       </div>
     </nav>
   );
