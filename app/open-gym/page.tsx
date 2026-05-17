@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { getConfigs, describeConfig, sizeLabel, type SplitConfig } from './splits'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
@@ -29,46 +30,6 @@ const ROTATION_META: Record<number, { range: string; perfect: string }> = {
   4: { range: '20–32', perfect: '20 · 24 · 28 · 32' },
   5: { range: '25–40', perfect: '25 · 30 · 35 · 40' },
   6: { range: '30–48', perfect: '30 · 36 · 42 · 48' },
-}
-
-// ── Team split logic ──────────────────────────────────────────────────────
-
-interface SplitConfig {
-  numTeams: number
-  baseSize: number
-  large: number
-  small: number
-  score: number
-}
-
-function getConfigs(n: number): SplitConfig[] {
-  if (n < 10 || n > 48) return []
-  const configs: SplitConfig[] = []
-  for (const t of [2, 3, 4, 5, 6]) {
-    const q = Math.floor(n / t)
-    const r = n % t
-    const maxSize = r > 0 ? q + 1 : q
-    if (q < 5 || maxSize > 8) continue
-    configs.push({
-      numTeams: t,
-      baseSize: q,
-      large: r,
-      small: t - r,
-      score: Math.abs(n / t - 6) - 0.05 * t,
-    })
-  }
-  return configs.sort((a, b) => a.score - b.score)
-}
-
-function describeConfig(c: SplitConfig): string {
-  if (c.large === 0) return `${c.numTeams} teams of ${c.baseSize}`
-  return `${c.large}×${c.baseSize + 1} + ${c.small}×${c.baseSize}`
-}
-
-function sizeLabel(c: SplitConfig): string {
-  return c.large === 0
-    ? `${c.baseSize}v${c.baseSize}`
-    : `${c.baseSize}–${c.baseSize + 1}v${c.baseSize}–${c.baseSize + 1}`
 }
 
 // ── Team splits view ──────────────────────────────────────────────────────
@@ -108,8 +69,9 @@ function TeamSplitsView() {
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-3">Find split for tonight</h2>
         <div className="flex items-center gap-3 mb-4">
-          <label className="text-gray-700 font-medium">Players tonight:</label>
+          <label htmlFor="player-count" className="text-gray-700 font-medium">Players tonight:</label>
           <input
+            id="player-count"
             type="number"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -156,7 +118,7 @@ function TeamSplitsView() {
             </thead>
             <tbody>
               {configs.map((c, i) => (
-                <tr key={i} className={i === 0 ? 'bg-green-50' : 'even:bg-gray-50'}>
+                <tr key={c.numTeams} className={i === 0 ? 'bg-green-50' : 'even:bg-gray-50'}>
                   <td className="px-3 py-2">{c.numTeams}</td>
                   <td className="px-3 py-2">{describeConfig(c)}</td>
                   <td className="px-3 py-2">{sizeLabel(c)}</td>
