@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { getConfigs, describeConfig, sizeLabel, type SplitConfig } from './splits'
+import { getConfigs, describeConfig, sizeLabel } from './splits'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
