@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { getConfigs, describeConfig, sizeLabel } from './splits'
+import { type Schedule, SCHEDULES_BY_TEAM_COUNT } from './schedule-data'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
@@ -181,44 +182,133 @@ function TeamSplitsView() {
   )
 }
 
-// ── Team sheet view ───────────────────────────────────────────────────────
+// ── Schedule view ─────────────────────────────────────────────────────────
 
-function TeamSheet({ numTeams }: { numTeams: number }) {
-  const meta = ROTATION_META[numTeams]
+function ScheduleTable({ schedule }: { schedule: Schedule }) {
+  let overall = 1
   return (
-    <div>
-      <div className="mb-4 print:mb-2">
-        <h2 className="text-xl font-semibold text-gray-900">{numTeams}-Team Rotation</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Works well for {meta.range} players · Perfect splits: {meta.perfect}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Lines 7–8 (faded) for 7v7 / 8v8 · S/T = she/they count, H = he/him count
-        </p>
-      </div>
-
-      <div className="flex gap-3">
-        {Array.from({ length: numTeams }).map((_, i) => (
-          <div key={i} className="flex-1 border border-gray-400 rounded-lg p-3 min-w-0">
-            <div className="text-sm font-semibold text-center mb-3">Team {i + 1}</div>
-
-            {Array.from({ length: 6 }).map((_, j) => (
-              <div key={j} className="h-6 border-b border-gray-400 mb-2" />
-            ))}
-            {Array.from({ length: 2 }).map((_, j) => (
-              <div key={j} className="h-6 border-b border-gray-200 mb-2 opacity-40" />
-            ))}
-
-            <div className="mt-2 bg-gray-100 rounded px-2 py-1 flex gap-4 text-xs text-gray-500">
-              <span>S/T ___</span>
-              <span>H ___</span>
-            </div>
+    <div className="space-y-5">
+      {schedule.sections.map((section) => (
+        <div key={section.label}>
+          <div className="bg-blue-50 border border-blue-200 rounded-t-lg px-3 py-1.5 text-sm font-semibold text-blue-900">
+            {section.label}
           </div>
-        ))}
-      </div>
+          <table className="w-full text-sm border border-t-0 border-blue-200 rounded-b-lg overflow-hidden">
+            <thead className="bg-blue-700 text-white">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold w-14">Overall</th>
+                {schedule.showSectionCol && (
+                  <th className="px-3 py-2 text-left font-semibold w-20">Section</th>
+                )}
+                <th className="px-3 py-2 text-left font-semibold w-20">Round</th>
+                <th className="px-3 py-2 text-left font-semibold">Home</th>
+                <th className="px-3 py-2 text-left font-semibold">Away</th>
+                <th className="px-3 py-2 text-left font-semibold text-green-200">Winner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {section.games.map((game, gi) => {
+                const row = overall++
+                return (
+                  <tr key={gi} className={gi % 2 === 1 ? 'bg-blue-50' : 'bg-white'}>
+                    <td className="px-3 py-1.5 text-gray-500 tabular-nums">{row}</td>
+                    {schedule.showSectionCol && (
+                      <td className="px-3 py-1.5 text-gray-500">{game.section}</td>
+                    )}
+                    <td className="px-3 py-1.5 text-gray-500 tabular-nums">{game.round}</td>
+                    <td className="px-3 py-1.5 font-medium text-gray-900">{game.home}</td>
+                    <td className="px-3 py-1.5 font-medium text-gray-900">{game.away}</td>
+                    <td className="px-3 py-1.5 bg-green-50 text-green-900 min-w-[6rem]" />
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   )
 }
+
+// ── Team sheet view ───────────────────────────────────────────────────────
+
+type TeamView = 'players' | string
+
+function TeamSheet({ numTeams }: { numTeams: number }) {
+  const meta = ROTATION_META[numTeams]
+  const { schedules } = SCHEDULES_BY_TEAM_COUNT[numTeams]
+  const [view, setView] = useState<TeamView>('players')
+  const activeSchedule = schedules.find((s) => s.key === view) ?? null
+
+  const subTabs: { key: TeamView; label: string }[] = [
+    { key: 'players', label: 'Assign Players' },
+    ...schedules.map((s) => ({ key: s.key, label: s.label.replace(/^\d+-Team — ?/, '') || s.label })),
+  ]
+
+  return (
+    <div>
+      {/* Sub-tab bar */}
+      <div className="flex flex-wrap gap-2 mb-5 print:hidden">
+        {subTabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setView(t.key)}
+            className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+              t.key === view
+                ? 'bg-blue-700 text-white border-blue-700'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'players' ? (
+        <>
+          <div className="mb-4 print:mb-2">
+            <h2 className="text-xl font-semibold text-gray-900">{numTeams}-Team Rotation</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Works well for {meta.range} players · Perfect splits: {meta.perfect}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Lines 7–8 (faded) for 7v7 / 8v8 · S/T = she/they count, H = he/him count
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {Array.from({ length: numTeams }).map((_, i) => (
+              <div key={i} className="flex-1 border border-gray-400 rounded-lg p-3 min-w-0">
+                <div className="text-sm font-semibold text-center mb-3">Team {i + 1}</div>
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <div key={j} className="h-6 border-b border-gray-400 mb-2" />
+                ))}
+                {Array.from({ length: 2 }).map((_, j) => (
+                  <div key={j} className="h-6 border-b border-gray-200 mb-2 opacity-40" />
+                ))}
+                <div className="mt-2 bg-gray-100 rounded px-2 py-1 flex gap-4 text-xs text-gray-500">
+                  <span>S/T ___</span>
+                  <span>H ___</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : activeSchedule ? (
+        <>
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">{activeSchedule.label} Schedule</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Works well for {meta.range} players · fill in the Winner column as you play
+            </p>
+          </div>
+          <ScheduleTable schedule={activeSchedule} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 
 // ── Attendance view ───────────────────────────────────────────────────────
 
