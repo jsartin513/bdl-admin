@@ -3,10 +3,12 @@
 import { useState } from 'react'
 import { getConfigs, describeConfig, sizeLabel } from './splits'
 import { type Schedule, SCHEDULES_BY_TEAM_COUNT } from './schedule-data'
+import { TrackTonight } from './tracker'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
 type Tab =
+  | 'Track Tonight'
   | 'Team Splits'
   | '2 Teams'
   | '3 Teams'
@@ -16,6 +18,7 @@ type Tab =
   | 'Attendance'
 
 const TABS: Tab[] = [
+  'Track Tonight',
   'Team Splits',
   '2 Teams',
   '3 Teams',
@@ -360,10 +363,10 @@ function AttendanceSheet() {
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function OpenGymPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('Team Splits')
-  const isPrintTab = activeTab !== 'Team Splits'
+  const [activeTab, setActiveTab] = useState<Tab>('Track Tonight')
+  const isPrintTab = activeTab !== 'Team Splits' && activeTab !== 'Track Tonight'
   const numTeams =
-    activeTab !== 'Team Splits' && activeTab !== 'Attendance'
+    activeTab !== 'Track Tonight' && activeTab !== 'Team Splits' && activeTab !== 'Attendance'
       ? parseInt(activeTab, 10)
       : null
 
@@ -392,8 +395,12 @@ export default function OpenGymPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
               tab === activeTab
-                ? 'bg-gray-800 text-white border-gray-800'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? tab === 'Track Tonight'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-gray-800 text-white border-gray-800'
+                : tab === 'Track Tonight'
+                  ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
             }`}
           >
             {tab}
@@ -402,6 +409,7 @@ export default function OpenGymPage() {
       </div>
 
       {/* Content */}
+      {activeTab === 'Track Tonight' && <TrackTonight />}
       {activeTab === 'Team Splits' && <TeamSplitsView />}
       {numTeams !== null && <TeamSheet numTeams={numTeams} />}
       {activeTab === 'Attendance' && <AttendanceSheet />}
