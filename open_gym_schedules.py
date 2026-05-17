@@ -43,7 +43,7 @@ DEFAULT_IN = HERE / "Open Gym Schedules.xlsx"
 DEFAULT_OUT = HERE / "Open Gym Schedules (Print).xlsx"
 
 # ---------------------------------------------------------------------------
-# Styles (patterns mirror schedule_data/build_team_schedules.py colors/fonts)
+# Styles — colors and fonts consistent with other BDL admin Excel outputs
 # ---------------------------------------------------------------------------
 
 FILL_HEADER = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -407,6 +407,12 @@ def main() -> None:
     args = parser.parse_args()
     input_path = args.input.resolve()
     output_path = args.output.resolve()
+
+    if not input_path.exists():
+        raise SystemExit(f"Error: input file not found: {input_path}")
+    if not output_path.parent.exists():
+        raise SystemExit(f"Error: output directory does not exist: {output_path.parent}")
+
     build(input_path, output_path)
     print(f"Wrote {output_path}")
 
