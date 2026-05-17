@@ -13,12 +13,6 @@ export default function TopNav() {
         <Link href="/open-gym" className="hover:underline">
           Open Gym
         </Link>
-        <Link href="/timer" className="hover:underline">
-          Round Timer
-        </Link>
-        <Link href="/timer-standalone" className="hover:underline">
-          Standalone Timer
-        </Link>
       </div>
     </nav>
   );
