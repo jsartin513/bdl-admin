@@ -190,38 +190,71 @@ function TeamSplitsView() {
 function ScheduleTable({ schedule }: { schedule: Schedule }) {
   let overall = 1
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 print:space-y-4">
       {schedule.sections.map((section) => (
-        <div key={section.label}>
-          <div className="bg-blue-50 border border-blue-200 rounded-t-lg px-3 py-1.5 text-sm font-semibold text-blue-900">
+        <div key={section.label} className="print:break-inside-avoid">
+          {/* Section header */}
+          <div className="bg-blue-50 border border-blue-200 rounded-t-lg px-3 py-1.5 text-sm font-semibold text-blue-900 [print-color-adjust:exact] print:rounded-none print:border-b-0 print:bg-gray-100 print:text-gray-900">
             {section.label}
           </div>
-          <table className="w-full text-sm border border-t-0 border-blue-200 rounded-b-lg overflow-hidden">
-            <thead className="bg-blue-700 text-white">
+
+          <table className="w-full text-sm border border-t-0 border-blue-200 print:border-gray-400 rounded-b-lg print:rounded-none overflow-hidden print:text-xs">
+            {/* Column header */}
+            <thead className="bg-blue-700 text-white [print-color-adjust:exact] print:bg-gray-800 print:text-white">
               <tr>
-                <th className="px-3 py-2 text-left font-semibold w-14">Overall</th>
+                <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold w-14 border-r border-blue-600 print:border-gray-600">
+                  Overall
+                </th>
                 {schedule.showSectionCol && (
-                  <th className="px-3 py-2 text-left font-semibold w-20">Section</th>
+                  <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold w-20 border-r border-blue-600 print:border-gray-600">
+                    Section
+                  </th>
                 )}
-                <th className="px-3 py-2 text-left font-semibold w-20">Round</th>
-                <th className="px-3 py-2 text-left font-semibold">Home</th>
-                <th className="px-3 py-2 text-left font-semibold">Away</th>
-                <th className="px-3 py-2 text-left font-semibold text-green-200">Winner</th>
+                <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold w-20 border-r border-blue-600 print:border-gray-600">
+                  Round
+                </th>
+                <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold border-r border-blue-600 print:border-gray-600">
+                  Home
+                </th>
+                <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold border-r border-blue-600 print:border-gray-600">
+                  Away
+                </th>
+                <th className="px-3 py-2 print:px-2 print:py-1 text-left font-semibold text-green-200 print:text-white">
+                  Winner
+                </th>
               </tr>
             </thead>
+
             <tbody>
               {section.games.map((game, gi) => {
                 const row = overall++
                 return (
-                  <tr key={gi} className={gi % 2 === 1 ? 'bg-blue-50' : 'bg-white'}>
-                    <td className="px-3 py-1.5 text-gray-500 tabular-nums">{row}</td>
+                  <tr
+                    key={gi}
+                    className={`border-t border-gray-200 print:border-gray-300 ${
+                      gi % 2 === 1
+                        ? 'bg-blue-50 [print-color-adjust:exact] print:bg-gray-50'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <td className="px-3 py-1.5 print:px-2 print:py-1 text-gray-500 tabular-nums border-r border-gray-200 print:border-gray-300">
+                      {row}
+                    </td>
                     {schedule.showSectionCol && (
-                      <td className="px-3 py-1.5 text-gray-500">{game.section}</td>
+                      <td className="px-3 py-1.5 print:px-2 print:py-1 text-gray-500 border-r border-gray-200 print:border-gray-300">
+                        {game.section}
+                      </td>
                     )}
-                    <td className="px-3 py-1.5 text-gray-500 tabular-nums">{game.round}</td>
-                    <td className="px-3 py-1.5 font-medium text-gray-900">{game.home}</td>
-                    <td className="px-3 py-1.5 font-medium text-gray-900">{game.away}</td>
-                    <td className="px-3 py-1.5 bg-green-50 text-green-900 min-w-[6rem]" />
+                    <td className="px-3 py-1.5 print:px-2 print:py-1 text-gray-500 tabular-nums border-r border-gray-200 print:border-gray-300">
+                      {game.round}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-2 print:py-1 font-medium text-gray-900 border-r border-gray-200 print:border-gray-300">
+                      {game.home}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-2 print:py-1 font-medium text-gray-900 border-r border-gray-200 print:border-gray-300">
+                      {game.away}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-2 print:py-1 bg-green-50 [print-color-adjust:exact] print:bg-white min-w-[6rem] print:min-w-[4rem] border-r-2 border-green-200 print:border-gray-300" />
                   </tr>
                 )
               })}
@@ -299,12 +332,29 @@ function TeamSheet({ numTeams }: { numTeams: number }) {
         </>
       ) : activeSchedule ? (
         <>
-          <div className="mb-4">
+          {/* Screen header */}
+          <div className="mb-4 print:hidden">
             <h2 className="text-xl font-semibold text-gray-900">{activeSchedule.label} Schedule</h2>
             <p className="text-sm text-gray-500 mt-0.5">
               Works well for {meta.range} players · fill in the Winner column as you play
             </p>
           </div>
+
+          {/* Print header — hidden on screen */}
+          <div className="hidden print:block mb-4">
+            <div className="flex items-start justify-between mb-1">
+              <h1 className="text-xl font-bold text-gray-900">{activeSchedule.label} Schedule</h1>
+              <div className="text-sm text-gray-600 text-right">
+                <div>Date: ___________</div>
+                <div className="mt-1">Location: ___________</div>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500">
+              Works well for {meta.range} players · Write the winner&apos;s name in the last column after each game.
+            </p>
+            <hr className="mt-2 border-gray-300" />
+          </div>
+
           <ScheduleTable schedule={activeSchedule} />
         </>
       ) : null}
@@ -362,16 +412,29 @@ function AttendanceSheet() {
 
 // ── Page ──────────────────────────────────────────────────────────────────
 
+function numTeamsFromTab(tab: Tab): number | null {
+  if (tab === 'Track Tonight' || tab === 'Team Splits' || tab === 'Attendance') return null
+  const n = parseInt(tab, 10)
+  return isNaN(n) ? null : n
+}
+
 export default function OpenGymPage() {
   const [activeTab, setActiveTab] = useState<Tab>('Track Tonight')
-  const isPrintTab = activeTab !== 'Team Splits' && activeTab !== 'Track Tonight'
-  const numTeams =
-    activeTab !== 'Track Tonight' && activeTab !== 'Team Splits' && activeTab !== 'Attendance'
-      ? parseInt(activeTab, 10)
-      : null
+  const numTeams = numTeamsFromTab(activeTab)
+  const isPrintTab = activeTab === 'Attendance' || numTeams !== null
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl">
+      {/* Print page setup — landscape, tight margins for schedule sheets */}
+      {isPrintTab && (
+        <style>{`
+          @media print {
+            @page { size: landscape; margin: 0.5in; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        `}</style>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <h1 className="text-3xl font-bold text-gray-900">Open Gym</h1>
