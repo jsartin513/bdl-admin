@@ -362,12 +362,31 @@ export const SCHEDULE_6TEAM_WAVES: Schedule = {
   ],
 }
 
+// ── Double-pass short variants ────────────────────────────────────────────
+
+/**
+ * Repeat a schedule's sections twice, labelling each pass so sections stay
+ * distinguishable (e.g. "Pass 1 · Section 1", "Pass 2 · Section 1").
+ */
+function doublePass(base: Schedule): Schedule {
+  const pass = (n: number): ScheduleSection[] =>
+    base.sections.map((s) => ({ ...s, label: `Pass ${n} · ${s.label}` }))
+  return {
+    key: `${base.key}_2x`,
+    label: `${base.label} × 2`,
+    sections: [...pass(1), ...pass(2)],
+  }
+}
+
+export const SCHEDULE_4TEAM_SHORT_2X = doublePass(SCHEDULE_4TEAM_SHORT)
+export const SCHEDULE_5TEAM_SHORT_2X = doublePass(SCHEDULE_5TEAM_SHORT)
+
 // ── Lookup by numTeams ────────────────────────────────────────────────────
 
 export const SCHEDULES_BY_TEAM_COUNT: Record<number, { schedules: Schedule[] }> = {
   2: { schedules: [SCHEDULE_2TEAM] },
   3: { schedules: [SCHEDULE_3TEAM] },
-  4: { schedules: [SCHEDULE_4TEAM_SHORT, SCHEDULE_4TEAM_LONG] },
-  5: { schedules: [SCHEDULE_5TEAM_SHORT, SCHEDULE_5TEAM_LONG] },
+  4: { schedules: [SCHEDULE_4TEAM_SHORT, SCHEDULE_4TEAM_SHORT_2X, SCHEDULE_4TEAM_LONG] },
+  5: { schedules: [SCHEDULE_5TEAM_SHORT, SCHEDULE_5TEAM_SHORT_2X, SCHEDULE_5TEAM_LONG] },
   6: { schedules: [SCHEDULE_6TEAM_WAVES, SCHEDULE_6TEAM_BY_SECTION] },
 }
