@@ -262,7 +262,7 @@ function ScheduleTable({ schedule }: { schedule: Schedule }) {
 
 // ── Team sheet view ───────────────────────────────────────────────────────
 
-type TeamView = 'players' | string
+type TeamView = 'players' | Schedule['key']
 
 function TeamSheet({ numTeams }: { numTeams: number }) {
   const meta = ROTATION_META[numTeams]
@@ -272,7 +272,7 @@ function TeamSheet({ numTeams }: { numTeams: number }) {
 
   const subTabs: { key: TeamView; label: string }[] = [
     { key: 'players', label: 'Assign Players' },
-    ...schedules.map((s) => ({ key: s.key, label: s.label.replace(/^\d+-Team — ?/, '') || s.label })),
+    ...schedules.map((s) => ({ key: s.key, label: s.label.replace(/^\d+-Team(?:\s+—)?\s*/, '') || s.label })),
   ]
 
   return (

@@ -133,7 +133,7 @@ function SchedulePicker({ onSelect }: { onSelect: (key: string) => void }) {
             <div className="flex flex-wrap gap-3">
               {group.schedules.map((s) => {
                 const games = flattenSchedule(s)
-                const sublabel = s.label.replace(/^\d+-Team — ?/, '')
+                const sublabel = s.label.replace(/^\d+-Team(?:\s+—)?\s*/, '')
                 return (
                   <button
                     key={s.key}
