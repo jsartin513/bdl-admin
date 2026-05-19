@@ -70,8 +70,22 @@ interface TrackerState {
 function loadState(): TrackerState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as TrackerState) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as TrackerState
+    const validSchedule = ALL_SCHEDULES.find((s) => s.key === parsed.scheduleKey)
+    if (
+      !validSchedule ||
+      !Array.isArray(parsed.results) ||
+      typeof parsed.currentIdx !== 'number' ||
+      !isFinite(parsed.currentIdx) ||
+      parsed.currentIdx < 0
+    ) {
+      clearState()
+      return null
+    }
+    return parsed
   } catch {
+    clearState()
     return null
   }
 }
@@ -167,8 +181,13 @@ function ScoreEntry({
   isLast: boolean
   canGoBack: boolean
 }) {
-  const awayRef = useRef<HTMLInputElement>(null)
   const homeRef = useRef<HTMLInputElement>(null)
+  const awayRef = useRef<HTMLInputElement>(null)
+
+  // Auto-focus the home score input whenever the current game changes
+  useEffect(() => {
+    homeRef.current?.focus()
+  }, [game.overall])
 
   const homeNum = parseInt(homeScore, 10)
   const awayNum = parseInt(awayScore, 10)
@@ -281,20 +300,19 @@ function ScoreEntry({
 function Scoreboard({
   games,
   results,
-  currentIdx,
   onJump,
 }: {
   games: FlatGame[]
   results: Array<{ homeScore: string; awayScore: string }>
-  currentIdx: number
   onJump: (idx: number) => void
 }) {
-  const played = games.slice(0, currentIdx).filter((_, i) => {
-    const r = results[i]
-    return r && r.homeScore !== '' && r.awayScore !== ''
-  })
+  // Show any game that has a score recorded, regardless of currentIdx so that
+  // navigating back with ← or onJump doesn't hide already-scored games.
+  const scoredEntries = games
+    .map((game, idx) => ({ game, idx, result: results[idx] }))
+    .filter(({ result }) => result && result.homeScore !== '' && result.awayScore !== '')
 
-  if (played.length === 0) return null
+  if (scoredEntries.length === 0) return null
 
   return (
     <div className="w-full max-w-md mx-auto px-4">
@@ -311,9 +329,7 @@ function Scoreboard({
             </tr>
           </thead>
           <tbody>
-            {games.map((game, idx) => {
-              const result = results[idx]
-              if (!result || result.homeScore === '' || result.awayScore === '') return null
+            {scoredEntries.map(({ game, idx, result }) => {
               const hNum = parseInt(result.homeScore, 10)
               const aNum = parseInt(result.awayScore, 10)
               return (
@@ -465,13 +481,12 @@ export function TrackTonight() {
   function selectSchedule(key: string) {
     const s = ALL_SCHEDULES.find((sc) => sc.key === key)!
     const total = flattenSchedule(s).length
-    const state: TrackerState = {
+    setTrackerState({
       scheduleKey: key,
       currentIdx: 0,
       results: Array.from({ length: total }, () => ({ homeScore: '', awayScore: '' })),
-    }
-    setTrackerState(state)
-    saveState(state)
+    })
+    // Persistence is handled exclusively by the useEffect above.
   }
 
   function updateScore(field: 'homeScore' | 'awayScore', value: string) {
@@ -550,7 +565,7 @@ export function TrackTonight() {
       </div>
 
       {/* Scoreboard (past games) */}
-      <Scoreboard games={games} results={results} currentIdx={currentIdx} onJump={jumpTo} />
+      <Scoreboard games={games} results={results} onJump={jumpTo} />
 
       {/* Current game entry */}
       {currentGame && (

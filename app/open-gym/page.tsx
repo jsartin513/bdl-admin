@@ -7,15 +7,12 @@ import { TrackTonight } from './tracker'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
-type Tab =
-  | 'Track Tonight'
-  | 'Team Splits'
-  | '2 Teams'
-  | '3 Teams'
-  | '4 Teams'
-  | '5 Teams'
-  | '6 Teams'
-  | 'Attendance'
+/** Non-numeric tabs — used both to build the tab list and to guard numTeamsFromTab. */
+const NON_NUMERIC_TABS = ['Track Tonight', 'Team Splits', 'Attendance'] as const
+
+type NonNumericTab = (typeof NON_NUMERIC_TABS)[number]
+type TeamTab = '2 Teams' | '3 Teams' | '4 Teams' | '5 Teams' | '6 Teams'
+type Tab = NonNumericTab | TeamTab
 
 const TABS: Tab[] = [
   'Track Tonight',
@@ -409,7 +406,7 @@ function AttendanceSheet() {
 // ── Page ──────────────────────────────────────────────────────────────────
 
 function numTeamsFromTab(tab: Tab): number | null {
-  if (tab === 'Track Tonight' || tab === 'Team Splits' || tab === 'Attendance') return null
+  if ((NON_NUMERIC_TABS as readonly string[]).includes(tab)) return null
   const n = parseInt(tab, 10)
   return isNaN(n) ? null : n
 }
