@@ -2,19 +2,20 @@
 
 import { useState } from 'react'
 import { getConfigs, describeConfig, sizeLabel } from './splits'
+import { type Schedule, SCHEDULES_BY_TEAM_COUNT } from './schedule-data'
+import { TrackTonight } from './tracker'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
-type Tab =
-  | 'Team Splits'
-  | '2 Teams'
-  | '3 Teams'
-  | '4 Teams'
-  | '5 Teams'
-  | '6 Teams'
-  | 'Attendance'
+/** Non-numeric tabs — used both to build the tab list and to guard numTeamsFromTab. */
+const NON_NUMERIC_TABS = ['Track Tonight', 'Team Splits', 'Attendance'] as const
+
+type NonNumericTab = (typeof NON_NUMERIC_TABS)[number]
+type TeamTab = '2 Teams' | '3 Teams' | '4 Teams' | '5 Teams' | '6 Teams'
+type Tab = NonNumericTab | TeamTab
 
 const TABS: Tab[] = [
+  'Track Tonight',
   'Team Splits',
   '2 Teams',
   '3 Teams',
@@ -181,44 +182,179 @@ function TeamSplitsView() {
   )
 }
 
-// ── Team sheet view ───────────────────────────────────────────────────────
+// ── Schedule view ─────────────────────────────────────────────────────────
 
-function TeamSheet({ numTeams }: { numTeams: number }) {
-  const meta = ROTATION_META[numTeams]
+function ScheduleTable({ schedule }: { schedule: Schedule }) {
+  let overall = 1
   return (
-    <div>
-      <div className="mb-4 print:mb-2">
-        <h2 className="text-xl font-semibold text-gray-900">{numTeams}-Team Rotation</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Works well for {meta.range} players · Perfect splits: {meta.perfect}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Lines 7–8 (faded) for 7v7 / 8v8 · S/T = she/they count, H = he/him count
-        </p>
-      </div>
-
-      <div className="flex gap-3">
-        {Array.from({ length: numTeams }).map((_, i) => (
-          <div key={i} className="flex-1 border border-gray-400 rounded-lg p-3 min-w-0">
-            <div className="text-sm font-semibold text-center mb-3">Team {i + 1}</div>
-
-            {Array.from({ length: 6 }).map((_, j) => (
-              <div key={j} className="h-6 border-b border-gray-400 mb-2" />
-            ))}
-            {Array.from({ length: 2 }).map((_, j) => (
-              <div key={j} className="h-6 border-b border-gray-200 mb-2 opacity-40" />
-            ))}
-
-            <div className="mt-2 bg-gray-100 rounded px-2 py-1 flex gap-4 text-xs text-gray-500">
-              <span>S/T ___</span>
-              <span>H ___</span>
-            </div>
+    <div className="space-y-4">
+      {schedule.sections.map((section) => (
+        <div key={section.label} className="print:break-inside-avoid border border-gray-300 rounded-lg overflow-hidden">
+          {/* Section header */}
+          <div className="bg-gray-100 border-b border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 [print-color-adjust:exact]">
+            {section.label}
           </div>
-        ))}
-      </div>
+
+          <table className="w-full text-sm">
+            <thead className="bg-gray-800 text-white [print-color-adjust:exact]">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold w-16 border-r border-gray-600">
+                  Overall
+                </th>
+                {schedule.showSectionCol && (
+                  <th className="px-3 py-2 text-left font-semibold w-20 border-r border-gray-600">
+                    Section
+                  </th>
+                )}
+                <th className="px-3 py-2 text-left font-semibold w-20 border-r border-gray-600">
+                  Round
+                </th>
+                <th className="px-3 py-2 text-left font-semibold border-r border-gray-600">
+                  Home
+                </th>
+                <th className="px-3 py-2 text-left font-semibold border-r border-gray-600">
+                  Away
+                </th>
+                <th className="px-3 py-2 text-left font-semibold text-green-300">
+                  Winner
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {section.games.map((game, gi) => {
+                const row = overall++
+                return (
+                  <tr
+                    key={gi}
+                    className={`border-t border-gray-200 ${gi % 2 === 1 ? 'bg-gray-50 [print-color-adjust:exact]' : 'bg-white'}`}
+                  >
+                    <td className="px-3 py-2 text-gray-400 tabular-nums border-r border-gray-200 text-xs">
+                      {row}
+                    </td>
+                    {schedule.showSectionCol && (
+                      <td className="px-3 py-2 text-gray-500 border-r border-gray-200">
+                        {game.section}
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-gray-500 tabular-nums border-r border-gray-200">
+                      {game.round}
+                    </td>
+                    <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-200">
+                      {game.home}
+                    </td>
+                    <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-200">
+                      {game.away}
+                    </td>
+                    <td className="px-3 py-2 bg-green-50 [print-color-adjust:exact] min-w-[7rem] border-r border-green-100 text-green-800 text-xs italic">
+                      &nbsp;
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   )
 }
+
+// ── Team sheet view ───────────────────────────────────────────────────────
+
+type TeamView = 'players' | Schedule['key']
+
+function TeamSheet({ numTeams }: { numTeams: number }) {
+  const meta = ROTATION_META[numTeams]
+  const { schedules } = SCHEDULES_BY_TEAM_COUNT[numTeams]
+  const [view, setView] = useState<TeamView>('players')
+  const activeSchedule = schedules.find((s) => s.key === view) ?? null
+
+  const subTabs: { key: TeamView; label: string }[] = [
+    { key: 'players', label: 'Assign Players' },
+    ...schedules.map((s) => ({ key: s.key, label: s.label.replace(/^\d+-Team(?:\s+—)?\s*/, '') || s.label })),
+  ]
+
+  return (
+    <div>
+      {/* Sub-tab bar */}
+      <div className="flex flex-wrap gap-2 mb-5 print:hidden">
+        {subTabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setView(t.key)}
+            className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+              t.key === view
+                ? 'bg-blue-700 text-white border-blue-700'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'players' ? (
+        <>
+          <div className="mb-4 print:mb-2">
+            <h2 className="text-xl font-semibold text-gray-900">{numTeams}-Team Rotation</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Works well for {meta.range} players · Perfect splits: {meta.perfect}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Lines 7–8 (faded) for 7v7 / 8v8 · S/T = she/they count, H = he/him count
+            </p>
+          </div>
+          <div className="flex gap-3">
+            {Array.from({ length: numTeams }).map((_, i) => (
+              <div key={i} className="flex-1 border border-gray-400 rounded-lg p-3 min-w-0">
+                <div className="text-sm font-semibold text-center mb-3">Team {i + 1}</div>
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <div key={j} className="h-6 border-b border-gray-400 mb-2" />
+                ))}
+                {Array.from({ length: 2 }).map((_, j) => (
+                  <div key={j} className="h-6 border-b border-gray-200 mb-2 opacity-40" />
+                ))}
+                <div className="mt-2 bg-gray-100 rounded px-2 py-1 flex gap-4 text-xs text-gray-500">
+                  <span>S/T ___</span>
+                  <span>H ___</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : activeSchedule ? (
+        <>
+          {/* Unified header — same on screen and in print */}
+          <div className="mb-5 pb-4 border-b border-gray-200">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">{activeSchedule.label} Schedule</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Works well for {meta.range} players · write the winner&apos;s name in the shaded column after each game
+                </p>
+              </div>
+              <div className="text-sm text-gray-500 text-right shrink-0 space-y-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span>Date:</span>
+                  <span className="inline-block w-28 border-b border-gray-400">&nbsp;</span>
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <span>Location:</span>
+                  <span className="inline-block w-28 border-b border-gray-400">&nbsp;</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <ScheduleTable schedule={activeSchedule} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 
 // ── Attendance view ───────────────────────────────────────────────────────
 
@@ -269,16 +405,29 @@ function AttendanceSheet() {
 
 // ── Page ──────────────────────────────────────────────────────────────────
 
+function numTeamsFromTab(tab: Tab): number | null {
+  if ((NON_NUMERIC_TABS as readonly string[]).includes(tab)) return null
+  const n = parseInt(tab, 10)
+  return isNaN(n) ? null : n
+}
+
 export default function OpenGymPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('Team Splits')
-  const isPrintTab = activeTab !== 'Team Splits'
-  const numTeams =
-    activeTab !== 'Team Splits' && activeTab !== 'Attendance'
-      ? parseInt(activeTab, 10)
-      : null
+  const [activeTab, setActiveTab] = useState<Tab>('Track Tonight')
+  const numTeams = numTeamsFromTab(activeTab)
+  const isPrintTab = activeTab === 'Attendance' || numTeams !== null
 
   return (
     <div className="container mx-auto px-4 py-6 max-w-5xl">
+      {/* Print page setup — landscape, tight margins for schedule sheets */}
+      {isPrintTab && (
+        <style>{`
+          @media print {
+            @page { size: landscape; margin: 0.5in; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        `}</style>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6 print:hidden">
         <h1 className="text-3xl font-bold text-gray-900">Open Gym</h1>
@@ -302,8 +451,12 @@ export default function OpenGymPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
               tab === activeTab
-                ? 'bg-gray-800 text-white border-gray-800'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                ? tab === 'Track Tonight'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-gray-800 text-white border-gray-800'
+                : tab === 'Track Tonight'
+                  ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
             }`}
           >
             {tab}
@@ -312,6 +465,7 @@ export default function OpenGymPage() {
       </div>
 
       {/* Content */}
+      {activeTab === 'Track Tonight' && <TrackTonight />}
       {activeTab === 'Team Splits' && <TeamSplitsView />}
       {numTeams !== null && <TeamSheet numTeams={numTeams} />}
       {activeTab === 'Attendance' && <AttendanceSheet />}
