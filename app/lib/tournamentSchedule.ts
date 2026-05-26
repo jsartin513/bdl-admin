@@ -95,6 +95,8 @@ export interface AudioEvent {
 
 const COURT_ASSIGN_OFFSET_MS = 90_000;
 const MATCH_SOON_OFFSET_MS = 30_000;
+/** In-round warnings are suppressed in the last N ms so they do not collide with the next slot's T-90s court call. */
+const TRANSITION_RESERVE_MS = COURT_ASSIGN_OFFSET_MS;
 
 const WARNING_OFFSETS: { offsetMs: number; slug: GenericClipSlug; label: string }[] = [
   { offsetMs: 120_000, slug: 'two_minutes', label: '2 minutes until no blocking' },
@@ -307,9 +309,10 @@ export function buildAudioEvents(slots: TimeSlot[]): AudioEvent[] {
       slotRound: round,
     });
 
+    const warningsCutoffMs = startMs + durationMs - TRANSITION_RESERVE_MS;
     for (const w of WARNING_OFFSETS) {
       const eventMs = startMs + durationMs - w.offsetMs;
-      if (eventMs > startMs) {
+      if (eventMs > startMs && eventMs < warningsCutoffMs) {
         events.push({
           absoluteMs: eventMs,
           clips: [{ category: 'generic', slug: w.slug }],

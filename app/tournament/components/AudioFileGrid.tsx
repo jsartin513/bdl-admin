@@ -11,7 +11,7 @@ import type { TournamentClip } from '../types';
 
 function slugToLabel(slug: string): string {
   return slug
-    .split('-')
+    .split(/[-_]+/)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 }

@@ -16,11 +16,14 @@ slugify() {
 make_clip() {
   local text="$1"
   local path="$2"
-  local tmp
-  tmp=$(mktemp).aiff
-  say -o "$tmp" "$text"
-  ffmpeg -y -i "$tmp" -q:a 9 "$path" 2>/dev/null
-  rm -f "$tmp"
+  local tmp_base
+  local tmp_aiff
+  tmp_base=$(mktemp -t bdl_clip)
+  rm -f "$tmp_base"
+  tmp_aiff="${tmp_base}.aiff"
+  say -o "$tmp_aiff" "$text"
+  ffmpeg -y -i "$tmp_aiff" -q:a 9 "$path" 2>/dev/null
+  rm -f "$tmp_aiff"
 }
 
 TEAMS=(

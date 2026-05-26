@@ -3,7 +3,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { AudioEvent } from './tournamentSchedule';
-import { clipKey } from './tournamentSchedule';
+import { clipKey, formatMsFromStart } from './tournamentSchedule';
 
 export interface StoredClip {
   key: string;
@@ -146,43 +146,21 @@ async function normalizeClip(
   return normName;
 }
 
-/** Build ffconcat list using duration padding (one short silence_pad reused). */
+/** Build ffconcat list: each silence is an explicit silence_pad entry (never padded onto clip duration). */
 function buildConcatList(
   segments: TimelineSegment[],
-  normByKey: Map<string, string>,
-  durationByKey: Map<string, number>
+  normByKey: Map<string, string>
 ): string {
   const lines = ['ffconcat version 1.0'];
-  let i = 0;
 
-  while (i < segments.length) {
-    const seg = segments[i];
+  for (const seg of segments) {
     if (seg.type === 'silence') {
       if (seg.durationMs >= 10) {
         lines.push(`file '${SILENCE_PAD_FILE}'`);
         lines.push(`duration ${(seg.durationMs / 1000).toFixed(3)}`);
       }
-      i++;
-      continue;
-    }
-
-    const clipRun: TimelineSegment[] = [];
-    while (i < segments.length && segments[i].type === 'clip') {
-      clipRun.push(segments[i]);
-      i++;
-    }
-
-    for (let j = 0; j < clipRun.length; j++) {
-      const clipSeg = clipRun[j];
-      const key = clipSeg.inputName!;
-      lines.push(`file '${normByKey.get(key)!}'`);
-      const isLastInRun = j === clipRun.length - 1;
-      if (isLastInRun && i < segments.length && segments[i].type === 'silence') {
-        const clipDurSec = durationByKey.get(key)! / 1000;
-        const pauseSec = segments[i].durationMs / 1000;
-        lines.push(`duration ${(clipDurSec + pauseSec).toFixed(3)}`);
-        i++;
-      }
+    } else if (seg.inputName) {
+      lines.push(`file '${normByKey.get(seg.inputName)!}'`);
     }
   }
 
@@ -218,6 +196,14 @@ export async function buildTournamentMp3(
   let cursorMs = 0;
 
   for (const event of events) {
+    if (event.absoluteMs < cursorMs) {
+      throw new Error(
+        `Schedule timeline overlap: "${event.label}" is scheduled at ${formatMsFromStart(event.absoluteMs)}, ` +
+          `but the previous audio ends at ${formatMsFromStart(cursorMs)}. ` +
+          `Check warning offsets or slot spacing in the schedule.`
+      );
+    }
+
     if (event.absoluteMs > cursorMs) {
       segments.push({
         type: 'silence',
@@ -266,7 +252,7 @@ export async function buildTournamentMp3(
     normByKey.set(key, normName);
   }
 
-  const listContent = buildConcatList(mergedSegments, normByKey, durationByKey);
+  const listContent = buildConcatList(mergedSegments, normByKey);
   await ffmpeg.writeFile('concat_list.txt', listContent);
 
   onProgress?.('Stitching final MP3…', 85);

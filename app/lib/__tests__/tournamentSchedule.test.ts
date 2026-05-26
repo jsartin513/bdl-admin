@@ -42,8 +42,36 @@ describe('tournamentSchedule', () => {
     const rows = parseTournamentCsv(SAMPLE_ROW);
     const slots = buildTimeSlots(rows);
     const events = buildAudioEvents(slots);
-    expect(events.length).toBeGreaterThan(5);
+    expect(events.length).toBeGreaterThanOrEqual(5);
     expect(events.some((e) => e.label.includes('court assignments'))).toBe(true);
     expect(events.some((e) => e.label.includes('round start'))).toBe(true);
+  });
+
+  it('omits late-slot warnings that would collide with the next round court call', () => {
+    const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
+"2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
+"2026-06-20 09:25 am","Court 1","Group Phase","Comp Mixed","Group A","2","Fresh Prince","undefined","Family Matters","undefined","Ref","2026-06-20 09:50"`;
+    const slots = buildTimeSlots(parseTournamentCsv(csv));
+    const events = buildAudioEvents(slots);
+
+    const round1Ninety = events.find(
+      (e) => e.slotRound === '1' && e.label.includes('90 seconds')
+    );
+    expect(round1Ninety).toBeUndefined();
+
+    const round2Court = events.find(
+      (e) => e.slotRound === '2' && e.label.includes('court assignments')
+    );
+    expect(round2Court).toBeDefined();
+  });
+
+  it('keeps events in non-decreasing time order', () => {
+    const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
+"2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
+"2026-06-20 09:25 am","Court 1","Group Phase","Comp Mixed","Group A","2","Fresh Prince","undefined","Family Matters","undefined","Ref","2026-06-20 09:50"`;
+    const events = buildAudioEvents(buildTimeSlots(parseTournamentCsv(csv)));
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].absoluteMs).toBeGreaterThanOrEqual(events[i - 1].absoluteMs);
+    }
   });
 });

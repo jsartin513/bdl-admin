@@ -2,21 +2,16 @@ import { access, readFile } from 'fs/promises';
 import { NextResponse } from 'next/server';
 import path from 'path';
 
-const SCHEDULE_CANDIDATES = ['throwdown_5_schedule.csv', 'throwdown_5_scheudle.csv'];
+const SCHEDULE_FILE = 'throwdown_5_schedule.csv';
 
 async function resolveSchedulePath(): Promise<{ filePath: string; filename: string }> {
-  for (const filename of SCHEDULE_CANDIDATES) {
-    const filePath = path.join(process.cwd(), filename);
-    try {
-      await access(filePath);
-      return { filePath, filename };
-    } catch {
-      /* try next */
-    }
+  const filePath = path.join(process.cwd(), SCHEDULE_FILE);
+  try {
+    await access(filePath);
+    return { filePath, filename: SCHEDULE_FILE };
+  } catch {
+    throw new Error(`Schedule file not found. Add ${SCHEDULE_FILE} to the project root.`);
   }
-  throw new Error(
-    `Schedule file not found. Add ${SCHEDULE_CANDIDATES[0]} to the project root.`
-  );
 }
 
 export async function GET() {

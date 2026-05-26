@@ -12,17 +12,32 @@ function isMp3File(file: File): boolean {
   );
 }
 
+function normalizeBlobPathname(pathname: string): string {
+  return pathname.startsWith('/') ? pathname.slice(1) : pathname;
+}
+
+function isUnderTournamentPrefix(pathname: string): boolean {
+  return normalizeBlobPathname(pathname).startsWith(PREFIX);
+}
+
+const ALLOWED_BLOB_HOST_SUFFIXES = ['.blob.vercel-storage.com'];
+
+function isVercelBlobHost(hostname: string): boolean {
+  return ALLOWED_BLOB_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
+  );
+}
+
 /** Only allow deleting blobs under tournament-audio/. */
 function resolveTournamentBlobTarget(
   url?: string,
   pathname?: string
 ): { url?: string; pathname?: string } {
   if (pathname) {
-    const normalized = pathname.startsWith('/') ? pathname.slice(1) : pathname;
-    if (!normalized.startsWith(PREFIX)) {
-      throw new Error('pathname must be under tournament-audio/');
+    if (!isUnderTournamentPrefix(pathname)) {
+      throw new Error('pathname must start with tournament-audio/');
     }
-    return { pathname: normalized };
+    return { pathname: normalizeBlobPathname(pathname) };
   }
 
   if (!url) {
@@ -36,9 +51,13 @@ function resolveTournamentBlobTarget(
     throw new Error('invalid url');
   }
 
-  const path = decodeURIComponent(parsed.pathname);
-  if (!path.includes(`/${PREFIX}`) && !path.startsWith(`/${PREFIX}`)) {
-    throw new Error('url is not a tournament audio clip');
+  if (!isVercelBlobHost(parsed.hostname)) {
+    throw new Error('url must be a Vercel Blob storage URL');
+  }
+
+  const blobPath = decodeURIComponent(parsed.pathname);
+  if (!isUnderTournamentPrefix(blobPath)) {
+    throw new Error('url pathname must start with tournament-audio/');
   }
 
   return { url };
