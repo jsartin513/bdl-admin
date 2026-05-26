@@ -13,6 +13,9 @@ export default function TopNav() {
         <Link href="/open-gym" className="hover:underline">
           Open Gym
         </Link>
+        <Link href="/tournament" className="hover:underline">
+          Tournament Audio
+        </Link>
       </div>
     </nav>
   );
