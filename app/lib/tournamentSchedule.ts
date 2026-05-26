@@ -9,6 +9,7 @@ export const GENERIC_CLIP_SLUGS = [
   'head_to_courts',
   'match_soon',
   'round_start',
+  'no_blocking_start',
   'two_minutes',
   'ninety_seconds',
   'one_minute',
@@ -18,6 +19,36 @@ export const GENERIC_CLIP_SLUGS = [
   'buzzer',
   'playoff_match',
 ] as const;
+
+/** Generic clips used as countdown warnings before phase markers. */
+export const COUNTDOWN_CLIP_SLUGS = [
+  'two_minutes',
+  'ninety_seconds',
+  'one_minute',
+  'thirty_seconds',
+  'twenty_seconds',
+  'no_blocking_countdown',
+] as const;
+
+export type CountdownClipSlug = (typeof COUNTDOWN_CLIP_SLUGS)[number];
+
+export const COUNTDOWN_SLUG_SECONDS: Record<CountdownClipSlug, number> = {
+  two_minutes: 120,
+  ninety_seconds: 90,
+  one_minute: 60,
+  thirty_seconds: 30,
+  twenty_seconds: 20,
+  no_blocking_countdown: 10,
+};
+
+const COUNTDOWN_SLUG_LABELS: Record<CountdownClipSlug, string> = {
+  two_minutes: '2 minutes',
+  ninety_seconds: '90 seconds',
+  one_minute: '1 minute',
+  thirty_seconds: '30 seconds',
+  twenty_seconds: '20 seconds',
+  no_blocking_countdown: 'No blocking countdown',
+};
 
 /** Group-phase teams for Throw Down 5 (known names). */
 export const TEAM_SLUGS = [
@@ -42,7 +73,41 @@ export const TEAM_SLUGS = [
 export type GenericClipSlug = (typeof GENERIC_CLIP_SLUGS)[number];
 export type TeamSlug = (typeof TEAM_SLUGS)[number];
 
-export type ClipCategory = 'teams' | 'generic';
+export type ClipCategory = 'teams' | 'generic' | 'matchups' | 'refs';
+
+export type TeamNameMode = 'separate' | 'compound';
+
+export interface ScheduleConfig {
+  /** Minutes from round start until no-blocking begins. */
+  noBlockingStartMin: number;
+  /** Minutes no-blocking lasts before buzzer. */
+  noBlockingDurationMin: number;
+  /** Ms before round start when court assignments play. */
+  courtAssignOffsetMs: number;
+  teamNameMode: TeamNameMode;
+  includeRefs: boolean;
+  countdownsBeforeNoBlockingStart: CountdownClipSlug[];
+  countdownsBeforeNoBlockingEnd: CountdownClipSlug[];
+  countdownsBeforeCourtCall: CountdownClipSlug[];
+}
+
+export const DEFAULT_SCHEDULE_CONFIG: ScheduleConfig = {
+  noBlockingStartMin: 15,
+  noBlockingDurationMin: 3,
+  courtAssignOffsetMs: 90_000,
+  teamNameMode: 'separate',
+  includeRefs: false,
+  countdownsBeforeNoBlockingStart: [
+    'two_minutes',
+    'ninety_seconds',
+    'one_minute',
+    'thirty_seconds',
+    'twenty_seconds',
+    'no_blocking_countdown',
+  ],
+  countdownsBeforeNoBlockingEnd: [],
+  countdownsBeforeCourtCall: [],
+};
 
 export interface ClipRef {
   category: ClipCategory;
@@ -56,7 +121,12 @@ export function clipKey(ref: ClipRef): string {
 export function parseClipKey(key: string): ClipRef {
   const [category, ...rest] = key.split('/');
   const slug = rest.join('/');
-  if (category !== 'teams' && category !== 'generic') {
+  if (
+    category !== 'teams' &&
+    category !== 'generic' &&
+    category !== 'matchups' &&
+    category !== 'refs'
+  ) {
     throw new Error(`Invalid clip key: ${key}`);
   }
   return { category, slug };
@@ -93,19 +163,7 @@ export interface AudioEvent {
   slotRound: string;
 }
 
-const COURT_ASSIGN_OFFSET_MS = 90_000;
 const MATCH_SOON_OFFSET_MS = 30_000;
-/** In-round warnings are suppressed in the last N ms so they do not collide with the next slot's T-90s court call. */
-const TRANSITION_RESERVE_MS = COURT_ASSIGN_OFFSET_MS;
-
-const WARNING_OFFSETS: { offsetMs: number; slug: GenericClipSlug; label: string }[] = [
-  { offsetMs: 120_000, slug: 'two_minutes', label: '2 minutes until no blocking' },
-  { offsetMs: 90_000, slug: 'ninety_seconds', label: '90 seconds until no blocking' },
-  { offsetMs: 60_000, slug: 'one_minute', label: '1 minute until no blocking' },
-  { offsetMs: 30_000, slug: 'thirty_seconds', label: '30 seconds until no blocking' },
-  { offsetMs: 20_000, slug: 'twenty_seconds', label: '20 seconds until no blocking' },
-  { offsetMs: 10_000, slug: 'no_blocking_countdown', label: 'No blocking countdown' },
-];
 
 export function teamNameToSlug(name: string): string {
   return name
@@ -202,6 +260,103 @@ function teamClipRef(teamName: string): ClipRef {
   return { category: 'teams', slug: teamNameToSlug(teamName) };
 }
 
+export function matchupSlug(homeTeam: string, awayTeam: string): string {
+  return `${teamNameToSlug(homeTeam)}-vs-${teamNameToSlug(awayTeam)}`;
+}
+
+function matchupClipRef(homeTeam: string, awayTeam: string): ClipRef {
+  if (isPlaceholderTeam(homeTeam) || isPlaceholderTeam(awayTeam)) {
+    return { category: 'generic', slug: 'playoff_match' };
+  }
+  return { category: 'matchups', slug: matchupSlug(homeTeam, awayTeam) };
+}
+
+function refClipRef(refName: string): ClipRef {
+  return { category: 'refs', slug: teamNameToSlug(refName) };
+}
+
+export function getNoBlockingStartMs(slot: TimeSlot, config: ScheduleConfig): number {
+  return slot.startMs + config.noBlockingStartMin * 60_000;
+}
+
+export function getNoBlockingEndMs(slot: TimeSlot, config: ScheduleConfig): number {
+  return getNoBlockingStartMs(slot, config) + config.noBlockingDurationMin * 60_000;
+}
+
+export function getCourtCallMs(slot: TimeSlot, config: ScheduleConfig): number {
+  return Math.max(0, slot.startMs - config.courtAssignOffsetMs);
+}
+
+export function getNextRoundStartMs(
+  slotIndex: number,
+  slots: TimeSlot[]
+): number | null {
+  const next = slots[slotIndex + 1];
+  return next ? next.startMs : null;
+}
+
+function emitCountdowns(
+  events: AudioEvent[],
+  markerMs: number,
+  slugs: CountdownClipSlug[],
+  roundLabel: string,
+  slotRound: string,
+  minMs: number,
+  maxMs: number,
+  phaseLabel: string
+): void {
+  for (const slug of slugs) {
+    const secs = COUNTDOWN_SLUG_SECONDS[slug];
+    const eventMs = markerMs - secs * 1000;
+    if (eventMs >= minMs && eventMs < maxMs) {
+      events.push({
+        absoluteMs: eventMs,
+        clips: [{ category: 'generic', slug }],
+        label: `${roundLabel} — ${COUNTDOWN_SLUG_LABELS[slug]} before ${phaseLabel}`,
+        slotRound,
+      });
+    }
+  }
+}
+
+export function getUniqueMatchupRefsFromSlots(
+  slots: TimeSlot[],
+  config: ScheduleConfig
+): ClipRef[] {
+  if (config.teamNameMode !== 'compound') return [];
+  const seen = new Set<string>();
+  const refs: ClipRef[] = [];
+  for (const slot of slots) {
+    for (const m of slot.matches) {
+      const ref = matchupClipRef(m.homeTeam, m.awayTeam);
+      const key = clipKey(ref);
+      if (!seen.has(key)) {
+        seen.add(key);
+        refs.push(ref);
+      }
+    }
+  }
+  return refs;
+}
+
+export function getUniqueRefRefsFromSlots(slots: TimeSlot[]): ClipRef[] {
+  const seen = new Set<string>();
+  const refs: ClipRef[] = [];
+  for (const slot of slots) {
+    for (const m of slot.matches) {
+      const name = m.referees.trim();
+      if (!name) continue;
+      const ref = refClipRef(name);
+      const key = clipKey(ref);
+      if (!seen.has(key)) {
+        seen.add(key);
+        refs.push(ref);
+      }
+    }
+  }
+  return refs;
+}
+
 export function buildTimeSlots(rows: ScheduleRow[]): TimeSlot[] {
   const byDate = new Map<string, ScheduleRow[]>();
   for (const row of rows) {
@@ -264,32 +419,57 @@ export function buildTimeSlots(rows: ScheduleRow[]): TimeSlot[] {
   return slots;
 }
 
-function courtAssignmentClips(matches: ScheduleRow[]): ClipRef[] {
+function courtAssignmentClips(matches: ScheduleRow[], config: ScheduleConfig): ClipRef[] {
   const clips: ClipRef[] = [];
   for (const m of matches) {
     const courtNum = courtNumberFromLabel(m.court);
     if (courtNum != null && courtNum >= 1 && courtNum <= 4) {
       clips.push({ category: 'generic', slug: `court_${courtNum}` as GenericClipSlug });
     }
-    clips.push(teamClipRef(m.homeTeam));
-    clips.push({ category: 'generic', slug: 'vs' });
-    clips.push(teamClipRef(m.awayTeam));
+    if (config.teamNameMode === 'compound') {
+      clips.push(matchupClipRef(m.homeTeam, m.awayTeam));
+    } else {
+      clips.push(teamClipRef(m.homeTeam));
+      clips.push({ category: 'generic', slug: 'vs' });
+      clips.push(teamClipRef(m.awayTeam));
+    }
+    if (config.includeRefs && m.referees.trim()) {
+      clips.push(refClipRef(m.referees));
+    }
   }
   clips.push({ category: 'generic', slug: 'head_to_courts' });
   return clips;
 }
 
-export function buildAudioEvents(slots: TimeSlot[]): AudioEvent[] {
+export function buildAudioEvents(
+  slots: TimeSlot[],
+  config: ScheduleConfig = DEFAULT_SCHEDULE_CONFIG
+): AudioEvent[] {
   const events: AudioEvent[] = [];
 
-  for (const slot of slots) {
-    const { startMs, durationMs, round, matches } = slot;
+  for (let i = 0; i < slots.length; i++) {
+    const slot = slots[i];
+    const { startMs, round, matches } = slot;
     const roundLabel = `Round ${round}`;
 
-    const courtAssignMs = Math.max(0, startMs - COURT_ASSIGN_OFFSET_MS);
+    const courtAssignMs = getCourtCallMs(slot, config);
+    const nextCourtCallMs =
+      i + 1 < slots.length ? getCourtCallMs(slots[i + 1], config) : Number.POSITIVE_INFINITY;
+
+    emitCountdowns(
+      events,
+      courtAssignMs,
+      config.countdownsBeforeCourtCall,
+      roundLabel,
+      round,
+      0,
+      courtAssignMs,
+      'court call'
+    );
+
     events.push({
       absoluteMs: courtAssignMs,
-      clips: courtAssignmentClips(matches),
+      clips: courtAssignmentClips(matches, config),
       label: `${roundLabel} — court assignments`,
       slotRound: round,
     });
@@ -309,23 +489,42 @@ export function buildAudioEvents(slots: TimeSlot[]): AudioEvent[] {
       slotRound: round,
     });
 
-    const warningsCutoffMs = startMs + durationMs - TRANSITION_RESERVE_MS;
-    for (const w of WARNING_OFFSETS) {
-      const eventMs = startMs + durationMs - w.offsetMs;
-      if (eventMs > startMs && eventMs < warningsCutoffMs) {
-        events.push({
-          absoluteMs: eventMs,
-          clips: [{ category: 'generic', slug: w.slug }],
-          label: `${roundLabel} — ${w.label}`,
-          slotRound: round,
-        });
-      }
-    }
+    const noBlockingStartMs = getNoBlockingStartMs(slot, config);
+    const noBlockingEndMs = getNoBlockingEndMs(slot, config);
+
+    emitCountdowns(
+      events,
+      noBlockingStartMs,
+      config.countdownsBeforeNoBlockingStart,
+      roundLabel,
+      round,
+      startMs,
+      Math.min(noBlockingStartMs, nextCourtCallMs),
+      'no blocking'
+    );
 
     events.push({
-      absoluteMs: startMs + durationMs,
+      absoluteMs: noBlockingStartMs,
+      clips: [{ category: 'generic', slug: 'no_blocking_start' }],
+      label: `${roundLabel} — no blocking starts`,
+      slotRound: round,
+    });
+
+    emitCountdowns(
+      events,
+      noBlockingEndMs,
+      config.countdownsBeforeNoBlockingEnd,
+      roundLabel,
+      round,
+      noBlockingStartMs,
+      Math.min(noBlockingEndMs, nextCourtCallMs),
+      'no blocking ends'
+    );
+
+    events.push({
+      absoluteMs: noBlockingEndMs,
       clips: [{ category: 'generic', slug: 'buzzer' }],
-      label: `${roundLabel} — buzzer`,
+      label: `${roundLabel} — buzzer (no blocking ends)`,
       slotRound: round,
     });
   }

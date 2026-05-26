@@ -3,7 +3,10 @@ import {
   buildAudioEvents,
   buildTimeSlots,
   coalesceEventsAtSameTimestamp,
+  DEFAULT_SCHEDULE_CONFIG,
+  getNoBlockingEndMs,
   isPlaceholderTeam,
+  matchupSlug,
   parseTournamentCsv,
   teamNameToSlug,
 } from '../tournamentSchedule';
@@ -47,19 +50,40 @@ describe('tournamentSchedule', () => {
     expect(preRound?.label).toContain('court assignments');
     expect(preRound?.label).toContain('round start');
     expect(events.some((e) => e.label.includes('buzzer'))).toBe(true);
+    const buzzer = events.find((e) => e.label.includes('buzzer'));
+    expect(buzzer?.absoluteMs).toBe(getNoBlockingEndMs(slots[0], DEFAULT_SCHEDULE_CONFIG));
   });
 
-  it('omits late-slot warnings that would collide with the next round court call', () => {
+  it('uses compound matchup clips when configured', () => {
+    const rows = parseTournamentCsv(SAMPLE_ROW);
+    const slots = buildTimeSlots(rows);
+    const events = buildAudioEvents(slots, {
+      ...DEFAULT_SCHEDULE_CONFIG,
+      teamNameMode: 'compound',
+    });
+    const court = events.find((e) => e.label.includes('court assignments'));
+    expect(court?.clips.some((c) => c.category === 'matchups')).toBe(true);
+    expect(court?.clips.some((c) => c.slug === matchupSlug('Black Panther', 'Proud Family'))).toBe(
+      true
+    );
+  });
+
+  it('omits countdowns before no-blocking end that would collide with the next court call', () => {
     const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
 "2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
 "2026-06-20 09:25 am","Court 1","Group Phase","Comp Mixed","Group A","2","Fresh Prince","undefined","Family Matters","undefined","Ref","2026-06-20 09:50"`;
     const slots = buildTimeSlots(parseTournamentCsv(csv));
-    const events = buildAudioEvents(slots);
+    const events = buildAudioEvents(slots, {
+      ...DEFAULT_SCHEDULE_CONFIG,
+      noBlockingStartMin: 22,
+      noBlockingDurationMin: 3,
+      countdownsBeforeNoBlockingEnd: ['ninety_seconds'],
+    });
 
-    const round1Ninety = events.find(
-      (e) => e.slotRound === '1' && e.label.includes('90 seconds')
+    const round1NinetyBeforeEnd = events.find(
+      (e) => e.slotRound === '1' && e.label.includes('90 seconds') && e.label.includes('no blocking ends')
     );
-    expect(round1Ninety).toBeUndefined();
+    expect(round1NinetyBeforeEnd).toBeUndefined();
 
     const round2Court = events.find(
       (e) => e.slotRound === '2' && e.label.includes('court assignments')

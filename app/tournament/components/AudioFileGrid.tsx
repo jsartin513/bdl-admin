@@ -5,7 +5,11 @@ import {
   GENERIC_CLIP_SLUGS,
   TEAM_SLUGS,
   clipKey,
+  getUniqueMatchupRefsFromSlots,
+  getUniqueRefRefsFromSlots,
   type ClipRef,
+  type ScheduleConfig,
+  type TimeSlot,
 } from '@/app/lib/tournamentSchedule';
 import type { TournamentClip } from '../types';
 
@@ -66,6 +70,7 @@ function ClipCard({ ref_, clip, onUploaded }: ClipCardProps) {
   const remove = async () => {
     if (!clip?.url) return;
     setUploading(true);
+    setError(null);
     try {
       const res = await fetch('/api/tournament-clips', {
         method: 'DELETE',
@@ -151,13 +156,52 @@ function ClipCard({ ref_, clip, onUploaded }: ClipCardProps) {
   );
 }
 
+function ClipGridSection({
+  title,
+  refs,
+  clipByKey,
+  onRefresh,
+}: {
+  title: string;
+  refs: ClipRef[];
+  clipByKey: Map<string, TournamentClip>;
+  onRefresh: () => void;
+}) {
+  if (refs.length === 0) return null;
+  return (
+    <section>
+      <h3 className="font-semibold text-gray-900 mb-3">
+        {title} ({refs.length})
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {refs.map((ref_) => (
+          <ClipCard
+            key={clipKey(ref_)}
+            ref_={ref_}
+            clip={clipByKey.get(clipKey(ref_))}
+            onUploaded={onRefresh}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 interface AudioFileGridProps {
   clips: TournamentClip[];
   requiredKeys: string[];
+  slots: TimeSlot[];
+  config: ScheduleConfig;
   onRefresh: () => void;
 }
 
-export default function AudioFileGrid({ clips, requiredKeys, onRefresh }: AudioFileGridProps) {
+export default function AudioFileGrid({
+  clips,
+  requiredKeys,
+  slots,
+  config,
+  onRefresh,
+}: AudioFileGridProps) {
   const clipByKey = new Map(clips.map((c) => [c.key, c]));
   const uploadedRequired = requiredKeys.filter((k) => clipByKey.has(k)).length;
 
@@ -166,6 +210,8 @@ export default function AudioFileGrid({ clips, requiredKeys, onRefresh }: AudioF
     category: 'generic',
     slug,
   }));
+  const matchupRefs = getUniqueMatchupRefsFromSlots(slots, config);
+  const refRefs = config.includeRefs ? getUniqueRefRefsFromSlots(slots) : [];
 
   return (
     <div className="space-y-6">
@@ -179,33 +225,53 @@ export default function AudioFileGrid({ clips, requiredKeys, onRefresh }: AudioF
         {uploadedRequired} / {requiredKeys.length} required clips uploaded
       </div>
 
-      <section>
-        <h3 className="font-semibold text-gray-900 mb-3">Team names ({TEAM_SLUGS.length})</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {teamRefs.map((ref_) => (
-            <ClipCard
-              key={clipKey(ref_)}
-              ref_={ref_}
-              clip={clipByKey.get(clipKey(ref_))}
-              onUploaded={onRefresh}
-            />
-          ))}
-        </div>
-      </section>
+      {config.teamNameMode === 'compound' ? (
+        <ClipGridSection
+          title="Matchup clips (compound)"
+          refs={matchupRefs}
+          clipByKey={clipByKey}
+          onRefresh={onRefresh}
+        />
+      ) : (
+        <ClipGridSection
+          title="Team names"
+          refs={teamRefs}
+          clipByKey={clipByKey}
+          onRefresh={onRefresh}
+        />
+      )}
 
-      <section>
-        <h3 className="font-semibold text-gray-900 mb-3">Generic clips ({GENERIC_CLIP_SLUGS.length})</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {genericRefs.map((ref_) => (
-            <ClipCard
-              key={clipKey(ref_)}
-              ref_={ref_}
-              clip={clipByKey.get(clipKey(ref_))}
-              onUploaded={onRefresh}
+      {config.includeRefs && (
+        <ClipGridSection
+          title="Referee names"
+          refs={refRefs}
+          clipByKey={clipByKey}
+          onRefresh={onRefresh}
+        />
+      )}
+
+      <ClipGridSection
+        title="Generic clips"
+        refs={genericRefs}
+        clipByKey={clipByKey}
+        onRefresh={onRefresh}
+      />
+
+      {config.teamNameMode === 'compound' && (
+        <details className="text-sm text-gray-500">
+          <summary className="cursor-pointer text-gray-700 font-medium">
+            Optional: individual team clips
+          </summary>
+          <div className="mt-3">
+            <ClipGridSection
+              title="Team names"
+              refs={teamRefs}
+              clipByKey={clipByKey}
+              onRefresh={onRefresh}
             />
-          ))}
-        </div>
-      </section>
+          </div>
+        </details>
+      )}
     </div>
   );
 }
