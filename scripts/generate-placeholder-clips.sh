@@ -2,6 +2,7 @@
 # Generate short placeholder MP3s for local testing (macOS `say` + ffmpeg).
 # Usage: ./scripts/generate-placeholder-clips.sh [output_dir]
 # Then upload via /tournament in the app.
+# Compatible with macOS default Bash 3.2 (no associative arrays).
 
 set -euo pipefail
 
@@ -35,28 +36,34 @@ for team in "${TEAMS[@]}"; do
   echo "teams/${slug}.mp3"
 done
 
-declare -A GENERIC=(
-  [court_1]="Court 1"
-  [court_2]="Court 2"
-  [court_3]="Court 3"
-  [court_4]="Court 4"
-  [vs]="versus"
-  [head_to_courts]="Please make your way to your courts now"
-  [match_soon]="Match begins in 30 seconds"
-  [round_start]="Side ready, side ready, dodgeball"
-  [two_minutes]="2 minutes until no blocking"
-  [ninety_seconds]="90 seconds until no blocking"
-  [one_minute]="1 minute until no blocking"
-  [thirty_seconds]="30 seconds until no blocking"
-  [twenty_seconds]="20 seconds until no blocking"
-  [no_blocking_countdown]="No blocking in 10, 9, 8, 7, 6, 5, 4, 3, 2, 1"
-  [buzzer]="Buzzer"
-  [playoff_match]="Playoff match starting"
+GENERIC_KEYS=(
+  court_1 court_2 court_3 court_4 vs head_to_courts match_soon round_start
+  two_minutes ninety_seconds one_minute thirty_seconds twenty_seconds
+  no_blocking_countdown buzzer playoff_match
 )
 
-for key in "${!GENERIC[@]}"; do
-  make_clip "${GENERIC[$key]}" "$OUT/generic/${key}.mp3"
+GENERIC_TEXTS=(
+  "Court 1" "Court 2" "Court 3" "Court 4" "versus"
+  "Please make your way to your courts now"
+  "Match begins in 30 seconds"
+  "Side ready, side ready, dodgeball"
+  "2 minutes until no blocking"
+  "90 seconds until no blocking"
+  "1 minute until no blocking"
+  "30 seconds until no blocking"
+  "20 seconds until no blocking"
+  "No blocking in 10, 9, 8, 7, 6, 5, 4, 3, 2, 1"
+  "Buzzer"
+  "Playoff match starting"
+)
+
+i=0
+while [ "$i" -lt "${#GENERIC_KEYS[@]}" ]; do
+  key="${GENERIC_KEYS[$i]}"
+  text="${GENERIC_TEXTS[$i]}"
+  make_clip "$text" "$OUT/generic/${key}.mp3"
   echo "generic/${key}.mp3"
+  i=$((i + 1))
 done
 
 echo "Done. Upload files from $OUT via /tournament"

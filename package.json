@@ -13,7 +13,7 @@
     "test:league": "node test-create-league.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",

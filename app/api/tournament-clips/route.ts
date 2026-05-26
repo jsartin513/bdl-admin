@@ -3,6 +3,47 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const PREFIX = 'tournament-audio/';
 
+function isMp3File(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    name.endsWith('.mp3') ||
+    file.type === 'audio/mpeg' ||
+    file.type === 'audio/mp3'
+  );
+}
+
+/** Only allow deleting blobs under tournament-audio/. */
+function resolveTournamentBlobTarget(
+  url?: string,
+  pathname?: string
+): { url?: string; pathname?: string } {
+  if (pathname) {
+    const normalized = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+    if (!normalized.startsWith(PREFIX)) {
+      throw new Error('pathname must be under tournament-audio/');
+    }
+    return { pathname: normalized };
+  }
+
+  if (!url) {
+    throw new Error('url or pathname is required');
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('invalid url');
+  }
+
+  const path = decodeURIComponent(parsed.pathname);
+  if (!path.includes(`/${PREFIX}`) && !path.startsWith(`/${PREFIX}`)) {
+    throw new Error('url is not a tournament audio clip');
+  }
+
+  return { url };
+}
+
 export async function GET() {
   try {
     const { blobs } = await list({ prefix: PREFIX });
@@ -41,6 +82,12 @@ export async function POST(request: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'file is required' }, { status: 400 });
     }
+    if (!isMp3File(file)) {
+      return NextResponse.json(
+        { error: 'Only MP3 files are supported. Export or convert your clip to .mp3 first.' },
+        { status: 400 }
+      );
+    }
     if (category !== 'teams' && category !== 'generic') {
       return NextResponse.json({ error: 'category must be teams or generic' }, { status: 400 });
     }
@@ -53,6 +100,7 @@ export async function POST(request: NextRequest) {
       access: 'public',
       addRandomSuffix: false,
       allowOverwrite: true,
+      contentType: 'audio/mpeg',
     });
 
     return NextResponse.json({
@@ -75,16 +123,19 @@ export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
     const url = body?.url as string | undefined;
-    if (!url) {
-      return NextResponse.json({ error: 'url is required' }, { status: 400 });
-    }
-    await del(url);
+    const pathname = body?.pathname as string | undefined;
+
+    const target = resolveTournamentBlobTarget(url, pathname);
+    await del(target.url ?? target.pathname!);
+
     return NextResponse.json({ success: true });
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to delete clip';
+    const status =
+      message.includes('tournament') || message.includes('pathname') || message.includes('invalid')
+        ? 400
+        : 500;
     console.error('tournament-clips DELETE:', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to delete clip' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

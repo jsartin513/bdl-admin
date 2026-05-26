@@ -70,7 +70,7 @@ function ClipCard({ ref_, clip, onUploaded }: ClipCardProps) {
       const res = await fetch('/api/tournament-clips', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: clip.url }),
+        body: JSON.stringify({ url: clip.url, pathname: clip.pathname }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -114,7 +114,7 @@ function ClipCard({ ref_, clip, onUploaded }: ClipCardProps) {
         <input
           ref={inputRef}
           type="file"
-          accept="audio/*,.mp3,.wav,.m4a"
+          accept="audio/mpeg,.mp3,audio/mp3"
           className="hidden"
           onChange={onFile}
         />

@@ -192,7 +192,7 @@ export default function TournamentPage() {
         <p className="mt-6 text-xs text-gray-500">
           Clips are stored in Vercel Blob (<code className="bg-gray-200 px-1 rounded">BLOB_READ_WRITE_TOKEN</code>{' '}
           required). Schedule is read from{' '}
-          <code className="bg-gray-200 px-1 rounded">throwdown_5_scheudle.csv</code> in the repo root.
+          <code className="bg-gray-200 px-1 rounded">throwdown_5_schedule.csv</code> in the repo root.
         </p>
       </div>
     </div>
