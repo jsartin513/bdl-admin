@@ -13,9 +13,13 @@
     "test:league": "node test-create-league.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@vercel/blob": "^2.4.0",
     "next": "15.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
