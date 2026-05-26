@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     if (category !== 'teams' && category !== 'generic') {
       return NextResponse.json({ error: 'category must be teams or generic' }, { status: 400 });
     }
-    if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+    if (!slug || !/^[a-z0-9_-]+$/.test(slug)) {
       return NextResponse.json({ error: 'invalid slug' }, { status: 400 });
     }
 

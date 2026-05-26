@@ -330,8 +330,29 @@ export function buildAudioEvents(slots: TimeSlot[]): AudioEvent[] {
     });
   }
 
-  events.sort((a, b) => a.absoluteMs - b.absoluteMs);
-  return events;
+  return coalesceEventsAtSameTimestamp(events);
+}
+
+/** Merge events that share the same timestamp (e.g. first-slot pre-round at t=0). */
+export function coalesceEventsAtSameTimestamp(events: AudioEvent[]): AudioEvent[] {
+  const sorted = [...events].sort((a, b) => a.absoluteMs - b.absoluteMs);
+  const merged: AudioEvent[] = [];
+
+  for (const event of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.absoluteMs === event.absoluteMs) {
+      last.clips.push(...event.clips);
+      last.label = `${last.label} + ${event.label}`;
+      if (!last.slotRound && event.slotRound) last.slotRound = event.slotRound;
+    } else {
+      merged.push({
+        ...event,
+        clips: [...event.clips],
+      });
+    }
+  }
+
+  return merged;
 }
 
 export function getRequiredClipKeys(): string[] {

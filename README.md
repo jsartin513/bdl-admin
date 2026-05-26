@@ -2,6 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Requires **Node.js 20+** (see `package.json` `engines`).
+
 First, run the development server:
 
 ```bash

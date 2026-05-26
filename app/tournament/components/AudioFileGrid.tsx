@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import {
   GENERIC_CLIP_SLUGS,
   TEAM_SLUGS,
@@ -51,13 +51,13 @@ function ClipCard({ ref_, clip, onUploaded }: ClipCardProps) {
     [ref_, onUploaded]
   );
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) void upload(file);
     e.target.value = '';
   };
 
-  const onDrop = (e: React.DragEvent) => {
+  const onDrop = (e: DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) void upload(file);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAudioEvents,
   buildTimeSlots,
+  coalesceEventsAtSameTimestamp,
   isPlaceholderTeam,
   parseTournamentCsv,
   teamNameToSlug,
@@ -42,9 +43,10 @@ describe('tournamentSchedule', () => {
     const rows = parseTournamentCsv(SAMPLE_ROW);
     const slots = buildTimeSlots(rows);
     const events = buildAudioEvents(slots);
-    expect(events.length).toBeGreaterThanOrEqual(5);
-    expect(events.some((e) => e.label.includes('court assignments'))).toBe(true);
-    expect(events.some((e) => e.label.includes('round start'))).toBe(true);
+    const preRound = events.find((e) => e.absoluteMs === 0);
+    expect(preRound?.label).toContain('court assignments');
+    expect(preRound?.label).toContain('round start');
+    expect(events.some((e) => e.label.includes('buzzer'))).toBe(true);
   });
 
   it('omits late-slot warnings that would collide with the next round court call', () => {
@@ -63,6 +65,33 @@ describe('tournamentSchedule', () => {
       (e) => e.slotRound === '2' && e.label.includes('court assignments')
     );
     expect(round2Court).toBeDefined();
+  });
+
+  it('merges pre-round events at the same timestamp for the first slot', () => {
+    const rows = parseTournamentCsv(SAMPLE_ROW);
+    const events = buildAudioEvents(buildTimeSlots(rows));
+    const atZero = events.filter((e) => e.absoluteMs === 0);
+    expect(atZero).toHaveLength(1);
+    expect(atZero[0].clips.length).toBeGreaterThan(3);
+  });
+
+  it('coalesceEventsAtSameTimestamp merges clip lists', () => {
+    const merged = coalesceEventsAtSameTimestamp([
+      {
+        absoluteMs: 100,
+        clips: [{ category: 'generic', slug: 'vs' }],
+        label: 'A',
+        slotRound: '1',
+      },
+      {
+        absoluteMs: 100,
+        clips: [{ category: 'generic', slug: 'buzzer' }],
+        label: 'B',
+        slotRound: '1',
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].clips).toHaveLength(2);
   });
 
   it('keeps events in non-decreasing time order', () => {
