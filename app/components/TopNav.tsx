@@ -16,6 +16,9 @@ export default function TopNav() {
         <Link href="/tournament" className="hover:underline">
           Tournament Audio
         </Link>
+        <Link href="/tournament/team-schedules" className="hover:underline">
+          Team Schedules
+        </Link>
       </div>
     </nav>
   );
