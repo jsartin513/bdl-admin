@@ -20,8 +20,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_CSV = HERE / "schedule.csv"
-DEFAULT_OUT = HERE / "The Throw Down_ 5th Edition Team Schedules.xlsx"
+DEFAULT_CSV = HERE / "schedule_may_27.csv"
+DEFAULT_OUT = HERE / "The Throw Down_ 5th Edition Team Schedules - May 27.xlsx"
 STREAM_COURT = "Court 1"
 
 FILL_PLAY = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
