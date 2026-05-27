@@ -118,11 +118,7 @@ export function groupPhaseRoundStats(
   let offC = 0;
 
   for (const rnd of gpRounds) {
-    const games = gpByRound.get(rnd) ?? [];
-    if (games.length === 0) {
-      offC += 1;
-      continue;
-    }
+    const games = gpByRound.get(rnd)!;
     if (games.some((g) => g.home === team)) homeC += 1;
     else if (games.some((g) => g.away === team)) awayC += 1;
     else if (games.some((g) => g.referees === team)) refC += 1;
@@ -224,9 +220,7 @@ function buildTeamSheetRows(
   let nRef = 0;
 
   for (const rnd of gpRounds) {
-    const games = gpByRound.get(rnd) ?? [];
-    if (games.length === 0) continue;
-
+    const games = gpByRound.get(rnd)!;
     const roundTime = games[0].date;
     const playingHome = games.find((g) => g.home === team);
     const playingAway = games.find((g) => g.away === team);

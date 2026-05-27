@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState, type ChangeEvent } from 'react';
 
 export default function ThrowdownTeamSchedulesPage() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [csv, setCsv] = useState('');
   const [csvFilename, setCsvFilename] = useState('');
   const [outputName, setOutputName] = useState('Throw_Down_Team_Schedules');
@@ -10,8 +11,10 @@ export default function ThrowdownTeamSchedulesPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoadingSample, setIsLoadingSample] = useState(false);
 
-  const onFileChange = useCallback(async (file: File | null) => {
+  const onFileChange = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     setError(null);
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = '';
     if (!file) return;
     try {
       const text = await file.text();
@@ -99,10 +102,11 @@ export default function ThrowdownTeamSchedulesPage() {
           <label className="inline-flex cursor-pointer items-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
             Choose CSV file
             <input
+              ref={fileInputRef}
               type="file"
               accept=".csv,text/csv"
               className="hidden"
-              onChange={(e) => void onFileChange(e.target.files?.[0] ?? null)}
+              onChange={(e) => void onFileChange(e)}
             />
           </label>
           <button
