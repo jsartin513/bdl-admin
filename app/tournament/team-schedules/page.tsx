@@ -73,7 +73,9 @@ export default function ThrowdownTeamSchedulesPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate workbook');
     } finally {
