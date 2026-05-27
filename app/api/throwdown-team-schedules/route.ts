@@ -10,9 +10,14 @@ import {
 
 const SAMPLE_CSV = join(process.cwd(), 'schedule_data', 'schedule_may_27.csv');
 
+function sanitizeDownloadName(name: string): string {
+  return name.trim().replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+}
+
 function safeDownloadName(name: string | undefined): string {
-  const base = (name ?? defaultTeamSchedulesFilename()).trim() || defaultTeamSchedulesFilename();
-  const cleaned = base.replace(/[^\w\s.-]/g, '').replace(/\s+/g, '_');
+  const fallback = defaultTeamSchedulesFilename();
+  const base = (name ?? fallback).trim() || fallback;
+  const cleaned = sanitizeDownloadName(base) || sanitizeDownloadName(fallback);
   return cleaned.toLowerCase().endsWith('.xlsx') ? cleaned : `${cleaned}.xlsx`;
 }
 
