@@ -8,9 +8,11 @@ import type { WizardStep, TournamentClip } from './types';
 import {
   buildAudioEvents,
   buildTimeSlots,
+  DEFAULT_SCHEDULE_CONFIG,
   getRequiredClipKeys,
   getUniqueClipKeysFromEvents,
   parseTournamentCsv,
+  type ScheduleConfig,
 } from '@/app/lib/tournamentSchedule';
 
 const STEPS: { n: WizardStep; title: string }[] = [
@@ -26,6 +28,7 @@ export default function TournamentPage() {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [clips, setClips] = useState<TournamentClip[]>([]);
   const [clipsLoading, setClipsLoading] = useState(true);
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(DEFAULT_SCHEDULE_CONFIG);
 
   const loadSchedule = useCallback(async () => {
     setScheduleError(null);
@@ -65,10 +68,10 @@ export default function TournamentPage() {
     }
     const rows = parseTournamentCsv(csv);
     const slots = buildTimeSlots(rows);
-    const events = buildAudioEvents(slots);
+    const events = buildAudioEvents(slots, scheduleConfig);
     const requiredKeys = getUniqueClipKeysFromEvents(events);
     return { slots, events, requiredKeys };
-  }, [csv]);
+  }, [csv, scheduleConfig]);
 
   const clipByKey = new Map(clips.map((c) => [c.key, c]));
   const uploadedRequired = requiredKeys.filter((k) => clipByKey.has(k)).length;
@@ -118,7 +121,13 @@ export default function TournamentPage() {
                 <p className="text-gray-500">Loading schedule…</p>
               )}
               {csv && (
-                <SchedulePreview slots={slots} events={events} filename={filename} />
+                <SchedulePreview
+                  slots={slots}
+                  events={events}
+                  filename={filename}
+                  config={scheduleConfig}
+                  onConfigChange={setScheduleConfig}
+                />
               )}
               <div className="mt-6 flex justify-end">
                 <button
@@ -141,6 +150,8 @@ export default function TournamentPage() {
                 <AudioFileGrid
                   clips={clips}
                   requiredKeys={requiredKeys}
+                  slots={slots}
+                  config={scheduleConfig}
                   onRefresh={loadClips}
                 />
               )}

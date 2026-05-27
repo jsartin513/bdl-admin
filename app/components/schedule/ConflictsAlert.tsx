@@ -20,6 +20,10 @@ const GROUP_ORDER: { type: ConflictType; title: string }[] = [
     type: 'duplicate-orientation-same-night',
     title: 'Same matchup & home/away twice in one night',
   },
+  {
+    type: 'incomplete-round-robin',
+    title: 'Round-robin not complete (6-team: each pair should play twice per week)',
+  },
   { type: 'home-away-imbalance', title: 'Home / away imbalance' },
   { type: 'unknown', title: 'Other' },
 ]

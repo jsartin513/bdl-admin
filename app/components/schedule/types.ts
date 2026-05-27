@@ -56,6 +56,7 @@ export type ConflictType =
   | 'consecutive-without-playing'
   | 'consecutive-matchup'
   | 'duplicate-orientation-same-night'
+  | 'incomplete-round-robin'
   | 'home-away-imbalance'
   | 'unknown'
 
