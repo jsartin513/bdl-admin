@@ -4,6 +4,7 @@ import {
   buildTimeSlots,
   coalesceEventsAtSameTimestamp,
   DEFAULT_SCHEDULE_CONFIG,
+  getUniqueMatchupRefsFromSlots,
   getNoBlockingEndMs,
   isPlaceholderTeam,
   matchupSlug,
@@ -68,27 +69,36 @@ describe('tournamentSchedule', () => {
     );
   });
 
-  it('omits countdowns before no-blocking end that would collide with the next court call', () => {
+  it('does not schedule no-blocking end countdowns at/after the next court call', () => {
     const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
 "2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
 "2026-06-20 09:25 am","Court 1","Group Phase","Comp Mixed","Group A","2","Fresh Prince","undefined","Family Matters","undefined","Ref","2026-06-20 09:50"`;
     const slots = buildTimeSlots(parseTournamentCsv(csv));
-    const events = buildAudioEvents(slots, {
+    const config = {
       ...DEFAULT_SCHEDULE_CONFIG,
       noBlockingStartMin: 22,
       noBlockingDurationMin: 3,
       countdownsBeforeNoBlockingEnd: ['ninety_seconds'],
-    });
+    };
+    const events = buildAudioEvents(slots, config);
 
-    const round1NinetyBeforeEnd = events.find(
-      (e) => e.slotRound === '1' && e.label.includes('90 seconds') && e.label.includes('no blocking ends')
+    const nextCourtCallMs = slots.length > 1 ? Math.max(0, slots[1].startMs - config.courtAssignOffsetMs) : 0;
+    const round1CountdownBeforeEnd = events.find(
+      (e) =>
+        e.slotRound === '1' &&
+        e.clips.some((c) => c.category === 'generic' && c.slug === 'ninety_seconds') &&
+        e.label.includes('before no blocking ends')
     );
-    expect(round1NinetyBeforeEnd).toBeUndefined();
 
-    const round2Court = events.find(
-      (e) => e.slotRound === '2' && e.label.includes('court assignments')
-    );
-    expect(round2Court).toBeDefined();
+    // It’s OK if the countdown exists (it may even coalesce with no-blocking start),
+    // but it must never land at/after the next round’s court call, which would cause overlap/out-of-order audio.
+    if (round1CountdownBeforeEnd) {
+      expect(round1CountdownBeforeEnd.absoluteMs).toBeLessThan(nextCourtCallMs);
+    }
+
+    // (Events at the same timestamp may be coalesced, so slotRound can remain the earlier event’s round.)
+    const hasRound2Court = events.some((e) => e.label.includes('Round 2') && e.label.includes('court assignments'));
+    expect(hasRound2Court).toBe(true);
   });
 
   it('merges pre-round events at the same timestamp for the first slot', () => {
@@ -126,5 +136,45 @@ describe('tournamentSchedule', () => {
     for (let i = 1; i < events.length; i++) {
       expect(events[i].absoluteMs).toBeGreaterThanOrEqual(events[i - 1].absoluteMs);
     }
+  });
+
+  it('clamps no-blocking start and buzzer to not exceed the next round court call', () => {
+    const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
+"2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
+"2026-06-20 09:25 am","Court 1","Group Phase","Comp Mixed","Group A","2","Fresh Prince","undefined","Family Matters","undefined","Ref","2026-06-20 09:50"`;
+    const slots = buildTimeSlots(parseTournamentCsv(csv));
+    const config = {
+      ...DEFAULT_SCHEDULE_CONFIG,
+      courtAssignOffsetMs: 90_000,
+      noBlockingStartMin: 24,
+      noBlockingDurationMin: 3,
+    } as const;
+    const events = buildAudioEvents(slots, config);
+
+    const round1NoBlockingStart = events.find(
+      (e) => e.slotRound === '1' && e.label.includes('no blocking starts')
+    );
+    const round1Buzzer = events.find((e) => e.slotRound === '1' && e.label.includes('buzzer'));
+    const nextCourtCallMs =
+      slots.length > 1 ? Math.max(0, slots[1].startMs - config.courtAssignOffsetMs) : Number.POSITIVE_INFINITY;
+
+    expect(round1NoBlockingStart).toBeDefined();
+    expect(round1Buzzer).toBeDefined();
+    expect(round1NoBlockingStart!.absoluteMs).toBeLessThanOrEqual(nextCourtCallMs);
+    expect(round1Buzzer!.absoluteMs).toBeLessThanOrEqual(nextCourtCallMs);
+  });
+
+  it('only returns matchups/* refs in compound mode', () => {
+    const csv = `"Date","Court","Phase","Division","Group","Round","Home Team","Home Score","Away Team","Away Score","Referees","End Time"
+"2026-06-20 09:00 am","Court 1","Group Phase","Comp Mixed","Group A","1","Seed #1","undefined","Proud Family","undefined","Ref","2026-06-20 09:25"
+"2026-06-20 09:00 am","Court 2","Group Phase","Comp Mixed","Group A","1","Black Panther","undefined","Fresh Prince","undefined","Ref","2026-06-20 09:25"`;
+    const slots = buildTimeSlots(parseTournamentCsv(csv));
+    const refs = getUniqueMatchupRefsFromSlots(slots, {
+      ...DEFAULT_SCHEDULE_CONFIG,
+      teamNameMode: 'compound',
+    });
+
+    expect(refs.every((ref) => ref.category === 'matchups')).toBe(true);
+    expect(refs.some((ref) => ref.slug === 'playoff_match')).toBe(false);
   });
 });

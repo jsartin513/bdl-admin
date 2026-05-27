@@ -329,6 +329,7 @@ export function getUniqueMatchupRefsFromSlots(
   for (const slot of slots) {
     for (const m of slot.matches) {
       const ref = matchupClipRef(m.homeTeam, m.awayTeam);
+      if (ref.category !== 'matchups') continue;
       const key = clipKey(ref);
       if (!seen.has(key)) {
         seen.add(key);
@@ -490,21 +491,30 @@ export function buildAudioEvents(
     });
 
     const noBlockingStartMs = getNoBlockingStartMs(slot, config);
-    const noBlockingEndMs = getNoBlockingEndMs(slot, config);
+    const rawNoBlockingEndMs = getNoBlockingEndMs(slot, config);
+    const noBlockingWindowEndMs = Math.min(slot.endMs, nextCourtCallMs);
+    const noBlockingStartClampedMs = Math.min(
+      Math.max(noBlockingStartMs, startMs),
+      noBlockingWindowEndMs
+    );
+    const noBlockingEndClampedMs = Math.min(
+      Math.max(rawNoBlockingEndMs, noBlockingStartClampedMs),
+      noBlockingWindowEndMs
+    );
 
     emitCountdowns(
       events,
-      noBlockingStartMs,
+      noBlockingStartClampedMs,
       config.countdownsBeforeNoBlockingStart,
       roundLabel,
       round,
       startMs,
-      Math.min(noBlockingStartMs, nextCourtCallMs),
+      Math.min(noBlockingStartClampedMs, nextCourtCallMs),
       'no blocking'
     );
 
     events.push({
-      absoluteMs: noBlockingStartMs,
+      absoluteMs: noBlockingStartClampedMs,
       clips: [{ category: 'generic', slug: 'no_blocking_start' }],
       label: `${roundLabel} — no blocking starts`,
       slotRound: round,
@@ -512,17 +522,17 @@ export function buildAudioEvents(
 
     emitCountdowns(
       events,
-      noBlockingEndMs,
+      noBlockingEndClampedMs,
       config.countdownsBeforeNoBlockingEnd,
       roundLabel,
       round,
-      noBlockingStartMs,
-      Math.min(noBlockingEndMs, nextCourtCallMs),
+      noBlockingStartClampedMs,
+      Math.min(noBlockingEndClampedMs, nextCourtCallMs),
       'no blocking ends'
     );
 
     events.push({
-      absoluteMs: noBlockingEndMs,
+      absoluteMs: noBlockingEndClampedMs,
       clips: [{ category: 'generic', slug: 'buzzer' }],
       label: `${roundLabel} — buzzer (no blocking ends)`,
       slotRound: round,
