@@ -521,6 +521,65 @@ export function parseScheduleCSV(
     }
   }
 
+  // 6-team round-robin: every pair should play exactly twice per week
+  {
+    const rrByWeek = new Map<string, { games: Game[]; weekLabel: string }>();
+    for (const g of games) {
+      const wk = weekBucketKey(g.gameNumber);
+      if (!rrByWeek.has(wk)) {
+        const m = wk.match(/^week-(\d+)$/);
+        const label = m ? `Week ${m[1]}` : 'Week';
+        rrByWeek.set(wk, { games: [], weekLabel: label });
+      }
+      rrByWeek.get(wk)!.games.push(g);
+    }
+
+    for (const [, { games: weekGames, weekLabel }] of rrByWeek) {
+      const weekTeams = new Set<string>();
+      for (const g of weekGames) {
+        for (const t of [g.court1Team1, g.court1Team2, g.court2Team1, g.court2Team2]) {
+          if (t && t !== 'BYE' && t !== 'TBD') weekTeams.add(t);
+        }
+      }
+
+      if (weekTeams.size !== 6) continue;
+
+      const pairCount = new Map<string, number>();
+      for (const g of weekGames) {
+        const sides: [string, string][] = [
+          [g.court1Team1, g.court1Team2],
+          [g.court2Team1, g.court2Team2],
+        ];
+        for (const [a, b] of sides) {
+          if (!validMatchupSide(a, b)) continue;
+          const key = [a, b].sort().join('\0');
+          pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+        }
+      }
+
+      const teamList = [...weekTeams].sort();
+      for (let x = 0; x < teamList.length; x++) {
+        for (let y = x + 1; y < teamList.length; y++) {
+          const a = teamList[x], b = teamList[y];
+          const key = [a, b].sort().join('\0');
+          const count = pairCount.get(key) ?? 0;
+          if (count === 2) continue;
+          detectedConflicts.push({
+            gameNumber: weekLabel,
+            team: `${a} & ${b}`,
+            conflicts: [
+              count === 0
+                ? `Never played this week (expected 2 games)`
+                : `Played ${count} time${count === 1 ? '' : 's'} this week (expected 2)`,
+            ],
+            severity: count === 0 ? 'error' : 'warning',
+            conflictType: 'incomplete-round-robin',
+          });
+        }
+      }
+    }
+  }
+
   // Home/away imbalance over the selected scope (e.g. full season on "All weeks"):
   // - Strictly more than half of slots on one side, OR
   // - At least 2 more games on one side than the other (catches 6–4, 7–3, etc. on even totals
