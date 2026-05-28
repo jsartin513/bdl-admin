@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import TopNav from "./components/TopNav";
 
@@ -28,7 +29,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <TopNav />
+        <Suspense
+          fallback={
+            <nav className="bg-gray-800 text-blue-300 p-4 flex justify-between items-center h-[52px]" />
+          }
+        >
+          <TopNav />
+        </Suspense>
         <main>{children}</main>
       </body>
     </html>
