@@ -18,6 +18,14 @@ interface DriveFile {
   name: string
 }
 
+export default function SchedulesPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-6 text-gray-600">Loading…</div>}>
+      <SchedulesPageContent />
+    </Suspense>
+  )
+}
+
 function SchedulesPageContent() {
   const { devMode } = useDevMode()
   const [selectedWeek, setSelectedWeek] = useState('all')
@@ -160,17 +168,5 @@ function SchedulesPageContent() {
         </>
       )}
     </div>
-  )
-}
-
-export default function SchedulesPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="container mx-auto px-4 py-6 text-gray-600">Loading…</div>
-      }
-    >
-      <SchedulesPageContent />
-    </Suspense>
   )
 }

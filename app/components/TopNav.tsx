@@ -7,22 +7,26 @@ import { withDevMode } from '@/app/lib/devMode'
 export default function TopNav() {
   const { devMode, setDevMode } = useDevMode()
 
-  const link = (href: string, label: string) => (
-    <Link href={withDevMode(href, devMode)} className="hover:underline">
-      {label}
-    </Link>
-  )
-
   return (
     <nav className="bg-gray-800 text-blue-300 p-4 flex justify-between items-center">
       <div className="flex space-x-4 items-center">
-        {link('/schedules', 'League Schedules')}
-        {link('/create-league', 'Create League')}
-        {link('/open-gym', 'Open Gym')}
+        <Link href={withDevMode('/schedules', devMode)} className="hover:underline">
+          League Schedules
+        </Link>
+        <Link href={withDevMode('/create-league', devMode)} className="hover:underline">
+          Create League
+        </Link>
+        <Link href={withDevMode('/open-gym', devMode)} className="hover:underline">
+          Open Gym
+        </Link>
         {devMode && (
           <>
-            {link('/tournament', 'Tournament Audio')}
-            {link('/tournament/team-schedules', 'Team Schedules')}
+            <Link href={withDevMode('/tournament', devMode)} className="hover:underline">
+              Tournament Audio
+            </Link>
+            <Link href={withDevMode('/tournament/team-schedules', devMode)} className="hover:underline">
+              Team Schedules
+            </Link>
           </>
         )}
       </div>

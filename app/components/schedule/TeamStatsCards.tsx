@@ -9,7 +9,6 @@ interface TeamStatsCardsProps {
   selectedWeek: string
   /** When viewing a single week (1-6), pass games so each card can show "View this week's schedule" */
   games?: Game[]
-  /** Per-team week schedule expanders (dev-only when false). Defaults to true. */
   showTeamSchedules?: boolean
 }
 
@@ -67,8 +66,7 @@ export default function TeamStatsCards({
   showTeamSchedules = true,
 }: TeamStatsCardsProps) {
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set())
-  const showWeekSchedule =
-    showTeamSchedules && isSingleWeek(selectedWeek) && games.length > 0
+  const showWeekSchedule = showTeamSchedules && isSingleWeek(selectedWeek) && games.length > 0
   const allTeamNames = teamStats.map((s) => s.team)
   const allExpanded = allTeamNames.length > 0 && allTeamNames.every((t) => expandedTeams.has(t))
 
