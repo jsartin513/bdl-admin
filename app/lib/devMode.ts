@@ -9,7 +9,9 @@ export function isDevMode(searchParams: SearchParamsLike): boolean {
 
 export function withDevMode(href: string, devMode: boolean): string {
   if (!devMode) return href
+  // Only rewrite app-relative paths; avoid corrupting absolute URLs or non-http schemes.
+  if (!href.startsWith('/')) return href
   const url = new URL(href, 'http://local')
   url.searchParams.set(DEV_MODE_PARAM, '1')
-  return `${url.pathname}${url.search}`
+  return `${url.pathname}${url.search}${url.hash}`
 }
