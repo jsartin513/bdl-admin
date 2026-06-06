@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect, useMemo } from 'react'
+import { Suspense, useState, useEffect, useMemo } from 'react'
 import {
   GameCard,
   LoadingState,
@@ -11,6 +11,7 @@ import {
   TeamStatsCards,
 } from '../components/schedule'
 import { useScheduleData } from '../components/schedule/useScheduleData'
+import { useDevMode } from '@/app/hooks/useDevMode'
 
 interface DriveFile {
   id: string
@@ -18,6 +19,15 @@ interface DriveFile {
 }
 
 export default function SchedulesPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-6 text-gray-600">Loading…</div>}>
+      <SchedulesPageContent />
+    </Suspense>
+  )
+}
+
+function SchedulesPageContent() {
+  const { devMode } = useDevMode()
   const [selectedWeek, setSelectedWeek] = useState('all')
   const [sheets, setSheets] = useState<DriveFile[]>([])
   const [selectedSheetId, setSelectedSheetId] = useState<string>('')
@@ -138,6 +148,7 @@ export default function SchedulesPage() {
             }))}
             selectedWeek={selectedWeek}
             games={games}
+            showTeamSchedules={devMode}
           />
 
           <ConflictsAlert conflicts={conflicts} />
