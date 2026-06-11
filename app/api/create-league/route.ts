@@ -860,21 +860,26 @@ export async function POST(request: NextRequest) {
         )
       }
       numTeams = parsed
-    } else if (body.numTeams === 4 || body.numTeams === 6 || body.numTeams === 7) {
+    } else if (
+      body.numTeams === 4 ||
+      body.numTeams === 5 ||
+      body.numTeams === 6 ||
+      body.numTeams === 7
+    ) {
       numTeams = body.numTeams
     } else {
       return NextResponse.json(
         {
           error:
-            'Select a league template (team count comes from its name), or send numTeams 4, 6, or 7 when calling the API without a template.',
+            'Select a league template (team count comes from its name), or send numTeams 4, 5, 6, or 7 when calling the API without a template.',
         },
         { status: 400 },
       )
     }
 
-    if (numTeams !== 4 && numTeams !== 6 && numTeams !== 7) {
+    if (numTeams !== 4 && numTeams !== 5 && numTeams !== 6 && numTeams !== 7) {
       return NextResponse.json(
-        { error: 'Only 4-, 6-, and 7-team leagues are supported.' },
+        { error: 'Only 4-, 5-, 6-, and 7-team leagues are supported.' },
         { status: 400 },
       )
     }
@@ -890,6 +895,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Number of weeks must be 6' },
         { status: 400 }
+      )
+    }
+
+    if (numTeams === 5 && !body.templateId?.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            '5-team leagues use a fixed schedule template. Select a Five Team template from Google Drive.',
+        },
+        { status: 400 },
       )
     }
 
@@ -940,6 +955,16 @@ export async function POST(request: NextRequest) {
         const status = httpStatusForTemplateBranchError(e)
         return NextResponse.json({ error: message }, { status })
       }
+    }
+
+    if (numTeams !== 4 && numTeams !== 6 && numTeams !== 7) {
+      return NextResponse.json(
+        {
+          error:
+            'Built-in schedule generation supports 4, 6, or 7 teams. Use a Google Drive template for 5-team leagues.',
+        },
+        { status: 400 },
+      )
     }
 
     const workbook = createLeagueWorkbook({ ...body, numTeams })

@@ -3,9 +3,19 @@ Generate week sheets from the Schedule Generator sheet.
 Reads the matchup matrix and creates game schedules for each week.
 """
 
+import argparse
 import openpyxl
 import re
 from itertools import combinations
+
+from league_schedule_format import (
+    DEDICATED_REF,
+    TEAM_REF,
+    count_games_on_week_sheet,
+    detect_format_from_week_sheet,
+    read_format_from_teams_sheet,
+    win_loss_start_row,
+)
 
 def get_teams_from_schedule_generator(ws):
     """Extract team names from Schedule Generator sheet."""
@@ -79,41 +89,60 @@ def distribute_games_into_weeks(schedule, num_weeks):
     
     return weeks
 
-def create_week_sheet(wb, week_name, games, teams):
+def create_week_sheet(wb, week_name, games, teams, schedule_format=TEAM_REF):
     """Create or update a week sheet with the game schedule."""
+    wl_start = win_loss_start_row(len(games), schedule_format)
+    new_last_game_row = wl_start - 1
+
     if week_name in wb.sheetnames:
         ws = wb[week_name]
-        # Clear existing games (keep headers and win/loss section)
-        for row in range(2, 30):
+        existing_games = count_games_on_week_sheet(ws)
+        if existing_games:
+            existing_format = detect_format_from_week_sheet(ws)
+            old_last_game_row = win_loss_start_row(existing_games, existing_format) - 1
+        else:
+            old_last_game_row = new_last_game_row
+        clear_until_row = max(new_last_game_row, old_last_game_row)
+        for row in range(2, clear_until_row + 1):
             for col in range(1, 6):
-                if row < 25:  # Don't clear win/loss section
-                    ws.cell(row, col).value = None
+                ws.cell(row, col).value = None
     else:
         ws = wb.create_sheet(week_name)
-        # Add header
         ws.cell(1, 2).value = 'Court 1'
-    
-    # Add games
+
     row = 2
     for game in games:
-        # Game number
         ws.cell(row, 1).value = f'Game {game["game"]:02d}'
-        # Team 1 (home)
         ws.cell(row, 2).value = game['team1']
-        # Team 2 (away)
         ws.cell(row, 4).value = game['team2']
-        # Empty row for ref
         row += 1
-        ws.cell(row, 2).value = 'Ref'
-        row += 1
-    
+        if schedule_format == TEAM_REF:
+            ws.cell(row, 2).value = 'Ref'
+            row += 1
+
     return ws
 
-def main(file_path, num_weeks=6):
+
+def resolve_schedule_format(wb, explicit_format=None):
+    if explicit_format:
+        return explicit_format
+    if 'Teams' in wb.sheetnames:
+        fmt = read_format_from_teams_sheet(wb['Teams'])
+        if fmt != TEAM_REF:
+            return fmt
+    week_sheets = [n for n in wb.sheetnames if re.match(r'Week\s+\d+', n, re.IGNORECASE)]
+    if week_sheets:
+        return detect_format_from_week_sheet(wb[week_sheets[0]])
+    return TEAM_REF
+
+
+def main(file_path, num_weeks=6, schedule_format=None):
     """Main function to generate schedule from Schedule Generator."""
     print(f"Loading workbook: {file_path}")
     wb = openpyxl.load_workbook(file_path)
-    
+    schedule_format = resolve_schedule_format(wb, schedule_format)
+    print(f"Schedule format: {schedule_format}")
+
     if 'Schedule Generator' not in wb.sheetnames:
         print("ERROR: Schedule Generator sheet not found!")
         return
@@ -165,7 +194,7 @@ def main(file_path, num_weeks=6):
             week_name = f'Week {i}'
         
         print(f"  {week_name}: {len(week_games)} games")
-        create_week_sheet(wb, week_name, week_games, teams)
+        create_week_sheet(wb, week_name, week_games, teams, schedule_format)
         week_names.append(week_name)
     
     print(f"\n=== Saving Workbook ===")
@@ -180,11 +209,22 @@ def main(file_path, num_weeks=6):
 if __name__ == '__main__':
     import sys
     import os
-    
-    # Check if arguments provided (non-interactive mode)
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        num_weeks = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+
+    parser = argparse.ArgumentParser(description='Generate week sheets from Schedule Generator')
+    parser.add_argument('file_path', nargs='?', help='Path to league .xlsx')
+    parser.add_argument('num_weeks', nargs='?', type=int, default=6, help='Number of weeks (default: 6)')
+    parser.add_argument(
+        '--format',
+        choices=[TEAM_REF, DEDICATED_REF],
+        default=None,
+        help='Week sheet layout: team-ref (game+ref rows) or dedicated-ref (game rows only)',
+    )
+    args, _unknown = parser.parse_known_args()
+
+    if args.file_path:
+        file_path = args.file_path
+        num_weeks = args.num_weeks
+        schedule_format = args.format
     else:
         # Interactive mode
         print("📅 Schedule Generator")
@@ -230,6 +270,7 @@ if __name__ == '__main__':
             sys.exit(0)
         
         print()
-    
-    main(file_path, num_weeks)
+        schedule_format = None
+
+    main(file_path, num_weeks, schedule_format)
 

@@ -410,54 +410,98 @@ export function parseScheduleCSV(
     }
   }
 
-  // Same two teams, same home/away columns, twice (or more) in the same week/night
+  // Home/away orientation imbalance within a pairing for one week/night.
+  // 2 games/night → 1 of each orientation; 3 games/night → 2 of one, 1 of the other.
   type MatchupOccurrence = {
     gameNumber: string;
     court: 1 | 2;
     home: string;
     away: string;
   };
-  const orientationGroups = new Map<string, MatchupOccurrence[]>();
+  const pairGroups = new Map<string, MatchupOccurrence[]>();
   for (const g of games) {
     const wk = weekBucketKey(g.gameNumber);
     if (validMatchupSide(g.court1Team1, g.court1Team2)) {
-      const key = `${wk}\0${g.court1Team1}\0${g.court1Team2}`;
-      const list = orientationGroups.get(key) ?? [];
+      const pairKey = `${wk}\0${[g.court1Team1, g.court1Team2].sort().join('\0')}`;
+      const list = pairGroups.get(pairKey) ?? [];
       list.push({
         gameNumber: g.gameNumber,
         court: 1,
         home: g.court1Team1,
         away: g.court1Team2,
       });
-      orientationGroups.set(key, list);
+      pairGroups.set(pairKey, list);
     }
     if (validMatchupSide(g.court2Team1, g.court2Team2)) {
-      const key = `${wk}\0${g.court2Team1}\0${g.court2Team2}`;
-      const list = orientationGroups.get(key) ?? [];
+      const pairKey = `${wk}\0${[g.court2Team1, g.court2Team2].sort().join('\0')}`;
+      const list = pairGroups.get(pairKey) ?? [];
       list.push({
         gameNumber: g.gameNumber,
         court: 2,
         home: g.court2Team1,
         away: g.court2Team2,
       });
-      orientationGroups.set(key, list);
+      pairGroups.set(pairKey, list);
     }
   }
-  for (const [, occ] of orientationGroups) {
-    if (occ.length < 2) continue;
-    const { home, away } = occ[0];
-    const where = occ
-      .map((o) => `${o.gameNumber} (court ${o.court})`)
-      .join(', ');
-    detectedConflicts.push({
-      gameNumber: occ[0].gameNumber,
-      team: `${home} (home) & ${away} (away)`,
-      conflicts: [
-        `Same home/away matchup ${occ.length} times in one night: ${where}`,
-      ],
-      severity: 'warning',
-      conflictType: 'duplicate-orientation-same-night',
-    });
+  for (const [, occ] of pairGroups) {
+    const total = occ.length;
+    if (total < 2) continue;
+
+    const maxAllowed = Math.ceil(total / 2);
+    const minRequired = Math.floor(total / 2);
+    const orientationGroups = new Map<string, MatchupOccurrence[]>();
+    for (const o of occ) {
+      const orientKey = `${o.home}\0${o.away}`;
+      const list = orientationGroups.get(orientKey) ?? [];
+      list.push(o);
+      orientationGroups.set(orientKey, list);
+    }
+
+    const orientationCounts = [...orientationGroups.values()].map((list) => list.length);
+    const high = Math.max(...orientationCounts);
+    const low = Math.min(...orientationCounts);
+    const balanced =
+      orientationGroups.size > 1 &&
+      high <= maxAllowed &&
+      low >= minRequired;
+
+    if (balanced) continue;
+
+    for (const [orientKey, orientOcc] of orientationGroups) {
+      if (orientOcc.length <= maxAllowed) continue;
+      const [home, away] = orientKey.split('\0');
+      const where = orientOcc
+        .map((o) => `${o.gameNumber} (court ${o.court})`)
+        .join(', ');
+      detectedConflicts.push({
+        gameNumber: orientOcc[0].gameNumber,
+        team: `${home} (home) & ${away} (away)`,
+        conflicts: [
+          `Same home/away matchup ${orientOcc.length} times in one night (${total} games total; expected at most ${maxAllowed} of the same orientation): ${where}`,
+        ],
+        severity: 'warning',
+        conflictType: 'duplicate-orientation-same-night',
+      });
+    }
+
+    if (orientationGroups.size === 1) {
+      continue;
+    }
+
+    for (const [orientKey, orientOcc] of orientationGroups) {
+      if (orientOcc.length >= minRequired) continue;
+      const [home, away] = orientKey.split('\0');
+      detectedConflicts.push({
+        gameNumber: orientOcc[0]?.gameNumber ?? occ[0].gameNumber,
+        team: `${home} (home) & ${away} (away)`,
+        conflicts: [
+          `Home/away orientation missing for ${home} vs ${away}: ${orientOcc.length} of ${total} games use this orientation (expected at least ${minRequired})`,
+        ],
+        severity: 'warning',
+        conflictType: 'duplicate-orientation-same-night',
+      });
+    }
   }
 
   // Detect same two teams playing each other in consecutive games.

@@ -32,12 +32,15 @@ const INITIAL_FORM: FormData = {
 /** Per-week stats shown in the UI. Seven-team Drive template uses 35 games (not full n(n−1)). */
 function scheduleSummary(n: number) {
   if (n === 7) {
-    return { gamesPerWeek: 35, gamesPerTeamPerWeek: 10, refsPerTeamPerWeek: 5 }
+    return { gamesPerWeek: 35, gamesPerTeamPerWeek: 10, refsPerTeamPerWeek: 5, dedicatedRef: false }
+  }
+  if (n === 5) {
+    return { gamesPerWeek: 25, gamesPerTeamPerWeek: 10, refsPerTeamPerWeek: 0, dedicatedRef: true }
   }
   const gamesPerWeek = n * (n - 1)
   const gamesPerTeamPerWeek = (n - 1) * 2
   const refsPerTeamPerWeek = gamesPerWeek / n
-  return { gamesPerWeek, gamesPerTeamPerWeek, refsPerTeamPerWeek }
+  return { gamesPerWeek, gamesPerTeamPerWeek, refsPerTeamPerWeek, dedicatedRef: false }
 }
 
 function teamsStateFromTemplateName(templateName: string): Pick<FormData, 'numTeams' | 'teams'> {
@@ -387,9 +390,16 @@ function CreateLeagueForm() {
                   <>
                     <li>{s.gamesPerWeek} games per week</li>
                     <li>
-                      Each team plays {s.gamesPerTeamPerWeek} games per week (every opponent twice)
+                      Each team plays {s.gamesPerTeamPerWeek} games per week
+                      {s.dedicatedRef
+                        ? ' (2–3 times vs each opponent)'
+                        : ' (every opponent twice)'}
                     </li>
-                    <li>Each team refs {s.refsPerTeamPerWeek} games per week</li>
+                    {s.dedicatedRef ? (
+                      <li>Dedicated refs (no team ref rows in schedule)</li>
+                    ) : (
+                      <li>Each team refs {s.refsPerTeamPerWeek} games per week</li>
+                    )}
                   </>
                 )
               })()}

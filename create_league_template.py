@@ -2,10 +2,21 @@
 Create a new league spreadsheet template with all necessary sheets and structure.
 """
 
+import argparse
 import openpyxl
 from datetime import datetime, timedelta
 
-def create_league_template(output_path, league_name, teams, num_weeks=6, start_date=None):
+from league_schedule_format import DEDICATED_REF, TEAM_REF, write_format_to_teams_sheet
+
+
+def create_league_template(
+    output_path,
+    league_name,
+    teams,
+    num_weeks=6,
+    start_date=None,
+    schedule_format=TEAM_REF,
+):
     """Create a new league spreadsheet template."""
     if not teams or len(teams) < 2:
         print("ERROR: Need at least 2 teams!")
@@ -20,12 +31,14 @@ def create_league_template(output_path, league_name, teams, num_weeks=6, start_d
     print(f"Creating league template: {league_name}")
     print(f"Teams: {', '.join(teams)}")
     print(f"Weeks: {num_weeks}")
-    
+    print(f"Format: {schedule_format}")
+
     # 1. Teams Sheet
     ws_teams = wb.create_sheet('Teams')
     ws_teams.cell(1, 1).value = 'Team Names'
     for i, team in enumerate(teams, start=3):
         ws_teams.cell(1, i).value = team
+    write_format_to_teams_sheet(ws_teams, schedule_format)
     print("  ✓ Created Teams sheet")
     
     # 2. Schedule Generator Sheet
@@ -101,12 +114,25 @@ def create_league_template(output_path, league_name, teams, num_weeks=6, start_d
 
 if __name__ == '__main__':
     import sys
-    
-    # Check if arguments provided (non-interactive mode)
-    if len(sys.argv) >= 3:
-        output_path = sys.argv[1]
-        teams = sys.argv[2:]
+
+    parser = argparse.ArgumentParser(description='Create a new league spreadsheet template')
+    parser.add_argument('output_path', nargs='?', help='Output .xlsx path')
+    parser.add_argument('teams', nargs='*', help='Team names')
+    parser.add_argument(
+        '--format',
+        choices=[TEAM_REF, DEDICATED_REF],
+        default=TEAM_REF,
+        help='Schedule format stored on Teams sheet',
+    )
+    parser.add_argument('--weeks', type=int, default=6, help='Number of week sheets')
+    args = parser.parse_args()
+
+    if args.output_path and args.teams:
+        output_path = args.output_path
+        teams = list(args.teams)
         league_name = "New League"
+        num_weeks = args.weeks
+        schedule_format = args.format
     else:
         # Interactive mode
         print("🏀 League Template Creator")
@@ -137,12 +163,16 @@ if __name__ == '__main__':
         
         num_weeks_input = input("\nNumber of weeks (default: 6): ").strip()
         num_weeks = int(num_weeks_input) if num_weeks_input.isdigit() else 6
-        
+
+        format_input = input("Schedule format (team-ref / dedicated-ref, default: team-ref): ").strip()
+        schedule_format = format_input if format_input in (TEAM_REF, DEDICATED_REF) else TEAM_REF
+
         print()
         print(f"📋 Summary:")
         print(f"  League: {league_name}")
         print(f"  Teams: {', '.join(teams)}")
         print(f"  Weeks: {num_weeks}")
+        print(f"  Format: {schedule_format}")
         print(f"  Output: {output_path}")
         
         confirm = input("\nCreate template? (Y/n): ").strip().lower()
@@ -151,6 +181,12 @@ if __name__ == '__main__':
             sys.exit(0)
         
         print()
-    
-    create_league_template(output_path, league_name, teams, num_weeks)
+
+    create_league_template(
+        output_path,
+        league_name,
+        teams,
+        num_weeks,
+        schedule_format=schedule_format,
+    )
 
