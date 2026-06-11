@@ -7,6 +7,15 @@ import openpyxl
 import re
 from openpyxl.utils import get_column_letter
 
+from league_schedule_format import (
+    DEDICATED_REF,
+    TEAM_REF,
+    count_games_on_week_sheet,
+    detect_format_from_week_sheet,
+    read_format_from_teams_sheet,
+    win_loss_start_row,
+)
+
 def detect_teams(wb):
     """Detect team names from the Teams sheet, League Standings, or week sheets."""
     teams = []
@@ -71,21 +80,34 @@ def detect_week_sheets(wb):
     week_sheets.sort(key=get_week_num)
     return week_sheets
 
-def find_win_loss_section(ws):
-    """Find where to place the win/loss section (around row 30)."""
-    # Look for existing "Team Wins" or similar header
-    for row in range(25, 40):
+def resolve_schedule_format(wb):
+    if 'Teams' in wb.sheetnames:
+        fmt = read_format_from_teams_sheet(wb['Teams'])
+        if fmt != TEAM_REF:
+            return fmt
+    week_sheets = detect_week_sheets(wb)
+    if week_sheets:
+        return detect_format_from_week_sheet(wb[week_sheets[0]])
+    return TEAM_REF
+
+
+def find_win_loss_section(ws, schedule_format=TEAM_REF):
+    """Find where to place the win/loss section based on game count and format."""
+    for row in range(25, 80):
         cell_value = ws.cell(row, 1).value
         if cell_value and isinstance(cell_value, str):
-            if 'win' in cell_value.lower() or 'team' in cell_value.lower():
+            if 'win' in cell_value.lower() and 'loss' in cell_value.lower():
                 return row
-    
-    # Default to row 30
+
+    num_games = count_games_on_week_sheet(ws)
+    if num_games > 0:
+        return win_loss_start_row(num_games, schedule_format)
+
     return 30
 
-def setup_week_sheet(ws, teams, week_name):
+def setup_week_sheet(ws, teams, week_name, schedule_format=TEAM_REF):
     """Set up win/loss formulas for a week sheet."""
-    start_row = find_win_loss_section(ws)
+    start_row = find_win_loss_section(ws, schedule_format)
     
     # Headers
     ws.cell(start_row, 1).value = 'Team Wins/Losses This Week'
@@ -287,13 +309,16 @@ def main(file_path):
     if not week_sheets:
         print("ERROR: No week sheets detected!")
         return
-    
+
+    schedule_format = resolve_schedule_format(wb)
+    print(f"Schedule format: {schedule_format}")
+
     print("\n=== Setting Up Week Sheets ===")
     week_start_rows = {}
     for week_name in week_sheets:
         ws = wb[week_name]
         print(f"  Processing {week_name}...")
-        start_row = setup_week_sheet(ws, teams, week_name)
+        start_row = setup_week_sheet(ws, teams, week_name, schedule_format)
         week_start_rows[week_name] = start_row
         print(f"    Added win/loss formulas starting at row {start_row}")
     
