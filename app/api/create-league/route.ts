@@ -958,6 +958,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (numTeams !== 4 && numTeams !== 6 && numTeams !== 7) {
+      return NextResponse.json(
+        {
+          error:
+            'Built-in schedule generation supports 4, 6, or 7 teams. Use a Google Drive template for 5-team leagues.',
+        },
+        { status: 400 },
+      )
+    }
+
     const workbook = createLeagueWorkbook({ ...body, numTeams })
     const fileBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
 
