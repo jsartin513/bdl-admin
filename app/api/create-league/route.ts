@@ -877,10 +877,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supportedTeamCounts = [4, 5, 6, 7]
-    if (!supportedTeamCounts.includes(numTeams)) {
+    if (numTeams !== 4 && numTeams !== 5 && numTeams !== 6 && numTeams !== 7) {
       return NextResponse.json(
-        { error: `Only ${supportedTeamCounts.join('-, ')}-, and ${supportedTeamCounts.at(-1)}-team leagues are supported.` },
+        { error: 'Only 4-, 5-, 6-, and 7-team leagues are supported.' },
         { status: 400 },
       )
     }

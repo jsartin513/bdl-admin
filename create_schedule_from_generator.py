@@ -11,6 +11,7 @@ from itertools import combinations
 from league_schedule_format import (
     DEDICATED_REF,
     TEAM_REF,
+    count_games_on_week_sheet,
     detect_format_from_week_sheet,
     read_format_from_teams_sheet,
     win_loss_start_row,
@@ -91,11 +92,18 @@ def distribute_games_into_weeks(schedule, num_weeks):
 def create_week_sheet(wb, week_name, games, teams, schedule_format=TEAM_REF):
     """Create or update a week sheet with the game schedule."""
     wl_start = win_loss_start_row(len(games), schedule_format)
-    clear_until = wl_start + len(teams) + 3
+    new_last_game_row = wl_start - 1
 
     if week_name in wb.sheetnames:
         ws = wb[week_name]
-        for row in range(2, clear_until):
+        existing_games = count_games_on_week_sheet(ws)
+        if existing_games:
+            existing_format = detect_format_from_week_sheet(ws)
+            old_last_game_row = win_loss_start_row(existing_games, existing_format) - 1
+        else:
+            old_last_game_row = new_last_game_row
+        clear_until_row = max(new_last_game_row, old_last_game_row)
+        for row in range(2, clear_until_row + 1):
             for col in range(1, 6):
                 ws.cell(row, col).value = None
     else:

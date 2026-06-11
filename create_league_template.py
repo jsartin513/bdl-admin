@@ -181,7 +181,6 @@ if __name__ == '__main__':
             sys.exit(0)
         
         print()
-        schedule_format = TEAM_REF
 
     create_league_template(
         output_path,
