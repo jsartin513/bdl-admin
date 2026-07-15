@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { getBoardAppLinks, type BoardAppId } from '@/app/lib/board-apps'
 
 type BoardAppsMenuProps = {
@@ -11,6 +11,18 @@ type BoardAppsMenuProps = {
   buttonClassName?: string
 }
 
+function subscribeHostname() {
+  return () => {}
+}
+
+function getHostnameSnapshot() {
+  return window.location.hostname
+}
+
+function getHostnameServerSnapshot() {
+  return ''
+}
+
 export default function BoardAppsMenu({
   currentApp,
   className = '',
@@ -19,12 +31,13 @@ export default function BoardAppsMenu({
   buttonClassName = 'hover:underline text-blue-300',
 }: BoardAppsMenuProps) {
   const [open, setOpen] = useState(false)
-  const [links, setLinks] = useState(() => getBoardAppLinks(currentApp, ''))
+  const hostname = useSyncExternalStore(
+    subscribeHostname,
+    getHostnameSnapshot,
+    getHostnameServerSnapshot
+  )
+  const links = getBoardAppLinks(currentApp, hostname)
   const rootRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    setLinks(getBoardAppLinks(currentApp, window.location.hostname))
-  }, [currentApp])
 
   useEffect(() => {
     if (!open) return
@@ -53,18 +66,17 @@ export default function BoardAppsMenu({
         onClick={() => setOpen((value) => !value)}
         className={buttonClassName}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="true"
       >
         Apps
       </button>
       {open ? (
-        <div className={menuClassName} role="menu">
+        <div className={menuClassName}>
           {links.map((app) => (
             <a
               key={app.id}
               href={app.href}
               className={linkClassName}
-              role="menuitem"
               onClick={() => setOpen(false)}
             >
               {app.label}

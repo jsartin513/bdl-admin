@@ -85,13 +85,14 @@ describe('admin auth session', () => {
     expect(session?.email).toBe('admin@example.com')
   })
 
-  it('uses a shared parent cookie domain on league hosts', () => {
+  it('uses a shared parent cookie domain on production league hosts only', () => {
     expect(getAdminSessionCookieDomain('admin.bostondodgeballleague.com')).toBe(
       '.bostondodgeballleague.com'
     )
     expect(getAdminSessionCookieDomain('merch.bostondodgeballleague.com')).toBe(
       '.bostondodgeballleague.com'
     )
+    expect(getAdminSessionCookieDomain('admin-preview.bostondodgeballleague.com')).toBeUndefined()
     expect(getAdminSessionCookieDomain('localhost')).toBeUndefined()
   })
 })
