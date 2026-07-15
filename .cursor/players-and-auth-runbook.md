@@ -68,4 +68,5 @@ Sign in at `/login`. TopNav shows the signed-in email and Log out.
 - UI: `/players`
 - Import TeamLinkt CSV (dry run → commit). Matching: email, then first+last name.
 - Skill levels: 1 Beginner, 2 Intermediate, 3 Advanced, 4 Worlds level (`null` = Unset).
+- Import fills skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate`, `3`/`Advanced`, etc.). Creates get the value; updates only set skill when the existing player is unset.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.

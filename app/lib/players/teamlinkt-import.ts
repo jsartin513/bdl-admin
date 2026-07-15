@@ -1,19 +1,20 @@
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
-import { importBatches } from '@/app/db/schema'
+import { importBatches, playerEmails, players } from '@/app/db/schema'
 import {
   createPlayer,
   ensurePlayerAlias,
   ensurePlayerEmail,
   updatePlayer,
 } from '@/app/lib/players/mutations'
+import { getPlayerSnapshot } from '@/app/lib/players/queries'
 import {
-  findPlayerIdByEmail,
-  findPlayerIdsByName,
-  getPlayerSnapshot,
-} from '@/app/lib/players/queries'
-import { defaultRosterName } from '@/app/lib/players/skill'
-import { normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
+  defaultRosterName,
+  parseSkillLevel,
+  skillLevelLabel,
+  type SkillLevel,
+} from '@/app/lib/players/skill'
+import { normalizeEmail, normalizeNamePart, nameKey } from '@/app/lib/players/normalize'
 
 export type TeamlinktRow = {
   rowNumber: number
@@ -21,6 +22,7 @@ export type TeamlinktRow = {
   lastName: string
   email: string | null
   jerseyNumber: number | null
+  skillLevel: SkillLevel | null
   raw: Record<string, string>
 }
 
@@ -43,6 +45,16 @@ const HEADER_ALIASES: Record<string, string[]> = {
     '#',
     'player number',
   ],
+  skillLevel: [
+    'skill',
+    'skill level',
+    'skilllevel',
+    'player skill',
+    'level',
+    'caliber',
+    'ability',
+    'ability level',
+  ],
 }
 
 function normalizeHeader(h: string): string {
@@ -54,12 +66,14 @@ function mapHeaders(headers: string[]): {
   lastName?: number
   email?: number
   jerseyNumber?: number
+  skillLevel?: number
 } {
   const mapped: {
     firstName?: number
     lastName?: number
     email?: number
     jerseyNumber?: number
+    skillLevel?: number
   } = {}
 
   headers.forEach((header, index) => {
@@ -72,6 +86,11 @@ function mapHeaders(headers: string[]): {
   })
 
   return mapped
+}
+
+function truthyFlag(value: string | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase()
+  return v === 'yes' || v === 'y' || v === 'true' || v === '1'
 }
 
 /** Minimal CSV parser supporting quoted fields. */
@@ -128,7 +147,9 @@ export function parseTeamlinktCsv(csvText: string): {
   mapping: ReturnType<typeof mapHeaders>
   error?: string
 } {
-  const table = parseCsv(csvText)
+  // Strip BOM if present (common from Excel / TeamLinkt exports)
+  const text = csvText.replace(/^\uFEFF/, '')
+  const table = parseCsv(text)
   if (table.length < 2) {
     return { rows: [], headers: [], mapping: {}, error: 'CSV must include a header row and data' }
   }
@@ -145,6 +166,9 @@ export function parseTeamlinktCsv(csvText: string): {
     }
   }
 
+  const hasPlayerCol = headers.some((h) => normalizeHeader(h) === 'player')
+  const hasStatusCol = headers.some((h) => normalizeHeader(h) === 'status')
+
   const rows: TeamlinktRow[] = []
   for (let i = 1; i < table.length; i++) {
     const cells = table[i]
@@ -152,6 +176,15 @@ export function parseTeamlinktCsv(csvText: string): {
     headers.forEach((h, idx) => {
       raw[h] = (cells[idx] ?? '').trim()
     })
+
+    // Association members export: only import player rows that are active.
+    if (hasPlayerCol && !truthyFlag(raw['Player'] ?? raw['player'])) {
+      continue
+    }
+    if (hasStatusCol) {
+      const status = (raw['Status'] ?? raw['status'] ?? '').trim().toLowerCase()
+      if (status && status !== 'active') continue
+    }
 
     const firstName = normalizeNamePart(cells[mapping.firstName] ?? '')
     const lastName = normalizeNamePart(cells[mapping.lastName] ?? '')
@@ -168,6 +201,11 @@ export function parseTeamlinktCsv(csvText: string): {
       }
     }
 
+    let skillLevel: SkillLevel | null = null
+    if (mapping.skillLevel !== undefined) {
+      skillLevel = parseSkillLevel(cells[mapping.skillLevel] ?? '')
+    }
+
     if (!firstName && !lastName && !email) continue
 
     rows.push({
@@ -176,11 +214,82 @@ export function parseTeamlinktCsv(csvText: string): {
       lastName,
       email,
       jerseyNumber,
+      skillLevel,
       raw,
     })
   }
 
   return { rows, headers, mapping }
+}
+
+type MatchIndex = {
+  emailToPlayerId: Map<string, string>
+  nameToPlayerIds: Map<string, string[]>
+  playersById: Map<
+    string,
+    {
+      id: string
+      firstName: string
+      lastName: string
+      rosterName: string
+      jerseyNumber: number | null
+      skillLevel: number | null
+      isMerged: boolean
+      emails: string[]
+    }
+  >
+}
+
+async function loadMatchIndex(): Promise<MatchIndex> {
+  const db = getDb()
+  const [playerRows, emailRows] = await Promise.all([
+    db.select().from(players),
+    db.select().from(playerEmails),
+  ])
+
+  const emailsByPlayer = new Map<string, string[]>()
+  const emailToPlayerId = new Map<string, string>()
+  for (const e of emailRows) {
+    emailToPlayerId.set(e.email, e.playerId)
+    const list = emailsByPlayer.get(e.playerId) ?? []
+    list.push(e.email)
+    emailsByPlayer.set(e.playerId, list)
+  }
+
+  const playersById = new Map<
+    string,
+    {
+      id: string
+      firstName: string
+      lastName: string
+      rosterName: string
+      jerseyNumber: number | null
+      skillLevel: number | null
+      isMerged: boolean
+      emails: string[]
+    }
+  >()
+  const nameToPlayerIds = new Map<string, string[]>()
+
+  for (const p of playerRows) {
+    playersById.set(p.id, {
+      id: p.id,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      rosterName: p.rosterName,
+      jerseyNumber: p.jerseyNumber,
+      skillLevel: p.skillLevel,
+      isMerged: p.isMerged,
+      emails: emailsByPlayer.get(p.id) ?? [],
+    })
+    if (p.isMerged) continue
+    const key = nameKey(p.firstName, p.lastName)
+    const list = nameToPlayerIds.get(key) ?? []
+    list.push(p.id)
+    nameToPlayerIds.set(key, list)
+  }
+
+  return { emailToPlayerId, nameToPlayerIds, playersById }
 }
 
 export async function previewTeamlinktImport(
@@ -195,6 +304,7 @@ export async function previewTeamlinktImport(
     return { actions: [], headers: parsed.headers, error: parsed.error }
   }
 
+  const index = await loadMatchIndex()
   const actions: ImportPreviewAction[] = []
 
   for (const row of parsed.rows) {
@@ -209,11 +319,11 @@ export async function previewTeamlinktImport(
 
     let playerId: string | null = null
     if (row.email) {
-      playerId = await findPlayerIdByEmail(row.email)
+      playerId = index.emailToPlayerId.get(row.email) ?? null
     }
 
     if (!playerId) {
-      const byName = await findPlayerIdsByName(row.firstName, row.lastName)
+      const byName = index.nameToPlayerIds.get(nameKey(row.firstName, row.lastName)) ?? []
       if (byName.length > 1) {
         actions.push({
           action: 'ambiguous',
@@ -225,9 +335,8 @@ export async function previewTeamlinktImport(
       }
       if (byName.length === 1) {
         playerId = byName[0]
-        // If matched by name but CSV email would collide with someone else — flag
         if (row.email) {
-          const emailOwner = await findPlayerIdByEmail(row.email)
+          const emailOwner = index.emailToPlayerId.get(row.email)
           if (emailOwner && emailOwner !== playerId) {
             actions.push({
               action: 'ambiguous',
@@ -246,7 +355,7 @@ export async function previewTeamlinktImport(
       continue
     }
 
-    const existing = await getPlayerSnapshot(playerId)
+    const existing = index.playersById.get(playerId)
     const notes: string[] = []
     if (!existing) {
       actions.push({ action: 'create', row })
@@ -264,10 +373,12 @@ export async function previewTeamlinktImport(
     if (row.jerseyNumber != null && existing.jerseyNumber == null) {
       notes.push(`Set jersey #${row.jerseyNumber}`)
     }
-    if (row.email && !existing.emails.some((e) => e.email === row.email)) {
+    if (row.skillLevel != null && existing.skillLevel == null) {
+      notes.push(`Set skill ${skillLevelLabel(row.skillLevel)} (${row.skillLevel})`)
+    }
+    if (row.email && !existing.emails.includes(row.email)) {
       notes.push(`Add email ${row.email}`)
     }
-    // Suggest first-name alias when CSV first name differs? skip on name match
     const full = defaultRosterName(row.firstName, row.lastName)
     if (
       full.toLowerCase() !== existing.rosterName.toLowerCase() &&
@@ -329,6 +440,7 @@ export async function commitTeamlinktImport(input: {
           firstName: item.row.firstName,
           lastName: item.row.lastName,
           jerseyNumber: item.row.jerseyNumber,
+          skillLevel: item.row.skillLevel,
           email: item.row.email,
           actor: input.actor,
           source: 'import',
@@ -338,23 +450,25 @@ export async function commitTeamlinktImport(input: {
         continue
       }
 
-      // update
       const snap = await getPlayerSnapshot(item.playerId)
       if (!snap || snap.isMerged) {
         skipped++
         continue
       }
 
+      const patch: { jerseyNumber?: number | null; skillLevel?: number | null } = {}
       if (item.row.jerseyNumber != null && snap.jerseyNumber == null) {
-        await updatePlayer(
-          item.playerId,
-          { jerseyNumber: item.row.jerseyNumber },
-          {
-            actor: input.actor,
-            source: 'import',
-            importBatchId: batch.id,
-          }
-        )
+        patch.jerseyNumber = item.row.jerseyNumber
+      }
+      if (item.row.skillLevel != null && snap.skillLevel == null) {
+        patch.skillLevel = item.row.skillLevel
+      }
+      if (Object.keys(patch).length > 0) {
+        await updatePlayer(item.playerId, patch, {
+          actor: input.actor,
+          source: 'import',
+          importBatchId: batch.id,
+        })
       }
 
       if (item.row.email) {
@@ -364,9 +478,7 @@ export async function commitTeamlinktImport(input: {
         })
       }
 
-      if (
-        item.row.firstName.toLowerCase() !== snap.firstName.toLowerCase()
-      ) {
+      if (item.row.firstName.toLowerCase() !== snap.firstName.toLowerCase()) {
         await ensurePlayerAlias(item.playerId, item.row.firstName, {
           actor: input.actor,
           importBatchId: batch.id,
