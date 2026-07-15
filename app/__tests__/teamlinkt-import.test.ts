@@ -34,4 +34,29 @@ describe('teamlinkt csv parse', () => {
     const parsed = parseTeamlinktCsv('Email\na@b.com\n')
     expect(parsed.error).toMatch(/First Name/)
   })
+
+  it('parses association members export and keeps active players only', () => {
+    const csv = [
+      'First Name,Last Name,Player,Coach,Official,Volunteer,Gender,Birthdate,City,Email,Phone,Health Insurance ID,Emergency Contact Name,Emergency Contact Phone,Member Since,Status',
+      'Abby,Lee,Yes,No,No,No,Female,June 5 1993,Boston,lee@example.com,(949) 742-1789,,Bradford Lee,(949) 232-2403,August 24 2025,active',
+      'Skip,Me,No,Yes,No,No,Female,June 5 1993,Boston,coach@example.com,,,,,,active',
+      'Gone,Away,Yes,No,No,No,Female,June 5 1993,Boston,old@example.com,,,,,,inactive',
+    ].join('\n')
+
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows).toHaveLength(1)
+    expect(parsed.rows[0]).toMatchObject({
+      firstName: 'Abby',
+      lastName: 'Lee',
+      email: 'lee@example.com',
+    })
+  })
+
+  it('strips a UTF-8 BOM from TeamLinkt exports', () => {
+    const csv = '\uFEFFFirst Name,Last Name,Email\nJess,Sartin,jess@example.com\n'
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].firstName).toBe('Jess')
+  })
 })
