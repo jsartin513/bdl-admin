@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { importBatches, playerEmails, players } from '@/app/db/schema'
 import {
@@ -41,9 +41,12 @@ const HEADER_ALIASES: Record<string, string[]> = {
     'jersey number',
     'jersey #',
     'jersey no',
+    'jersey num',
     'number',
     '#',
     'player number',
+    'uniform number',
+    'shirt number',
   ],
   skillLevel: [
     'skill',
@@ -228,6 +231,20 @@ export function parseTeamlinktCsv(csvText: string): {
   }
 
   const warnings: string[] = []
+  if (mapping.jerseyNumber === undefined) {
+    warnings.push(
+      'No Jersey Number column found. Association members exports usually omit it — unset jerseys will not be filled. Use a team roster / participants export that includes Jersey Number.'
+    )
+  } else {
+    const header = headers[mapping.jerseyNumber]
+    const rawValues = rows.map((r) => (r.raw[header] ?? '').trim()).filter(Boolean)
+    const parsedCount = rows.filter((r) => r.jerseyNumber != null).length
+    if (rawValues.length > 0 && parsedCount === 0) {
+      warnings.push(
+        'Jersey column present but no numbers parsed. Use numeric values (e.g. 7 or #7).'
+      )
+    }
+  }
   if (mapping.skillLevel === undefined) {
     warnings.push(
       'No Skill / Skill Level column found. Association members exports usually omit it — unset skills will not be filled. Export with player additional info / custom questions, or add a Skill Level column (1–4 or Intermediate/Advanced).'
@@ -443,6 +460,8 @@ export async function commitTeamlinktImport(input: {
     .values({
       filename: input.filename,
       actor: input.actor,
+      source: 'teamlinkt',
+      csvText: input.csvText,
       rowCount: preview.actions.length,
       summary: {},
     })
@@ -526,5 +545,107 @@ export async function commitTeamlinktImport(input: {
   const summary = { created, updated, skipped, ambiguous, errors }
   await db.update(importBatches).set({ summary }).where(eq(importBatches.id, batch.id))
 
-  return { batchId: batch.id, summary, actions: preview.actions }
+  return {
+    batchId: batch.id,
+    summary,
+    actions: preview.actions,
+    warnings: preview.warnings,
+  }
+}
+
+export type SavedImportBatchListItem = {
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  hasCsv: boolean
+  createdAt: string
+}
+
+export async function listSavedImportBatches(limit = 25): Promise<SavedImportBatchListItem[]> {
+  const db = getDb()
+  const rows = await db
+    .select({
+      id: importBatches.id,
+      filename: importBatches.filename,
+      actor: importBatches.actor,
+      source: importBatches.source,
+      rowCount: importBatches.rowCount,
+      summary: importBatches.summary,
+      csvText: importBatches.csvText,
+      createdAt: importBatches.createdAt,
+    })
+    .from(importBatches)
+    .orderBy(desc(importBatches.createdAt))
+    .limit(limit)
+
+  return rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    actor: r.actor,
+    source: r.source,
+    rowCount: r.rowCount,
+    summary: r.summary ?? {},
+    hasCsv: Boolean(r.csvText && r.csvText.trim()),
+    createdAt: r.createdAt.toISOString(),
+  }))
+}
+
+export async function getSavedImportBatch(id: string): Promise<{
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  csvText: string | null
+  createdAt: string
+} | null> {
+  const db = getDb()
+  const [row] = await db.select().from(importBatches).where(eq(importBatches.id, id)).limit(1)
+  if (!row) return null
+  return {
+    id: row.id,
+    filename: row.filename,
+    actor: row.actor,
+    source: row.source,
+    rowCount: row.rowCount,
+    summary: row.summary ?? {},
+    csvText: row.csvText,
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+/** Store CSV for later re-apply without writing player changes. */
+export async function saveTeamlinktImportCsv(input: {
+  csvText: string
+  filename: string
+  actor: string
+}) {
+  const parsed = parseTeamlinktCsv(input.csvText)
+  if (parsed.error) {
+    throw new Error(parsed.error)
+  }
+
+  const db = getDb()
+  const [batch] = await db
+    .insert(importBatches)
+    .values({
+      filename: input.filename,
+      actor: input.actor,
+      source: 'teamlinkt',
+      csvText: input.csvText,
+      rowCount: parsed.rows.length,
+      summary: { savedOnly: true, warnings: parsed.warnings },
+    })
+    .returning()
+
+  return {
+    batchId: batch.id,
+    rowCount: parsed.rows.length,
+    warnings: parsed.warnings,
+    headers: parsed.headers,
+  }
 }

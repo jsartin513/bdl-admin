@@ -68,5 +68,9 @@ Sign in at `/login`. TopNav shows the signed-in email and Log out.
 - UI: `/players`
 - Import TeamLinkt CSV (dry run → commit). Matching: email, then first+last name.
 - Skill levels: 1 Beginner, 2 Intermediate, 3 Advanced, 4 Worlds level (`null` = Unset).
-- Import fills skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate`, `3`/`Advanced`, etc.). Creates get the value; updates only set skill when the existing player is unset. Association members exports usually omit skill — dry-run preview warns when the column is missing.
+- Import fills **skill** when the CSV has a Skill / Skill Level column (`2`/`Intermediate`, `3`/`Advanced`, etc.). Creates get the value; updates only set skill when the existing player is unset.
+- Import fills **jersey** the same way when a Jersey Number (or Uniform Number / Shirt Number) column is present.
+- Association members exports usually omit skill and jersey — dry-run preview warns when those columns are missing. Use a roster/participants export (or additional-info columns) to backfill.
+- Committed imports (and **Save for later**) store the full CSV on `import_batches.csv_text` so you can **Load** or **Re-apply** later without re-uploading. Re-apply creates a new batch and still only fills unset jersey/skill.
+- Schema note: after pulling this change, run `npm run db:push` (or apply [`drizzle/0001_import_batches_csv_text.sql`](../drizzle/0001_import_batches_csv_text.sql)) so `source` + `csv_text` exist on `import_batches`.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.
