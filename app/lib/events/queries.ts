@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
+import { asc, count, desc, eq, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import {
   eventRegistrations,
