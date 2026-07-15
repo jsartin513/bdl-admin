@@ -8,7 +8,7 @@ Add these to `.env.local` (local) and Vercel project env (Production / Preview):
 # Google admin auth (same allowlist pattern as bdl-merch / open-gym / concessions)
 ADMIN_GOOGLE_CLIENT_ID=
 ADMIN_GOOGLE_CLIENT_SECRET=
-ADMIN_SESSION_SECRET=          # long random string; unique per app is fine
+ADMIN_SESSION_SECRET=          # must match merch + open-gym for cross-app SSO
 ADMIN_ALLOWED_EMAILS=a@x.com,b@y.com   # required when VERCEL_ENV=production
 NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the host users hit
 
@@ -17,6 +17,8 @@ DATABASE_URL=postgresql://...
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
+
+On `*.bostondodgeballleague.com`, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Localhost stays host-only.
 
 | Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
 |-------------|------|------------|------------------------|

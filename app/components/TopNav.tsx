@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
+import BoardAppsMenu from '@/app/components/BoardAppsMenu'
 
 export default function TopNav() {
   const pathname = usePathname()
@@ -63,6 +64,7 @@ export default function TopNav() {
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <BoardAppsMenu currentApp="admin" />
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <span>Dev mode</span>
           <input
