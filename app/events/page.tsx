@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { EVENT_TYPES, type EventListItem } from '@/app/lib/events/types'
@@ -18,6 +18,18 @@ function formatDisplayDate(isoDate: string): string {
 }
 
 export default function EventsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-5xl p-6 text-sm text-gray-600">Loading…</div>
+      }
+    >
+      <EventsPageContent />
+    </Suspense>
+  )
+}
+
+function EventsPageContent() {
   const { devMode } = useDevMode()
   const [events, setEvents] = useState<EventListItem[]>([])
   const [loading, setLoading] = useState(true)

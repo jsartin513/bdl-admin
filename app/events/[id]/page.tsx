@@ -2,7 +2,14 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { genderGroup } from '@/app/lib/players/gender'
@@ -69,6 +76,18 @@ function genderRowClass(gender: string | null): string {
 }
 
 export default function EventTrackerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-6xl p-6 text-sm text-gray-600">Loading…</div>
+      }
+    >
+      <EventTrackerPageContent />
+    </Suspense>
+  )
+}
+
+function EventTrackerPageContent() {
   const params = useParams()
   const eventId = String(params.id ?? '')
   const { devMode } = useDevMode()
