@@ -8,16 +8,34 @@ import {
   previewTeamlinktImport,
 } from '@/app/lib/players/teamlinkt-import'
 
-export async function POST(request: NextRequest) {
-  const session = getAdminSessionFromRequest(request)
-  if (!session) return adminUnauthorizedResponse()
+export const maxDuration = 60
 
+async function readJsonBody(request: NextRequest): Promise<
+  | { ok: true; body: { csv?: string; filename?: string; dryRun?: boolean } }
+  | { ok: false; error: string }
+> {
   try {
     const body = (await request.json()) as {
       csv?: string
       filename?: string
       dryRun?: boolean
     }
+    return { ok: true, body }
+  } catch {
+    return { ok: false, error: 'Request body must be valid JSON' }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = getAdminSessionFromRequest(request)
+  if (!session) return adminUnauthorizedResponse()
+
+  try {
+    const parsedBody = await readJsonBody(request)
+    if (!parsedBody.ok) {
+      return NextResponse.json({ error: parsedBody.error }, { status: 400 })
+    }
+    const body = parsedBody.body
 
     if (!body.csv?.trim()) {
       return NextResponse.json({ error: 'csv is required' }, { status: 400 })
@@ -49,7 +67,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ dryRun: false, ...result })
   } catch (err) {
+    console.error('players import failed', err)
     const message = err instanceof Error ? err.message : 'Import failed'
-    return NextResponse.json({ error: message }, { status: 400 })
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

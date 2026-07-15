@@ -216,6 +216,20 @@ export default function PlayersPage() {
     }
   }
 
+  async function readApiJson(res: Response): Promise<Record<string, unknown>> {
+    const text = await res.text()
+    try {
+      return JSON.parse(text) as Record<string, unknown>
+    } catch {
+      const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 180)
+      throw new Error(
+        snippet
+          ? `Server returned a non-JSON response (${res.status}): ${snippet}`
+          : `Server returned an empty non-JSON response (${res.status})`
+      )
+    }
+  }
+
   async function previewImport() {
     setImportBusy(true)
     setFormError(null)
@@ -225,9 +239,12 @@ export default function PlayersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv: importCsv, filename: importFilename, dryRun: true }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Preview failed')
-      setImportPreview({ actions: data.actions, summary: data.summary })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Preview failed'))
+      setImportPreview({
+        actions: data.actions as ImportAction[],
+        summary: data.summary as Record<string, number>,
+      })
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Preview failed')
     } finally {
@@ -248,14 +265,20 @@ export default function PlayersPage() {
           dryRun: false,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Import failed')
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Import failed'))
+      const summary = data.summary as {
+        created: number
+        updated: number
+        skipped: number
+        ambiguous: number
+      }
       setImportOpen(false)
       setImportCsv('')
       setImportPreview(null)
       await loadPlayers()
       alert(
-        `Import done: ${data.summary.created} created, ${data.summary.updated} updated, ${data.summary.skipped} skipped, ${data.summary.ambiguous} ambiguous`
+        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
       )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Import failed')
