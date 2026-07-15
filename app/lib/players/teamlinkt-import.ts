@@ -8,7 +8,12 @@ import {
   updatePlayer,
 } from '@/app/lib/players/mutations'
 import { getPlayerSnapshot } from '@/app/lib/players/queries'
-import { defaultRosterName } from '@/app/lib/players/skill'
+import {
+  defaultRosterName,
+  parseSkillLevel,
+  skillLevelLabel,
+  type SkillLevel,
+} from '@/app/lib/players/skill'
 import { normalizeEmail, normalizeNamePart, nameKey } from '@/app/lib/players/normalize'
 
 export type TeamlinktRow = {
@@ -17,6 +22,7 @@ export type TeamlinktRow = {
   lastName: string
   email: string | null
   jerseyNumber: number | null
+  skillLevel: SkillLevel | null
   raw: Record<string, string>
 }
 
@@ -39,6 +45,16 @@ const HEADER_ALIASES: Record<string, string[]> = {
     '#',
     'player number',
   ],
+  skillLevel: [
+    'skill',
+    'skill level',
+    'skilllevel',
+    'player skill',
+    'level',
+    'caliber',
+    'ability',
+    'ability level',
+  ],
 }
 
 function normalizeHeader(h: string): string {
@@ -50,12 +66,14 @@ function mapHeaders(headers: string[]): {
   lastName?: number
   email?: number
   jerseyNumber?: number
+  skillLevel?: number
 } {
   const mapped: {
     firstName?: number
     lastName?: number
     email?: number
     jerseyNumber?: number
+    skillLevel?: number
   } = {}
 
   headers.forEach((header, index) => {
@@ -183,6 +201,11 @@ export function parseTeamlinktCsv(csvText: string): {
       }
     }
 
+    let skillLevel: SkillLevel | null = null
+    if (mapping.skillLevel !== undefined) {
+      skillLevel = parseSkillLevel(cells[mapping.skillLevel] ?? '')
+    }
+
     if (!firstName && !lastName && !email) continue
 
     rows.push({
@@ -191,6 +214,7 @@ export function parseTeamlinktCsv(csvText: string): {
       lastName,
       email,
       jerseyNumber,
+      skillLevel,
       raw,
     })
   }
@@ -209,6 +233,7 @@ type MatchIndex = {
       lastName: string
       rosterName: string
       jerseyNumber: number | null
+      skillLevel: number | null
       isMerged: boolean
       emails: string[]
     }
@@ -239,6 +264,7 @@ async function loadMatchIndex(): Promise<MatchIndex> {
       lastName: string
       rosterName: string
       jerseyNumber: number | null
+      skillLevel: number | null
       isMerged: boolean
       emails: string[]
     }
@@ -252,6 +278,7 @@ async function loadMatchIndex(): Promise<MatchIndex> {
       lastName: p.lastName,
       rosterName: p.rosterName,
       jerseyNumber: p.jerseyNumber,
+      skillLevel: p.skillLevel,
       isMerged: p.isMerged,
       emails: emailsByPlayer.get(p.id) ?? [],
     })
@@ -346,6 +373,9 @@ export async function previewTeamlinktImport(
     if (row.jerseyNumber != null && existing.jerseyNumber == null) {
       notes.push(`Set jersey #${row.jerseyNumber}`)
     }
+    if (row.skillLevel != null && existing.skillLevel == null) {
+      notes.push(`Set skill ${skillLevelLabel(row.skillLevel)} (${row.skillLevel})`)
+    }
     if (row.email && !existing.emails.includes(row.email)) {
       notes.push(`Add email ${row.email}`)
     }
@@ -410,6 +440,7 @@ export async function commitTeamlinktImport(input: {
           firstName: item.row.firstName,
           lastName: item.row.lastName,
           jerseyNumber: item.row.jerseyNumber,
+          skillLevel: item.row.skillLevel,
           email: item.row.email,
           actor: input.actor,
           source: 'import',
@@ -425,16 +456,19 @@ export async function commitTeamlinktImport(input: {
         continue
       }
 
+      const patch: { jerseyNumber?: number | null; skillLevel?: number | null } = {}
       if (item.row.jerseyNumber != null && snap.jerseyNumber == null) {
-        await updatePlayer(
-          item.playerId,
-          { jerseyNumber: item.row.jerseyNumber },
-          {
-            actor: input.actor,
-            source: 'import',
-            importBatchId: batch.id,
-          }
-        )
+        patch.jerseyNumber = item.row.jerseyNumber
+      }
+      if (item.row.skillLevel != null && snap.skillLevel == null) {
+        patch.skillLevel = item.row.skillLevel
+      }
+      if (Object.keys(patch).length > 0) {
+        await updatePlayer(item.playerId, patch, {
+          actor: input.actor,
+          source: 'import',
+          importBatchId: batch.id,
+        })
       }
 
       if (item.row.email) {
