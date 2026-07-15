@@ -46,3 +46,66 @@ export function parseSkillLevel(value: string | null | undefined): SkillLevel | 
 export function defaultRosterName(firstName: string, lastName: string): string {
   return `${firstName.trim()} ${lastName.trim()}`.trim()
 }
+
+/** Default nickname: first name + last initial (e.g. "Jess S"). */
+export function defaultNickname(firstName: string, lastName: string): string {
+  const first = firstName.trim()
+  const last = lastName.trim()
+  if (!first) return last ? last.charAt(0).toUpperCase() : ''
+  if (!last) return first
+  return `${first} ${last.charAt(0).toUpperCase()}`
+}
+
+/** Effective nickname: stored custom value, or first + last initial. */
+export function resolveNickname(
+  nickname: string | null | undefined,
+  firstName: string,
+  lastName: string
+): string {
+  const custom = nickname?.trim()
+  if (custom) return custom
+  return defaultNickname(firstName, lastName)
+}
+
+/**
+ * Persist null when empty or equal to the default so nickname tracks name changes
+ * until someone sets a custom value.
+ */
+export function normalizeStoredNickname(
+  nickname: string | null | undefined,
+  firstName: string,
+  lastName: string
+): string | null {
+  const trimmed = nickname?.trim() ?? ''
+  if (!trimmed) return null
+  if (trimmed.toLowerCase() === defaultNickname(firstName, lastName).toLowerCase()) {
+    return null
+  }
+  return trimmed
+}
+
+/** Default jersey name: last name. */
+export function defaultJerseyName(lastName: string): string {
+  return lastName.trim()
+}
+
+export function resolveJerseyName(
+  jerseyName: string | null | undefined,
+  lastName: string
+): string {
+  const custom = jerseyName?.trim()
+  if (custom) return custom
+  return defaultJerseyName(lastName)
+}
+
+export function normalizeStoredJerseyName(
+  jerseyName: string | null | undefined,
+  lastName: string
+): string | null {
+  const trimmed = jerseyName?.trim() ?? ''
+  if (!trimmed) return null
+  if (trimmed.toLowerCase() === defaultJerseyName(lastName).toLowerCase()) {
+    return null
+  }
+  return trimmed
+}

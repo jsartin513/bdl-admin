@@ -34,6 +34,36 @@ export type ImportPreviewAction =
   | { action: 'skip'; row: TeamlinktRow; reason: string }
   | { action: 'ambiguous'; row: TeamlinktRow; reason: string; playerIds: string[] }
 
+/**
+ * How TeamLinkt updates skill / gender / jersey on existing players.
+ * - skip (default): never change those fields; new players still get CSV values
+ * - fill_blank: only set a field when the player currently has it unset
+ * - overwrite: replace existing values when the CSV differs
+ */
+export type ImportProfileFieldsMode = 'skip' | 'fill_blank' | 'overwrite'
+
+export type TeamlinktImportOptions = {
+  profileFields?: ImportProfileFieldsMode
+}
+
+function resolveProfileFieldsMode(
+  options?: TeamlinktImportOptions
+): ImportProfileFieldsMode {
+  return options?.profileFields ?? 'skip'
+}
+
+export function shouldApplyProfileField(
+  csvValue: string | number | null,
+  existingValue: string | number | null,
+  mode: ImportProfileFieldsMode
+): boolean {
+  if (csvValue == null) return false
+  if (mode === 'skip') return false
+  if (existingValue == null) return mode === 'fill_blank' || mode === 'overwrite'
+  if (mode !== 'overwrite') return false
+  return csvValue !== existingValue
+}
+
 const HEADER_ALIASES: Record<string, string[]> = {
   firstName: ['first name', 'firstname', 'first', 'player first name', 'given name'],
   lastName: ['last name', 'lastname', 'last', 'player last name', 'surname', 'family name'],
@@ -307,12 +337,14 @@ async function loadMatchIndex(): Promise<MatchIndex> {
 }
 
 export async function previewTeamlinktImport(
-  csvText: string
+  csvText: string,
+  options?: TeamlinktImportOptions
 ): Promise<{
   actions: ImportPreviewAction[]
   headers: string[]
   error?: string
 }> {
+  const profileFields = resolveProfileFieldsMode(options)
   const parsed = parseTeamlinktCsv(csvText)
   if (parsed.error) {
     return { actions: [], headers: parsed.headers, error: parsed.error }
@@ -371,6 +403,7 @@ export async function previewTeamlinktImport(
 
     const existing = index.playersById.get(playerId)
     const notes: string[] = []
+    const ignored: string[] = []
     if (!existing) {
       actions.push({ action: 'create', row })
       continue
@@ -384,15 +417,61 @@ export async function previewTeamlinktImport(
       continue
     }
 
-    if (row.jerseyNumber != null && existing.jerseyNumber == null) {
-      notes.push(`Set jersey #${row.jerseyNumber}`)
+    if (shouldApplyProfileField(row.jerseyNumber, existing.jerseyNumber, profileFields)) {
+      notes.push(
+        existing.jerseyNumber == null
+          ? `Set jersey #${row.jerseyNumber}`
+          : `Overwrite jersey #${existing.jerseyNumber} → #${row.jerseyNumber}`
+      )
+    } else if (
+      profileFields === 'skip' &&
+      row.jerseyNumber != null &&
+      existing.jerseyNumber != null &&
+      row.jerseyNumber !== existing.jerseyNumber
+    ) {
+      ignored.push(`jersey #${existing.jerseyNumber} kept (CSV #${row.jerseyNumber})`)
     }
-    if (row.skillLevel != null && existing.skillLevel == null) {
-      notes.push(`Set skill ${skillLevelLabel(row.skillLevel)} (${row.skillLevel})`)
+
+    if (shouldApplyProfileField(row.skillLevel, existing.skillLevel, profileFields)) {
+      notes.push(
+        existing.skillLevel == null
+          ? `Set skill ${skillLevelLabel(row.skillLevel)} (${row.skillLevel})`
+          : `Overwrite skill ${skillLevelLabel(existing.skillLevel)} → ${skillLevelLabel(row.skillLevel)}`
+      )
+    } else if (
+      profileFields === 'skip' &&
+      row.skillLevel != null &&
+      existing.skillLevel != null &&
+      row.skillLevel !== existing.skillLevel
+    ) {
+      ignored.push(
+        `skill ${skillLevelLabel(existing.skillLevel)} kept (CSV ${skillLevelLabel(row.skillLevel)})`
+      )
+    } else if (
+      profileFields === 'skip' &&
+      row.skillLevel != null &&
+      existing.skillLevel == null
+    ) {
+      ignored.push(`skill left unset (CSV ${skillLevelLabel(row.skillLevel)})`)
     }
-    if (row.gender != null && existing.gender == null) {
-      notes.push(`Set gender ${genderLabel(row.gender)}`)
+
+    if (shouldApplyProfileField(row.gender, existing.gender, profileFields)) {
+      notes.push(
+        existing.gender == null
+          ? `Set gender ${genderLabel(row.gender)}`
+          : `Overwrite gender ${genderLabel(existing.gender)} → ${genderLabel(row.gender)}`
+      )
+    } else if (
+      profileFields === 'skip' &&
+      row.gender != null &&
+      existing.gender != null &&
+      row.gender !== existing.gender
+    ) {
+      ignored.push(
+        `gender ${genderLabel(existing.gender)} kept (CSV ${genderLabel(row.gender)})`
+      )
     }
+
     if (row.email && !existing.emails.includes(row.email)) {
       notes.push(`Add email ${row.email}`)
     }
@@ -405,8 +484,16 @@ export async function previewTeamlinktImport(
     }
 
     if (notes.length === 0) {
-      actions.push({ action: 'skip', row, reason: 'Already up to date' })
+      actions.push({
+        action: 'skip',
+        row,
+        reason:
+          ignored.length > 0
+            ? `Already up to date; ${ignored.join('; ')}`
+            : 'Already up to date',
+      })
     } else {
+      if (ignored.length > 0) notes.push(...ignored.map((n) => `Skipped: ${n}`))
       actions.push({ action: 'update', row, playerId, notes })
     }
   }
@@ -418,8 +505,10 @@ export async function commitTeamlinktImport(input: {
   csvText: string
   filename: string
   actor: string
+  options?: TeamlinktImportOptions
 }) {
-  const preview = await previewTeamlinktImport(input.csvText)
+  const profileFields = resolveProfileFieldsMode(input.options)
+  const preview = await previewTeamlinktImport(input.csvText, input.options)
   if (preview.error) {
     throw new Error(preview.error)
   }
@@ -479,13 +568,13 @@ export async function commitTeamlinktImport(input: {
         skillLevel?: number | null
         gender?: string | null
       } = {}
-      if (item.row.jerseyNumber != null && snap.jerseyNumber == null) {
+      if (shouldApplyProfileField(item.row.jerseyNumber, snap.jerseyNumber, profileFields)) {
         patch.jerseyNumber = item.row.jerseyNumber
       }
-      if (item.row.skillLevel != null && snap.skillLevel == null) {
+      if (shouldApplyProfileField(item.row.skillLevel, snap.skillLevel, profileFields)) {
         patch.skillLevel = item.row.skillLevel
       }
-      if (item.row.gender != null && snap.gender == null) {
+      if (shouldApplyProfileField(item.row.gender, snap.gender, profileFields)) {
         patch.gender = item.row.gender
       }
       if (Object.keys(patch).length > 0) {
@@ -518,7 +607,7 @@ export async function commitTeamlinktImport(input: {
     }
   }
 
-  const summary = { created, updated, skipped, ambiguous, errors }
+  const summary = { created, updated, skipped, ambiguous, errors, profileFields }
   await db.update(importBatches).set({ summary }).where(eq(importBatches.id, batch.id))
 
   return { batchId: batch.id, summary, actions: preview.actions }

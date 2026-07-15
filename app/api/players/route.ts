@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
       firstName?: string
       lastName?: string
       rosterName?: string
+      nickname?: string | null
       jerseyNumber?: number | null
+      jerseyName?: string | null
       skillLevel?: number | null
       gender?: string | null
       email?: string | null
@@ -63,7 +65,9 @@ export async function POST(request: NextRequest) {
       firstName: body.firstName,
       lastName: body.lastName,
       rosterName: body.rosterName,
+      nickname: body.nickname,
       jerseyNumber: body.jerseyNumber ?? null,
+      jerseyName: body.jerseyName,
       skillLevel: body.skillLevel ?? null,
       gender: body.gender || null,
       email: body.email,

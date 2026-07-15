@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv, parseTeamlinktCsv } from '@/app/lib/players/teamlinkt-import'
-import { parseSkillLevel } from '@/app/lib/players/skill'
+import {
+  parseCsv,
+  parseTeamlinktCsv,
+  shouldApplyProfileField,
+} from '@/app/lib/players/teamlinkt-import'
+import {
+  defaultJerseyName,
+  defaultNickname,
+  normalizeStoredJerseyName,
+  normalizeStoredNickname,
+  parseSkillLevel,
+  resolveJerseyName,
+  resolveNickname,
+} from '@/app/lib/players/skill'
 import { genderGroup, parseGender } from '@/app/lib/players/gender'
 
 describe('parseSkillLevel', () => {
@@ -13,6 +25,31 @@ describe('parseSkillLevel', () => {
     expect(parseSkillLevel('Worlds level')).toBe(4)
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
+  })
+})
+
+describe('nickname defaults', () => {
+  it('builds first name + last initial', () => {
+    expect(defaultNickname('Jess', 'Sartin')).toBe('Jess S')
+    expect(defaultNickname('alex', 'player')).toBe('alex P')
+  })
+
+  it('uses custom nickname until cleared back to default', () => {
+    expect(resolveNickname(null, 'Jess', 'Sartin')).toBe('Jess S')
+    expect(resolveNickname('JC', 'Jess', 'Sartin')).toBe('JC')
+    expect(normalizeStoredNickname('Jess S', 'Jess', 'Sartin')).toBeNull()
+    expect(normalizeStoredNickname('JC', 'Jess', 'Sartin')).toBe('JC')
+    expect(normalizeStoredNickname('', 'Jess', 'Sartin')).toBeNull()
+  })
+})
+
+describe('jersey name defaults', () => {
+  it('defaults to last name and stores custom overrides', () => {
+    expect(defaultJerseyName('Sartin')).toBe('Sartin')
+    expect(resolveJerseyName(null, 'Sartin')).toBe('Sartin')
+    expect(resolveJerseyName('Jet', 'Sartin')).toBe('Jet')
+    expect(normalizeStoredJerseyName('Sartin', 'Sartin')).toBeNull()
+    expect(normalizeStoredJerseyName('Jet', 'Sartin')).toBe('Jet')
   })
 })
 
@@ -32,6 +69,25 @@ describe('parseGender', () => {
     expect(genderGroup('other')).toBe('w_nb_o')
     expect(genderGroup('man')).toBe('men')
     expect(genderGroup(null)).toBe('unset')
+  })
+})
+
+describe('shouldApplyProfileField', () => {
+  it('skips profile fields by default mode', () => {
+    expect(shouldApplyProfileField(3, null, 'skip')).toBe(false)
+    expect(shouldApplyProfileField(3, 2, 'skip')).toBe(false)
+  })
+
+  it('fill_blank only applies when existing is unset', () => {
+    expect(shouldApplyProfileField(3, null, 'fill_blank')).toBe(true)
+    expect(shouldApplyProfileField(3, 2, 'fill_blank')).toBe(false)
+    expect(shouldApplyProfileField(null, null, 'fill_blank')).toBe(false)
+  })
+
+  it('overwrite replaces differing existing values', () => {
+    expect(shouldApplyProfileField(3, null, 'overwrite')).toBe(true)
+    expect(shouldApplyProfileField(3, 2, 'overwrite')).toBe(true)
+    expect(shouldApplyProfileField(3, 3, 'overwrite')).toBe(false)
   })
 })
 

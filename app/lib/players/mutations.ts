@@ -2,7 +2,12 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { playerAliases, playerEmails, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
-import { defaultRosterName, isValidSkillLevel } from '@/app/lib/players/skill'
+import {
+  defaultRosterName,
+  isValidSkillLevel,
+  normalizeStoredJerseyName,
+  normalizeStoredNickname,
+} from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
 import {
   getPlayerSnapshot,
@@ -15,7 +20,9 @@ export async function createPlayer(input: {
   firstName: string
   lastName: string
   rosterName?: string
+  nickname?: string | null
   jerseyNumber?: number | null
+  jerseyName?: string | null
   skillLevel?: number | null
   gender?: string | null
   email?: string | null
@@ -33,6 +40,14 @@ export async function createPlayer(input: {
   const rosterName = input.rosterName?.trim()
     ? normalizeNamePart(input.rosterName)
     : defaultRosterName(firstName, lastName)
+  const nickname =
+    input.nickname !== undefined
+      ? normalizeStoredNickname(input.nickname, firstName, lastName)
+      : null
+  const jerseyName =
+    input.jerseyName !== undefined
+      ? normalizeStoredJerseyName(input.jerseyName, lastName)
+      : null
 
   let skillLevel: number | null = null
   if (input.skillLevel != null) {
@@ -52,7 +67,9 @@ export async function createPlayer(input: {
       firstName,
       lastName,
       rosterName,
+      nickname,
       jerseyNumber: input.jerseyNumber ?? null,
+      jerseyName,
       skillLevel,
       gender,
     })
@@ -87,7 +104,9 @@ export async function updatePlayer(
     firstName?: string
     lastName?: string
     rosterName?: string
+    nickname?: string | null
     jerseyNumber?: number | null
+    jerseyName?: string | null
     skillLevel?: number | null
     gender?: string | null
   },
@@ -131,6 +150,15 @@ export async function updatePlayer(
       throw new Error('Invalid gender')
     }
     updates.gender = patch.gender
+  }
+
+  const nextFirst = updates.firstName ?? before.firstName
+  const nextLast = updates.lastName ?? before.lastName
+  if (patch.nickname !== undefined) {
+    updates.nickname = normalizeStoredNickname(patch.nickname, nextFirst, nextLast)
+  }
+  if (patch.jerseyName !== undefined) {
+    updates.jerseyName = normalizeStoredJerseyName(patch.jerseyName, nextLast)
   }
 
   await db.update(players).set(updates).where(eq(players.id, playerId))

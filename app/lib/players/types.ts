@@ -1,12 +1,20 @@
 export type ChangeSource = 'import' | 'admin' | 'webapp'
-export type ChangeType = 'create' | 'update' | 'merge' | 'import'
+export type ChangeType = 'create' | 'update' | 'merge' | 'unmerge' | 'import'
 
 export type PlayerSnapshot = {
   id: string
   firstName: string
   lastName: string
   rosterName: string
+  /** Effective nickname (custom or first + last initial). */
+  nickname: string
+  /** Stored custom nickname; null means still using the default. */
+  nicknameCustom: string | null
   jerseyNumber: number | null
+  /** Effective jersey name (custom or last name). */
+  jerseyName: string
+  /** Stored custom jersey name; null means still using last name. */
+  jerseyNameCustom: string | null
   skillLevel: number | null
   gender: string | null
   isMerged: boolean
@@ -20,7 +28,9 @@ export type PlayerListItem = {
   firstName: string
   lastName: string
   rosterName: string
+  nickname: string
   jerseyNumber: number | null
+  jerseyName: string
   skillLevel: number | null
   skillLabel: string
   gender: string | null

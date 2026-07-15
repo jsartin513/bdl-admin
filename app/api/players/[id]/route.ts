@@ -42,7 +42,9 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       firstName?: string
       lastName?: string
       rosterName?: string
+      nickname?: string | null
       jerseyNumber?: number | null
+      jerseyName?: string | null
       skillLevel?: number | null
       gender?: string | null
       addEmail?: string
@@ -61,7 +63,9 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       body.firstName !== undefined ||
       body.lastName !== undefined ||
       body.rosterName !== undefined ||
+      body.nickname !== undefined ||
       body.jerseyNumber !== undefined ||
+      body.jerseyName !== undefined ||
       body.skillLevel !== undefined ||
       body.gender !== undefined
 
@@ -72,7 +76,9 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           firstName: body.firstName,
           lastName: body.lastName,
           rosterName: body.rosterName,
+          nickname: body.nickname,
           jerseyNumber: body.jerseyNumber,
+          jerseyName: body.jerseyName,
           skillLevel: body.skillLevel,
           gender: body.gender,
         },

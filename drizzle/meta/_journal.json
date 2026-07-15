@@ -15,6 +15,20 @@
       "when": 1752614400000,
       "tag": "0001_player_gender",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1752620000000,
+      "tag": "0002_player_nickname",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1752623600000,
+      "tag": "0003_player_jersey_name",
+      "breakpoints": true
     }
   ]
 }

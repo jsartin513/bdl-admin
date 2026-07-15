@@ -6,8 +6,12 @@ import {
   playerEmails,
   players,
 } from '@/app/db/schema'
-import { skillLevelLabel } from '@/app/lib/players/skill'
-import { genderGroupLabel, genderGroupSortKey, genderLabel } from '@/app/lib/players/gender'
+import {
+  resolveJerseyName,
+  resolveNickname,
+  skillLevelLabel,
+} from '@/app/lib/players/skill'
+import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function listPlayers(opts: {
@@ -44,6 +48,8 @@ export async function listPlayers(opts: {
         ilike(players.firstName, term),
         ilike(players.lastName, term),
         ilike(players.rosterName, term),
+        ilike(players.nickname, term),
+        ilike(players.jerseyName, term),
         inArray(players.id, matchingEmailIds),
         inArray(players.id, matchingAliasIds)
       )
@@ -76,12 +82,14 @@ export async function listPlayers(opts: {
     }
   }
 
-  const items: PlayerListItem[] = rows.map((r) => ({
+  return rows.map((r) => ({
     id: r.id,
     firstName: r.firstName,
     lastName: r.lastName,
     rosterName: r.rosterName,
+    nickname: resolveNickname(r.nickname, r.firstName, r.lastName),
     jerseyNumber: r.jerseyNumber,
+    jerseyName: resolveJerseyName(r.jerseyName, r.lastName),
     skillLevel: r.skillLevel,
     skillLabel: skillLevelLabel(r.skillLevel),
     gender: r.gender,
@@ -90,17 +98,6 @@ export async function listPlayers(opts: {
     primaryEmail: primaryByPlayer.get(r.id) ?? null,
     isMerged: r.isMerged,
   }))
-
-  // W/NB/O together, then men, then unset — name order within each group
-  items.sort((a, b) => {
-    const g = genderGroupSortKey(a.gender) - genderGroupSortKey(b.gender)
-    if (g !== 0) return g
-    const last = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
-    if (last !== 0) return last
-    return a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
-  })
-
-  return items
 }
 
 export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapshot | null> {
@@ -120,12 +117,19 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     .where(eq(playerAliases.playerId, playerId))
     .orderBy(asc(playerAliases.alias))
 
+  const nicknameCustom = player.nickname?.trim() ? player.nickname.trim() : null
+  const jerseyNameCustom = player.jerseyName?.trim() ? player.jerseyName.trim() : null
+
   return {
     id: player.id,
     firstName: player.firstName,
     lastName: player.lastName,
     rosterName: player.rosterName,
+    nickname: resolveNickname(nicknameCustom, player.firstName, player.lastName),
+    nicknameCustom,
     jerseyNumber: player.jerseyNumber,
+    jerseyName: resolveJerseyName(jerseyNameCustom, player.lastName),
+    jerseyNameCustom,
     skillLevel: player.skillLevel,
     gender: player.gender,
     isMerged: player.isMerged,
@@ -141,7 +145,11 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     firstName: snapshot.firstName,
     lastName: snapshot.lastName,
     rosterName: snapshot.rosterName,
+    nickname: snapshot.nickname,
+    nicknameCustom: snapshot.nicknameCustom,
     jerseyNumber: snapshot.jerseyNumber,
+    jerseyName: snapshot.jerseyName,
+    jerseyNameCustom: snapshot.jerseyNameCustom,
     skillLevel: snapshot.skillLevel,
     gender: snapshot.gender,
     isMerged: snapshot.isMerged,

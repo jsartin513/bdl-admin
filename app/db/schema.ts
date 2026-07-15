@@ -17,7 +17,11 @@ export const players = pgTable(
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
     rosterName: text('roster_name').notNull(),
+    /** Null = default to first name + last initial until manually set. */
+    nickname: text('nickname'),
     jerseyNumber: integer('jersey_number'),
+    /** Null = default to last name until manually set. */
+    jerseyName: text('jersey_name'),
     skillLevel: integer('skill_level'),
     /** Canonical: man | woman | nonbinary | other */
     gender: text('gender'),
