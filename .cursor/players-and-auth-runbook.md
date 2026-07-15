@@ -10,20 +10,29 @@ ADMIN_GOOGLE_CLIENT_ID=
 ADMIN_GOOGLE_CLIENT_SECRET=
 ADMIN_SESSION_SECRET=          # long random string; unique per app is fine
 ADMIN_ALLOWED_EMAILS=a@x.com,b@y.com   # required when VERCEL_ENV=production
-NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; prod = public site URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the host users hit
 
-# Neon Postgres
+# Neon Postgres (also auto-provisioned via `vercel integration add neon`)
 DATABASE_URL=postgresql://...
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
 
+| Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
+|-------------|------|------------|------------------------|
+| Production | `https://admin.bostondodgeballleague.com` | `main` | same origin |
+| Preview (stable) | `https://admin-preview.bostondodgeballleague.com` | `preview` | same origin |
+| Local | `http://localhost:3000` | — | same origin |
+
+Auth env for the stable preview host is scoped to the **`preview`** Git branch in Vercel.
+
 ## Google Cloud OAuth
 
 1. Create or reuse a **Web** OAuth client.
-2. Add authorized redirect URI:
+2. Add authorized redirect URIs:
    - Local: `http://localhost:3000/api/admin/google/callback`
-   - Prod / preview: `https://<your-host>/api/admin/google/callback`
+   - Preview: `https://admin-preview.bostondodgeballleague.com/api/admin/google/callback`
+   - Prod: `https://admin.bostondodgeballleague.com/api/admin/google/callback`
 3. Set matching JavaScript origins for those hosts if the console requires them.
 
 ## Database setup
