@@ -1,0 +1,174 @@
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import { getDb } from '@/app/lib/db'
+import {
+  playerAliases,
+  playerChanges,
+  playerEmails,
+  players,
+} from '@/app/db/schema'
+import { skillLevelLabel } from '@/app/lib/players/skill'
+import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
+
+export async function listPlayers(opts: {
+  q?: string
+  skill?: number | 'unset' | null
+  includeMerged?: boolean
+}): Promise<PlayerListItem[]> {
+  const db = getDb()
+  const conditions = []
+
+  if (!opts.includeMerged) {
+    conditions.push(eq(players.isMerged, false))
+  }
+
+  if (opts.skill === 'unset') {
+    conditions.push(isNull(players.skillLevel))
+  } else if (typeof opts.skill === 'number') {
+    conditions.push(eq(players.skillLevel, opts.skill))
+  }
+
+  if (opts.q?.trim()) {
+    const term = `%${opts.q.trim()}%`
+    const matchingEmailIds = db
+      .select({ playerId: playerEmails.playerId })
+      .from(playerEmails)
+      .where(ilike(playerEmails.email, term))
+    const matchingAliasIds = db
+      .select({ playerId: playerAliases.playerId })
+      .from(playerAliases)
+      .where(ilike(playerAliases.alias, term))
+
+    conditions.push(
+      or(
+        ilike(players.firstName, term),
+        ilike(players.lastName, term),
+        ilike(players.rosterName, term),
+        inArray(players.id, matchingEmailIds),
+        inArray(players.id, matchingAliasIds)
+      )
+    )
+  }
+
+  const rows = await db
+    .select()
+    .from(players)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(asc(players.lastName), asc(players.firstName))
+
+  if (rows.length === 0) return []
+
+  const ids = rows.map((r) => r.id)
+  const emails = await db
+    .select()
+    .from(playerEmails)
+    .where(inArray(playerEmails.playerId, ids))
+
+  const primaryByPlayer = new Map<string, string>()
+  for (const e of emails) {
+    if (e.isPrimary && !primaryByPlayer.has(e.playerId)) {
+      primaryByPlayer.set(e.playerId, e.email)
+    }
+  }
+  for (const e of emails) {
+    if (!primaryByPlayer.has(e.playerId)) {
+      primaryByPlayer.set(e.playerId, e.email)
+    }
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    firstName: r.firstName,
+    lastName: r.lastName,
+    rosterName: r.rosterName,
+    jerseyNumber: r.jerseyNumber,
+    skillLevel: r.skillLevel,
+    skillLabel: skillLevelLabel(r.skillLevel),
+    primaryEmail: primaryByPlayer.get(r.id) ?? null,
+    isMerged: r.isMerged,
+  }))
+}
+
+export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapshot | null> {
+  const db = getDb()
+  const [player] = await db.select().from(players).where(eq(players.id, playerId)).limit(1)
+  if (!player) return null
+
+  const emails = await db
+    .select()
+    .from(playerEmails)
+    .where(eq(playerEmails.playerId, playerId))
+    .orderBy(desc(playerEmails.isPrimary), asc(playerEmails.email))
+
+  const aliases = await db
+    .select()
+    .from(playerAliases)
+    .where(eq(playerAliases.playerId, playerId))
+    .orderBy(asc(playerAliases.alias))
+
+  return {
+    id: player.id,
+    firstName: player.firstName,
+    lastName: player.lastName,
+    rosterName: player.rosterName,
+    jerseyNumber: player.jerseyNumber,
+    skillLevel: player.skillLevel,
+    isMerged: player.isMerged,
+    mergedIntoPlayerId: player.mergedIntoPlayerId,
+    emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
+    aliases: aliases.map((a) => ({ id: a.id, alias: a.alias })),
+  }
+}
+
+export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown> {
+  return {
+    id: snapshot.id,
+    firstName: snapshot.firstName,
+    lastName: snapshot.lastName,
+    rosterName: snapshot.rosterName,
+    jerseyNumber: snapshot.jerseyNumber,
+    skillLevel: snapshot.skillLevel,
+    isMerged: snapshot.isMerged,
+    mergedIntoPlayerId: snapshot.mergedIntoPlayerId,
+    emails: snapshot.emails,
+    aliases: snapshot.aliases,
+  }
+}
+
+export async function getPlayerHistory(playerId: string) {
+  const db = getDb()
+  return db
+    .select()
+    .from(playerChanges)
+    .where(eq(playerChanges.playerId, playerId))
+    .orderBy(desc(playerChanges.createdAt))
+}
+
+/** Find player id by email (any). */
+export async function findPlayerIdByEmail(email: string): Promise<string | null> {
+  const db = getDb()
+  const [row] = await db
+    .select({ playerId: playerEmails.playerId })
+    .from(playerEmails)
+    .where(eq(playerEmails.email, email))
+    .limit(1)
+  return row?.playerId ?? null
+}
+
+/** Find non-merged players matching first+last (case-insensitive). */
+export async function findPlayerIdsByName(
+  firstName: string,
+  lastName: string
+): Promise<string[]> {
+  const db = getDb()
+  const rows = await db
+    .select({ id: players.id })
+    .from(players)
+    .where(
+      and(
+        eq(players.isMerged, false),
+        sql`lower(${players.firstName}) = ${firstName.toLowerCase()}`,
+        sql`lower(${players.lastName}) = ${lastName.toLowerCase()}`
+      )
+    )
+  return rows.map((r) => r.id)
+}
