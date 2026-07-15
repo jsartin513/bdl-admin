@@ -3,6 +3,7 @@ import { getDb } from '@/app/lib/db'
 import { playerAliases, playerEmails, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import { defaultRosterName, isValidSkillLevel } from '@/app/lib/players/skill'
+import { isValidGender } from '@/app/lib/players/gender'
 import {
   getPlayerSnapshot,
   snapshotToJson,
@@ -16,6 +17,7 @@ export async function createPlayer(input: {
   rosterName?: string
   jerseyNumber?: number | null
   skillLevel?: number | null
+  gender?: string | null
   email?: string | null
   actor: string
   source?: ChangeSource
@@ -38,6 +40,12 @@ export async function createPlayer(input: {
     skillLevel = input.skillLevel
   }
 
+  let gender: string | null = null
+  if (input.gender != null) {
+    if (!isValidGender(input.gender)) throw new Error('Invalid gender')
+    gender = input.gender
+  }
+
   const [created] = await db
     .insert(players)
     .values({
@@ -46,6 +54,7 @@ export async function createPlayer(input: {
       rosterName,
       jerseyNumber: input.jerseyNumber ?? null,
       skillLevel,
+      gender,
     })
     .returning()
 
@@ -80,6 +89,7 @@ export async function updatePlayer(
     rosterName?: string
     jerseyNumber?: number | null
     skillLevel?: number | null
+    gender?: string | null
   },
   opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
 ) {
@@ -115,6 +125,12 @@ export async function updatePlayer(
       throw new Error('Invalid skill level')
     }
     updates.skillLevel = patch.skillLevel
+  }
+  if (patch.gender !== undefined) {
+    if (patch.gender !== null && !isValidGender(patch.gender)) {
+      throw new Error('Invalid gender')
+    }
+    updates.gender = patch.gender
   }
 
   await db.update(players).set(updates).where(eq(players.id, playerId))

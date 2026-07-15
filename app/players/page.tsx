@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { SKILL_LEVELS, skillLevelLabel } from '@/app/lib/players/skill'
+import { GENDERS, genderGroup } from '@/app/lib/players/gender'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 type HistoryRow = {
@@ -33,6 +34,32 @@ function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
   return Number.isNaN(n) ? null : n
+}
+
+/** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
+function SkillStyledText(props: {
+  skillLevel: number | null
+  children: ReactNode
+}) {
+  const { skillLevel, children } = props
+  if (skillLevel === 1) {
+    return <span className="italic">({children})</span>
+  }
+  if (skillLevel === 3) {
+    return <span className="font-bold">{children}</span>
+  }
+  if (skillLevel === 4) {
+    return <span className="font-bold underline">{children}</span>
+  }
+  return <span>{children}</span>
+}
+
+function genderRowClass(gender: string | null, isMerged: boolean): string {
+  if (isMerged) return 'bg-gray-50 text-gray-500'
+  const group = genderGroup(gender)
+  if (group === 'w_nb_o') return 'bg-rose-50/70 text-gray-900'
+  if (group === 'men') return 'text-gray-900'
+  return 'text-gray-900'
 }
 
 export default function PlayersPage() {
@@ -170,6 +197,7 @@ export default function PlayersPage() {
     rosterName?: string
     jerseyNumber?: number | null
     skillLevel?: number | null
+    gender?: string | null
     email?: string
   }) {
     setSaving(true)
@@ -294,7 +322,7 @@ export default function PlayersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Players</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Roster names, jersey numbers, skill levels, aliases, and emails.
+            Roster names, jersey numbers, skill levels, gender, aliases, and emails.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -390,6 +418,7 @@ export default function PlayersPage() {
                 <th className="px-3 py-2">Last</th>
                 <th className="px-3 py-2">Roster name</th>
                 <th className="px-3 py-2">Jersey</th>
+                <th className="px-3 py-2">Gender</th>
                 <th className="px-3 py-2">Skill</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Actions</th>
@@ -399,7 +428,7 @@ export default function PlayersPage() {
               {players.map((p) => (
                 <tr
                   key={p.id}
-                  className={`border-t border-gray-100 ${p.isMerged ? 'bg-gray-50 text-gray-500' : 'text-gray-900'}`}
+                  className={`border-t border-gray-100 ${genderRowClass(p.gender, p.isMerged)}`}
                 >
                   <td className="px-3 py-2">
                     <input
@@ -409,11 +438,41 @@ export default function PlayersPage() {
                       onChange={() => toggleSelect(p.id)}
                     />
                   </td>
-                  <td className="px-3 py-2">{p.firstName}</td>
-                  <td className="px-3 py-2">{p.lastName}</td>
-                  <td className="px-3 py-2">{p.rosterName}</td>
+                  <td className="px-3 py-2">
+                    <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
+                  </td>
+                  <td className="px-3 py-2">
+                    <SkillStyledText skillLevel={p.skillLevel}>{p.lastName}</SkillStyledText>
+                  </td>
+                  <td className="px-3 py-2">
+                    <SkillStyledText skillLevel={p.skillLevel}>{p.rosterName}</SkillStyledText>
+                  </td>
                   <td className="px-3 py-2">{p.jerseyNumber ?? '—'}</td>
-                  <td className="px-3 py-2">{p.skillLabel}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={
+                        genderGroup(p.gender) === 'w_nb_o'
+                          ? 'font-medium text-rose-800'
+                          : genderGroup(p.gender) === 'men'
+                            ? 'text-sky-900'
+                            : 'text-gray-500'
+                      }
+                    >
+                      {genderGroup(p.gender) === 'w_nb_o' ? (
+                        <>
+                          W/NB/O
+                          <span className="ml-1 font-normal text-gray-600">
+                            ({p.genderLabel})
+                          </span>
+                        </>
+                      ) : (
+                        p.genderLabel
+                      )}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <SkillStyledText skillLevel={p.skillLevel}>{p.skillLabel}</SkillStyledText>
+                  </td>
                   <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
                     <button
@@ -435,7 +494,7 @@ export default function PlayersPage() {
               ))}
               {players.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-3 py-8 text-center text-gray-500">
                     No players yet. Import a TeamLinkt CSV or add one manually.
                   </td>
                 </tr>
@@ -651,6 +710,7 @@ function EditPanel(props: {
   const [skillLevel, setSkillLevel] = useState(
     p.skillLevel != null ? String(p.skillLevel) : ''
   )
+  const [gender, setGender] = useState(p.gender ?? '')
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
 
@@ -660,6 +720,7 @@ function EditPanel(props: {
     setRosterName(p.rosterName)
     setJerseyNumber(p.jerseyNumber != null ? String(p.jerseyNumber) : '')
     setSkillLevel(p.skillLevel != null ? String(p.skillLevel) : '')
+    setGender(p.gender ?? '')
   }, [p])
 
   return (
@@ -731,6 +792,22 @@ function EditPanel(props: {
               ))}
             </select>
           </label>
+          <label className="text-sm">
+            Gender
+            <select
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={gender}
+              disabled={p.isMerged}
+              onChange={(e) => setGender(e.target.value)}
+            >
+              <option value="">Unset</option>
+              {Object.entries(GENDERS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {!p.isMerged ? (
@@ -745,6 +822,7 @@ function EditPanel(props: {
                 rosterName,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
                 skillLevel: skillLevel ? Number(skillLevel) : null,
+                gender: gender || null,
               })
             }
           >
@@ -872,6 +950,7 @@ function CreatePanel(props: {
     rosterName?: string
     jerseyNumber?: number | null
     skillLevel?: number | null
+    gender?: string | null
     email?: string
   }) => void
 }) {
@@ -880,6 +959,7 @@ function CreatePanel(props: {
   const [rosterName, setRosterName] = useState('')
   const [jerseyNumber, setJerseyNumber] = useState('')
   const [skillLevel, setSkillLevel] = useState('')
+  const [gender, setGender] = useState('')
   const [email, setEmail] = useState('')
 
   return (
@@ -934,6 +1014,21 @@ function CreatePanel(props: {
               ))}
             </select>
           </label>
+          <label className="text-sm">
+            Gender
+            <select
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+            >
+              <option value="">Unset</option>
+              {Object.entries(GENDERS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm col-span-2">
             Email
             <input
@@ -959,6 +1054,7 @@ function CreatePanel(props: {
                 rosterName: rosterName.trim() || undefined,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
                 skillLevel: skillLevel ? Number(skillLevel) : null,
+                gender: gender || null,
                 email: email.trim() || undefined,
               })
             }

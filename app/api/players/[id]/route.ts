@@ -44,6 +44,7 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       rosterName?: string
       jerseyNumber?: number | null
       skillLevel?: number | null
+      gender?: string | null
       addEmail?: string
       removeEmailId?: string
       setPrimaryEmailId?: string
@@ -61,7 +62,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       body.lastName !== undefined ||
       body.rosterName !== undefined ||
       body.jerseyNumber !== undefined ||
-      body.skillLevel !== undefined
+      body.skillLevel !== undefined ||
+      body.gender !== undefined
 
     if (hasCorePatch) {
       player = await updatePlayer(
@@ -72,6 +74,7 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           rosterName: body.rosterName,
           jerseyNumber: body.jerseyNumber,
           skillLevel: body.skillLevel,
+          gender: body.gender,
         },
         { actor: session.email, source: 'admin' }
       )

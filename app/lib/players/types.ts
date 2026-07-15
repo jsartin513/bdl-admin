@@ -8,6 +8,7 @@ export type PlayerSnapshot = {
   rosterName: string
   jerseyNumber: number | null
   skillLevel: number | null
+  gender: string | null
   isMerged: boolean
   mergedIntoPlayerId: string | null
   emails: { id: string; email: string; isPrimary: boolean }[]
@@ -22,6 +23,9 @@ export type PlayerListItem = {
   jerseyNumber: number | null
   skillLevel: number | null
   skillLabel: string
+  gender: string | null
+  genderLabel: string
+  genderGroupLabel: string
   primaryEmail: string | null
   isMerged: boolean
 }

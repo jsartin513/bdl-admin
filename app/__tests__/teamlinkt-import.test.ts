@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv, parseTeamlinktCsv } from '@/app/lib/players/teamlinkt-import'
 import { parseSkillLevel } from '@/app/lib/players/skill'
+import { genderGroup, parseGender } from '@/app/lib/players/gender'
 
 describe('parseSkillLevel', () => {
   it('maps intermediate/advanced and numeric levels', () => {
@@ -12,6 +13,25 @@ describe('parseSkillLevel', () => {
     expect(parseSkillLevel('Worlds level')).toBe(4)
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
+  })
+})
+
+describe('parseGender', () => {
+  it('maps TeamLinkt gender labels', () => {
+    expect(parseGender('Female')).toBe('woman')
+    expect(parseGender('Male')).toBe('man')
+    expect(parseGender('Other')).toBe('other')
+    expect(parseGender('Cisgender Woman')).toBe('woman')
+    expect(parseGender('Non-binary')).toBe('nonbinary')
+    expect(parseGender('')).toBeNull()
+  })
+
+  it('groups woman/nonbinary/other together', () => {
+    expect(genderGroup('woman')).toBe('w_nb_o')
+    expect(genderGroup('nonbinary')).toBe('w_nb_o')
+    expect(genderGroup('other')).toBe('w_nb_o')
+    expect(genderGroup('man')).toBe('men')
+    expect(genderGroup(null)).toBe('unset')
   })
 })
 
@@ -40,6 +60,7 @@ describe('teamlinkt csv parse', () => {
       email: 'jess@example.com',
       jerseyNumber: 7,
       skillLevel: null,
+      gender: null,
     })
     expect(parsed.rows[1].email).toBeNull()
     expect(parsed.rows[1].jerseyNumber).toBeNull()
@@ -81,7 +102,10 @@ describe('teamlinkt csv parse', () => {
       firstName: 'Abby',
       lastName: 'Lee',
       email: 'lee@example.com',
+      gender: 'woman',
     })
+    // Birthdate is in raw CSV but not mapped onto the player row
+    expect(parsed.rows[0]).not.toHaveProperty('birthdate')
   })
 
   it('strips a UTF-8 BOM from TeamLinkt exports', () => {

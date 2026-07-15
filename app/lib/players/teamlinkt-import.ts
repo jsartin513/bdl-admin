@@ -14,6 +14,7 @@ import {
   skillLevelLabel,
   type SkillLevel,
 } from '@/app/lib/players/skill'
+import { genderLabel, parseGender, type Gender } from '@/app/lib/players/gender'
 import { normalizeEmail, normalizeNamePart, nameKey } from '@/app/lib/players/normalize'
 
 export type TeamlinktRow = {
@@ -23,6 +24,7 @@ export type TeamlinktRow = {
   email: string | null
   jerseyNumber: number | null
   skillLevel: SkillLevel | null
+  gender: Gender | null
   raw: Record<string, string>
 }
 
@@ -55,6 +57,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
     'ability',
     'ability level',
   ],
+  gender: ['gender', 'sex', 'player gender'],
 }
 
 function normalizeHeader(h: string): string {
@@ -67,6 +70,7 @@ function mapHeaders(headers: string[]): {
   email?: number
   jerseyNumber?: number
   skillLevel?: number
+  gender?: number
 } {
   const mapped: {
     firstName?: number
@@ -74,6 +78,7 @@ function mapHeaders(headers: string[]): {
     email?: number
     jerseyNumber?: number
     skillLevel?: number
+    gender?: number
   } = {}
 
   headers.forEach((header, index) => {
@@ -206,6 +211,11 @@ export function parseTeamlinktCsv(csvText: string): {
       skillLevel = parseSkillLevel(cells[mapping.skillLevel] ?? '')
     }
 
+    let gender: Gender | null = null
+    if (mapping.gender !== undefined) {
+      gender = parseGender(cells[mapping.gender] ?? '')
+    }
+
     if (!firstName && !lastName && !email) continue
 
     rows.push({
@@ -215,6 +225,7 @@ export function parseTeamlinktCsv(csvText: string): {
       email,
       jerseyNumber,
       skillLevel,
+      gender,
       raw,
     })
   }
@@ -234,6 +245,7 @@ type MatchIndex = {
       rosterName: string
       jerseyNumber: number | null
       skillLevel: number | null
+      gender: string | null
       isMerged: boolean
       emails: string[]
     }
@@ -265,6 +277,7 @@ async function loadMatchIndex(): Promise<MatchIndex> {
       rosterName: string
       jerseyNumber: number | null
       skillLevel: number | null
+      gender: string | null
       isMerged: boolean
       emails: string[]
     }
@@ -279,6 +292,7 @@ async function loadMatchIndex(): Promise<MatchIndex> {
       rosterName: p.rosterName,
       jerseyNumber: p.jerseyNumber,
       skillLevel: p.skillLevel,
+      gender: p.gender,
       isMerged: p.isMerged,
       emails: emailsByPlayer.get(p.id) ?? [],
     })
@@ -376,6 +390,9 @@ export async function previewTeamlinktImport(
     if (row.skillLevel != null && existing.skillLevel == null) {
       notes.push(`Set skill ${skillLevelLabel(row.skillLevel)} (${row.skillLevel})`)
     }
+    if (row.gender != null && existing.gender == null) {
+      notes.push(`Set gender ${genderLabel(row.gender)}`)
+    }
     if (row.email && !existing.emails.includes(row.email)) {
       notes.push(`Add email ${row.email}`)
     }
@@ -441,6 +458,7 @@ export async function commitTeamlinktImport(input: {
           lastName: item.row.lastName,
           jerseyNumber: item.row.jerseyNumber,
           skillLevel: item.row.skillLevel,
+          gender: item.row.gender,
           email: item.row.email,
           actor: input.actor,
           source: 'import',
@@ -456,12 +474,19 @@ export async function commitTeamlinktImport(input: {
         continue
       }
 
-      const patch: { jerseyNumber?: number | null; skillLevel?: number | null } = {}
+      const patch: {
+        jerseyNumber?: number | null
+        skillLevel?: number | null
+        gender?: string | null
+      } = {}
       if (item.row.jerseyNumber != null && snap.jerseyNumber == null) {
         patch.jerseyNumber = item.row.jerseyNumber
       }
       if (item.row.skillLevel != null && snap.skillLevel == null) {
         patch.skillLevel = item.row.skillLevel
+      }
+      if (item.row.gender != null && snap.gender == null) {
+        patch.gender = item.row.gender
       }
       if (Object.keys(patch).length > 0) {
         await updatePlayer(item.playerId, patch, {
