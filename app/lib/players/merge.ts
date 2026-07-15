@@ -1,20 +1,26 @@
-import { eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
-import { playerAliases, playerEmails, players } from '@/app/db/schema'
+import { playerAliases, playerChanges, playerEmails, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import {
   getPlayerSnapshot,
   snapshotToJson,
 } from '@/app/lib/players/queries'
-import { isValidSkillLevel } from '@/app/lib/players/skill'
+import {
+  isValidSkillLevel,
+  normalizeStoredJerseyName,
+  normalizeStoredNickname,
+} from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
-import { normalizeNamePart } from '@/app/lib/players/normalize'
+import { normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
 
 export type MergeFieldResolution = {
   firstName?: string
   lastName?: string
   rosterName?: string
+  nickname?: string | null
   jerseyNumber?: number | null
+  jerseyName?: string | null
   skillLevel?: number | null
   gender?: string | null
 }
@@ -49,7 +55,9 @@ export async function mergePlayers(input: {
   let firstName = survivorBefore.firstName
   let lastName = survivorBefore.lastName
   let rosterName = survivorBefore.rosterName
+  let nicknameCustom = survivorBefore.nicknameCustom
   let jerseyNumber = survivorBefore.jerseyNumber
+  let jerseyNameCustom = survivorBefore.jerseyNameCustom
   let skillLevel = survivorBefore.skillLevel
   let gender = survivorBefore.gender
 
@@ -57,6 +65,12 @@ export async function mergePlayers(input: {
     if (jerseyNumber == null && loser.jerseyNumber != null) jerseyNumber = loser.jerseyNumber
     if (skillLevel == null && loser.skillLevel != null) skillLevel = loser.skillLevel
     if (gender == null && loser.gender != null) gender = loser.gender
+    if (nicknameCustom == null && loser.nicknameCustom != null) {
+      nicknameCustom = loser.nicknameCustom
+    }
+    if (jerseyNameCustom == null && loser.jerseyNameCustom != null) {
+      jerseyNameCustom = loser.jerseyNameCustom
+    }
   }
 
   if (input.fields?.firstName !== undefined) {
@@ -83,6 +97,17 @@ export async function mergePlayers(input: {
     }
     gender = input.fields.gender
   }
+  if (input.fields?.nickname !== undefined) {
+    nicknameCustom = normalizeStoredNickname(input.fields.nickname, firstName, lastName)
+  } else if (nicknameCustom != null) {
+    // Re-normalize against resolved names (may clear back to default).
+    nicknameCustom = normalizeStoredNickname(nicknameCustom, firstName, lastName)
+  }
+  if (input.fields?.jerseyName !== undefined) {
+    jerseyNameCustom = normalizeStoredJerseyName(input.fields.jerseyName, lastName)
+  } else if (jerseyNameCustom != null) {
+    jerseyNameCustom = normalizeStoredJerseyName(jerseyNameCustom, lastName)
+  }
 
   await db
     .update(players)
@@ -90,7 +115,9 @@ export async function mergePlayers(input: {
       firstName,
       lastName,
       rosterName,
+      nickname: nicknameCustom,
       jerseyNumber,
+      jerseyName: jerseyNameCustom,
       skillLevel,
       gender,
       updatedAt: new Date(),
@@ -203,5 +230,223 @@ export async function mergePlayers(input: {
   return {
     survivor: survivorAfter,
     mergedIds: loserIds,
+  }
+}
+
+type SnapshotEmail = { id?: string; email: string; isPrimary?: boolean }
+type SnapshotAlias = { id?: string; alias: string }
+
+function readMergeBefore(before: Record<string, unknown> | null | undefined): {
+  emails: SnapshotEmail[]
+  aliases: SnapshotAlias[]
+  firstName: string | null
+} {
+  const emailsRaw = before?.emails
+  const aliasesRaw = before?.aliases
+  const emails: SnapshotEmail[] = []
+  if (Array.isArray(emailsRaw)) {
+    for (const item of emailsRaw) {
+      if (!item || typeof item !== 'object') continue
+      const email = (item as { email?: unknown }).email
+      if (typeof email !== 'string' || !email.trim()) continue
+      emails.push({
+        email: normalizeEmail(email),
+        isPrimary: Boolean((item as { isPrimary?: unknown }).isPrimary),
+      })
+    }
+  }
+  const aliases: SnapshotAlias[] = []
+  if (Array.isArray(aliasesRaw)) {
+    for (const item of aliasesRaw) {
+      if (!item || typeof item !== 'object') continue
+      const alias = (item as { alias?: unknown }).alias
+      if (typeof alias !== 'string' || !alias.trim()) continue
+      aliases.push({ alias: alias.trim() })
+    }
+  }
+  const firstName =
+    typeof before?.firstName === 'string' ? before.firstName.trim() : null
+  return { emails, aliases, firstName }
+}
+
+/**
+ * Reverse a soft-merge: reactivate the merged player and move emails/aliases
+ * that still live on the survivor back using the merge audit snapshot.
+ * Does not undo core-field fills (jersey/skill/gender) on the survivor.
+ */
+export async function unmergePlayer(input: { playerId: string; actor: string }) {
+  const playerId = input.playerId
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (!before.isMerged) throw new Error('Player is not merged')
+  const survivorId = before.mergedIntoPlayerId
+  if (!survivorId) throw new Error('Merged player is missing survivor reference')
+
+  const survivorBefore = await getPlayerSnapshot(survivorId)
+  if (!survivorBefore) throw new Error('Survivor player not found')
+
+  const db = getDb()
+  const [mergeEvent] = await db
+    .select()
+    .from(playerChanges)
+    .where(and(eq(playerChanges.playerId, playerId), eq(playerChanges.changeType, 'merge')))
+    .orderBy(desc(playerChanges.createdAt))
+    .limit(1)
+
+  const mergeBefore = readMergeBefore(mergeEvent?.before ?? null)
+
+  // Find the survivor's merge audit for this pair so we know which emails/aliases
+  // they already owned (duplicates deleted on merge — leave those on survivor).
+  const survivorMergeEvents = await db
+    .select()
+    .from(playerChanges)
+    .where(
+      and(eq(playerChanges.playerId, survivorId), eq(playerChanges.changeType, 'merge'))
+    )
+    .orderBy(desc(playerChanges.createdAt))
+
+  const survivorMergeEvent =
+    survivorMergeEvents.find((event) => {
+      const mergedFrom = (event.after as { mergedFrom?: unknown } | null)?.mergedFrom
+      return Array.isArray(mergedFrom) && mergedFrom.includes(playerId)
+    }) ?? null
+  const survivorOwnedBefore = readMergeBefore(survivorMergeEvent?.before ?? null)
+  const survivorHadEmail = new Set(survivorOwnedBefore.emails.map((e) => e.email))
+  const survivorHadAlias = new Set(
+    survivorOwnedBefore.aliases.map((a) => a.alias.toLowerCase())
+  )
+  const canDetectSurvivorOwned = survivorMergeEvent != null
+
+  await db
+    .update(players)
+    .set({
+      isMerged: false,
+      mergedIntoPlayerId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  // Restore emails that were moved from this player onto the survivor.
+  // If the survivor already had the address at merge time, leave it there.
+  for (const email of mergeBefore.emails) {
+    if (canDetectSurvivorOwned && survivorHadEmail.has(email.email)) continue
+
+    const [existing] = await db
+      .select()
+      .from(playerEmails)
+      .where(eq(playerEmails.email, email.email))
+      .limit(1)
+
+    if (!existing) {
+      await db.insert(playerEmails).values({
+        playerId,
+        email: email.email,
+        isPrimary: Boolean(email.isPrimary),
+      })
+      continue
+    }
+
+    if (existing.playerId === playerId) continue
+
+    // Without the survivor merge audit we can't tell move vs duplicate — leave it.
+    if (existing.playerId === survivorId && canDetectSurvivorOwned) {
+      await db
+        .update(playerEmails)
+        .set({ playerId, isPrimary: Boolean(email.isPrimary) })
+        .where(eq(playerEmails.id, existing.id))
+    }
+  }
+
+  // Ensure both sides have a primary when they have emails
+  for (const id of [playerId, survivorId]) {
+    const emails = await db.select().from(playerEmails).where(eq(playerEmails.playerId, id))
+    if (emails.length === 0) continue
+    if (emails.some((e) => e.isPrimary)) continue
+    await db
+      .update(playerEmails)
+      .set({ isPrimary: true })
+      .where(eq(playerEmails.id, emails[0].id))
+  }
+
+  // Restore aliases that were moved (skip ones the survivor already had).
+  for (const alias of mergeBefore.aliases) {
+    if (canDetectSurvivorOwned && survivorHadAlias.has(alias.alias.toLowerCase())) {
+      continue
+    }
+
+    const [onSurvivor] = await db
+      .select()
+      .from(playerAliases)
+      .where(
+        and(
+          eq(playerAliases.playerId, survivorId),
+          eq(playerAliases.alias, alias.alias)
+        )
+      )
+      .limit(1)
+    if (onSurvivor && canDetectSurvivorOwned) {
+      await db
+        .update(playerAliases)
+        .set({ playerId })
+        .where(eq(playerAliases.id, onSurvivor.id))
+      continue
+    }
+
+    const [already] = await db
+      .select()
+      .from(playerAliases)
+      .where(and(eq(playerAliases.playerId, playerId), eq(playerAliases.alias, alias.alias)))
+      .limit(1)
+    if (!already) {
+      await db.insert(playerAliases).values({ playerId, alias: alias.alias })
+    }
+  }
+
+  // Drop first-name alias that merge may have added onto the survivor
+  if (
+    mergeBefore.firstName &&
+    survivorBefore.firstName.toLowerCase() !== mergeBefore.firstName.toLowerCase() &&
+    !survivorHadAlias.has(mergeBefore.firstName.toLowerCase())
+  ) {
+    await db
+      .delete(playerAliases)
+      .where(
+        and(
+          eq(playerAliases.playerId, survivorId),
+          eq(playerAliases.alias, mergeBefore.firstName)
+        )
+      )
+  }
+
+  const playerAfter = await getPlayerSnapshot(playerId)
+  const survivorAfter = await getPlayerSnapshot(survivorId)
+
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: input.actor,
+    changeType: 'unmerge',
+    before: snapshotToJson(before),
+    after: {
+      ...(playerAfter ? snapshotToJson(playerAfter) : {}),
+      unmergedFrom: survivorId,
+    },
+  })
+
+  await writePlayerChange({
+    playerId: survivorId,
+    source: 'admin',
+    actor: input.actor,
+    changeType: 'unmerge',
+    before: snapshotToJson(survivorBefore),
+    after: {
+      ...(survivorAfter ? snapshotToJson(survivorAfter) : {}),
+      unmergedPlayerId: playerId,
+    },
+  })
+
+  return {
+    player: playerAfter,
+    survivor: survivorAfter,
   }
 }
