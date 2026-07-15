@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { importBatches, playerEmails, players } from '@/app/db/schema'
+import { upsertEventRegistration } from '@/app/lib/events/mutations'
+import { getEvent, getRegisteredPlayerIds } from '@/app/lib/events/queries'
 import {
   createPlayer,
   ensurePlayerAlias,
@@ -31,8 +33,40 @@ export type TeamlinktRow = {
 export type ImportPreviewAction =
   | { action: 'create'; row: TeamlinktRow }
   | { action: 'update'; row: TeamlinktRow; playerId: string; notes: string[] }
-  | { action: 'skip'; row: TeamlinktRow; reason: string }
+  | { action: 'skip'; row: TeamlinktRow; reason: string; playerId?: string }
   | { action: 'ambiguous'; row: TeamlinktRow; reason: string; playerIds: string[] }
+
+/** Player ids that will be registered for an event-scoped import. */
+export function playerIdForRegistration(
+  action: ImportPreviewAction
+): string | null {
+  if (action.action === 'update') return action.playerId
+  if (action.action === 'skip' && action.playerId) return action.playerId
+  return null
+}
+
+export function summarizeRegistrationPreview(
+  actions: ImportPreviewAction[],
+  registeredPlayerIds: Set<string>
+): { register: number; alreadyRegistered: number } {
+  let register = 0
+  let alreadyRegistered = 0
+  const seen = new Set<string>()
+
+  for (const action of actions) {
+    if (action.action === 'create') {
+      register++
+      continue
+    }
+    const playerId = playerIdForRegistration(action)
+    if (!playerId || seen.has(playerId)) continue
+    seen.add(playerId)
+    if (registeredPlayerIds.has(playerId)) alreadyRegistered++
+    else register++
+  }
+
+  return { register, alreadyRegistered }
+}
 
 /**
  * How TeamLinkt updates skill / gender / jersey on existing players.
@@ -338,16 +372,27 @@ async function loadMatchIndex(): Promise<MatchIndex> {
 
 export async function previewTeamlinktImport(
   csvText: string,
-  options?: TeamlinktImportOptions
+  options?: TeamlinktImportOptions,
+  eventId?: string | null
 ): Promise<{
   actions: ImportPreviewAction[]
   headers: string[]
+  registrationSummary?: { register: number; alreadyRegistered: number }
   error?: string
 }> {
   const profileFields = resolveProfileFieldsMode(options)
   const parsed = parseTeamlinktCsv(csvText)
   if (parsed.error) {
     return { actions: [], headers: parsed.headers, error: parsed.error }
+  }
+
+  let registeredPlayerIds = new Set<string>()
+  if (eventId) {
+    const event = await getEvent(eventId)
+    if (!event) {
+      return { actions: [], headers: parsed.headers, error: 'Event not found' }
+    }
+    registeredPlayerIds = await getRegisteredPlayerIds(eventId)
   }
 
   const index = await loadMatchIndex()
@@ -413,6 +458,7 @@ export async function previewTeamlinktImport(
         action: 'skip',
         row,
         reason: 'Matched a merged player record',
+        playerId,
       })
       continue
     }
@@ -491,6 +537,7 @@ export async function previewTeamlinktImport(
           ignored.length > 0
             ? `Already up to date; ${ignored.join('; ')}`
             : 'Already up to date',
+        playerId,
       })
     } else {
       if (ignored.length > 0) notes.push(...ignored.map((n) => `Skipped: ${n}`))
@@ -498,7 +545,13 @@ export async function previewTeamlinktImport(
     }
   }
 
-  return { actions, headers: parsed.headers }
+  return {
+    actions,
+    headers: parsed.headers,
+    registrationSummary: eventId
+      ? summarizeRegistrationPreview(actions, registeredPlayerIds)
+      : undefined,
+  }
 }
 
 export async function commitTeamlinktImport(input: {
@@ -506,9 +559,11 @@ export async function commitTeamlinktImport(input: {
   filename: string
   actor: string
   options?: TeamlinktImportOptions
+  eventId?: string | null
 }) {
   const profileFields = resolveProfileFieldsMode(input.options)
-  const preview = await previewTeamlinktImport(input.csvText, input.options)
+  const eventId = input.eventId?.trim() || null
+  const preview = await previewTeamlinktImport(input.csvText, input.options, eventId)
   if (preview.error) {
     throw new Error(preview.error)
   }
@@ -521,6 +576,7 @@ export async function commitTeamlinktImport(input: {
       actor: input.actor,
       rowCount: preview.actions.length,
       summary: {},
+      eventId: eventId ?? undefined,
     })
     .returning()
 
@@ -528,21 +584,44 @@ export async function commitTeamlinktImport(input: {
   let updated = 0
   let skipped = 0
   let ambiguous = 0
+  let register = 0
+  let alreadyRegistered = 0
   const errors: string[] = []
+
+  async function registerPlayer(playerId: string) {
+    if (!eventId) return
+    const result = await upsertEventRegistration({
+      eventId,
+      playerId,
+      importBatchId: batch.id,
+    })
+    if (result.created) register++
+    else alreadyRegistered++
+  }
 
   for (const item of preview.actions) {
     try {
-      if (item.action === 'skip') {
-        skipped++
-        continue
-      }
       if (item.action === 'ambiguous') {
         ambiguous++
         continue
       }
 
+      if (item.action === 'skip') {
+        skipped++
+        // Matched players still get registered on event-scoped imports
+        // (except merged records — those keep playerId but should not enroll)
+        if (
+          eventId &&
+          item.playerId &&
+          item.reason !== 'Matched a merged player record'
+        ) {
+          await registerPlayer(item.playerId)
+        }
+        continue
+      }
+
       if (item.action === 'create') {
-        await createPlayer({
+        const snap = await createPlayer({
           firstName: item.row.firstName,
           lastName: item.row.lastName,
           jerseyNumber: item.row.jerseyNumber,
@@ -554,6 +633,7 @@ export async function commitTeamlinktImport(input: {
           importBatchId: batch.id,
         })
         created++
+        if (snap?.id) await registerPlayer(snap.id)
         continue
       }
 
@@ -600,6 +680,7 @@ export async function commitTeamlinktImport(input: {
       }
 
       updated++
+      await registerPlayer(item.playerId)
     } catch (err) {
       errors.push(
         `Row ${item.row.rowNumber}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -607,7 +688,15 @@ export async function commitTeamlinktImport(input: {
     }
   }
 
-  const summary = { created, updated, skipped, ambiguous, errors, profileFields }
+  const summary = {
+    created,
+    updated,
+    skipped,
+    ambiguous,
+    errors,
+    profileFields,
+    ...(eventId ? { register, alreadyRegistered, eventId } : {}),
+  }
   await db.update(importBatches).set({ summary }).where(eq(importBatches.id, batch.id))
 
   return { batchId: batch.id, summary, actions: preview.actions }

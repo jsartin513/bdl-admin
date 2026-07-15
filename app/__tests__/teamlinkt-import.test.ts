@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   parseCsv,
   parseTeamlinktCsv,
+  playerIdForRegistration,
   shouldApplyProfileField,
+  summarizeRegistrationPreview,
+  type ImportPreviewAction,
+  type TeamlinktRow,
 } from '@/app/lib/players/teamlinkt-import'
 import {
   defaultJerseyName,
@@ -14,6 +18,20 @@ import {
   resolveNickname,
 } from '@/app/lib/players/skill'
 import { genderGroup, parseGender } from '@/app/lib/players/gender'
+
+function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
+  return {
+    rowNumber: 2,
+    firstName: 'Jess',
+    lastName: 'Sartin',
+    email: 'jess@example.com',
+    jerseyNumber: null,
+    skillLevel: null,
+    gender: null,
+    raw: {},
+    ...overrides,
+  }
+}
 
 describe('parseSkillLevel', () => {
   it('maps intermediate/advanced and numeric levels', () => {
@@ -169,5 +187,93 @@ describe('teamlinkt csv parse', () => {
     const parsed = parseTeamlinktCsv(csv)
     expect(parsed.error).toBeUndefined()
     expect(parsed.rows[0].firstName).toBe('Jess')
+  })
+})
+
+describe('event-scoped registration preview', () => {
+  it('resolves player ids for update and matched skip rows', () => {
+    const update: ImportPreviewAction = {
+      action: 'update',
+      row: sampleRow(),
+      playerId: 'p1',
+      notes: ['Add email'],
+    }
+    const matchedSkip: ImportPreviewAction = {
+      action: 'skip',
+      row: sampleRow({ rowNumber: 3 }),
+      reason: 'Already up to date',
+      playerId: 'p2',
+    }
+    const create: ImportPreviewAction = {
+      action: 'create',
+      row: sampleRow({ rowNumber: 4 }),
+    }
+    const ambiguous: ImportPreviewAction = {
+      action: 'ambiguous',
+      row: sampleRow({ rowNumber: 5 }),
+      reason: 'Multiple players',
+      playerIds: ['a', 'b'],
+    }
+
+    expect(playerIdForRegistration(update)).toBe('p1')
+    expect(playerIdForRegistration(matchedSkip)).toBe('p2')
+    expect(playerIdForRegistration(create)).toBeNull()
+    expect(playerIdForRegistration(ambiguous)).toBeNull()
+  })
+
+  it('counts new vs already-registered players for event imports', () => {
+    const actions: ImportPreviewAction[] = [
+      { action: 'create', row: sampleRow() },
+      {
+        action: 'update',
+        row: sampleRow({ rowNumber: 3, firstName: 'Alex' }),
+        playerId: 'existing-new',
+        notes: ['Add email'],
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 4, firstName: 'Sam' }),
+        reason: 'Already up to date',
+        playerId: 'already-on-event',
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 5, firstName: 'Pat' }),
+        reason: 'Already up to date',
+        playerId: 'already-on-event',
+      },
+      {
+        action: 'ambiguous',
+        row: sampleRow({ rowNumber: 6 }),
+        reason: 'dup',
+        playerIds: ['x', 'y'],
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 7 }),
+        reason: 'Missing first or last name',
+      },
+    ]
+
+    const summary = summarizeRegistrationPreview(
+      actions,
+      new Set(['already-on-event'])
+    )
+    expect(summary).toEqual({ register: 2, alreadyRegistered: 1 })
+  })
+
+  it('without event-linked players treats matched skips as new registrations', () => {
+    const actions: ImportPreviewAction[] = [
+      {
+        action: 'skip',
+        row: sampleRow(),
+        reason: 'Already up to date',
+        playerId: 'p1',
+      },
+    ]
+    expect(summarizeRegistrationPreview(actions, new Set())).toEqual({
+      register: 1,
+      alreadyRegistered: 0,
+    })
   })
 })
