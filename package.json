@@ -10,7 +10,11 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:league": "node test-create-league.js"
+    "test:league": "node test-create-league.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -19,7 +23,9 @@
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.4.0",
+    "drizzle-orm": "^0.45.2",
     "next": "15.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -36,6 +42,8 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/ui": "^4.0.16",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "15.2.2",
     "happy-dom": "^20.0.11",
