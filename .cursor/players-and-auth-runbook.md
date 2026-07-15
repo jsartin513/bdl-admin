@@ -18,7 +18,7 @@ DATABASE_URL=postgresql://...
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
 
-On `*.bostondodgeballleague.com`, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Localhost stays host-only.
+On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Preview hosts and localhost stay host-only.
 
 | Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
 |-------------|------|------------|------------------------|

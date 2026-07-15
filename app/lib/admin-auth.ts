@@ -85,11 +85,21 @@ function getAppHostname(): string {
   }
 }
 
+function isPreviewBoardHost(hostname: string): boolean {
+  return (
+    hostname.includes('-preview.') ||
+    hostname.startsWith('store-preview.') ||
+    hostname === 'store-preview.bostondodgeballleague.com'
+  )
+}
+
 export function getAdminSessionCookieDomain(hostname = getAppHostname()): string | undefined {
-  if (hostname === 'bostondodgeballleague.com' || hostname.endsWith('.bostondodgeballleague.com')) {
-    return SHARED_ADMIN_COOKIE_DOMAIN
+  if (hostname !== 'bostondodgeballleague.com' && !hostname.endsWith('.bostondodgeballleague.com')) {
+    return undefined
   }
-  return undefined
+  // Keep preview host-only so preview/prod never share one parent-domain cookie.
+  if (isPreviewBoardHost(hostname)) return undefined
+  return SHARED_ADMIN_COOKIE_DOMAIN
 }
 
 function adminSessionCookieOptions(maxAge: number) {
