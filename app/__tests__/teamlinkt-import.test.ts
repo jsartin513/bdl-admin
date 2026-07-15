@@ -219,6 +219,15 @@ describe('event-scoped registration preview', () => {
     expect(playerIdForRegistration(matchedSkip)).toBe('p2')
     expect(playerIdForRegistration(create)).toBeNull()
     expect(playerIdForRegistration(ambiguous)).toBeNull()
+    expect(
+      playerIdForRegistration({
+        action: 'skip',
+        row: sampleRow({ rowNumber: 8 }),
+        reason: 'Matched a merged player record',
+        playerId: 'merged-p',
+        excludeFromRegistration: true,
+      })
+    ).toBeNull()
   })
 
   it('counts new vs already-registered players for event imports', () => {

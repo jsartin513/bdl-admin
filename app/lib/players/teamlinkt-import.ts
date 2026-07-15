@@ -33,7 +33,14 @@ export type TeamlinktRow = {
 export type ImportPreviewAction =
   | { action: 'create'; row: TeamlinktRow }
   | { action: 'update'; row: TeamlinktRow; playerId: string; notes: string[] }
-  | { action: 'skip'; row: TeamlinktRow; reason: string; playerId?: string }
+  | {
+      action: 'skip'
+      row: TeamlinktRow
+      reason: string
+      playerId?: string
+      /** When true, event-scoped import should not enroll this playerId. */
+      excludeFromRegistration?: boolean
+    }
   | { action: 'ambiguous'; row: TeamlinktRow; reason: string; playerIds: string[] }
 
 /** Player ids that will be registered for an event-scoped import. */
@@ -41,7 +48,13 @@ export function playerIdForRegistration(
   action: ImportPreviewAction
 ): string | null {
   if (action.action === 'update') return action.playerId
-  if (action.action === 'skip' && action.playerId) return action.playerId
+  if (
+    action.action === 'skip' &&
+    action.playerId &&
+    !action.excludeFromRegistration
+  ) {
+    return action.playerId
+  }
   return null
 }
 
@@ -459,6 +472,7 @@ export async function previewTeamlinktImport(
         row,
         reason: 'Matched a merged player record',
         playerId,
+        excludeFromRegistration: true,
       })
       continue
     }
@@ -609,13 +623,10 @@ export async function commitTeamlinktImport(input: {
       if (item.action === 'skip') {
         skipped++
         // Matched players still get registered on event-scoped imports
-        // (except merged records — those keep playerId but should not enroll)
-        if (
-          eventId &&
-          item.playerId &&
-          item.reason !== 'Matched a merged player record'
-        ) {
-          await registerPlayer(item.playerId)
+        // (except records flagged excludeFromRegistration, e.g. merged players)
+        const registerId = playerIdForRegistration(item)
+        if (eventId && registerId) {
+          await registerPlayer(registerId)
         }
         continue
       }

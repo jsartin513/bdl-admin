@@ -8,13 +8,17 @@ import {
   type EventType,
 } from '@/app/lib/events/types'
 
-function parseEventDate(value: string): string {
+export function parseEventDate(value: string): string {
   const trimmed = value.trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     throw new Error('eventDate must be YYYY-MM-DD')
   }
   const d = new Date(`${trimmed}T00:00:00.000Z`)
   if (Number.isNaN(d.getTime())) {
+    throw new Error('eventDate is not a valid date')
+  }
+  // Reject overflow dates that Date normalizes (e.g. 2026-02-31 → March)
+  if (d.toISOString().slice(0, 10) !== trimmed) {
     throw new Error('eventDate is not a valid date')
   }
   return trimmed

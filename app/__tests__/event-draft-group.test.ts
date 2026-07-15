@@ -3,6 +3,7 @@ import {
   isValidDraftGroup,
   parseDraftGroup,
 } from '@/app/lib/events/types'
+import { parseEventDate } from '@/app/lib/events/mutations'
 
 describe('parseDraftGroup', () => {
   it('accepts positive integers and null to clear', () => {
@@ -25,5 +26,18 @@ describe('parseDraftGroup', () => {
     expect(isValidDraftGroup(null)).toBe(true)
     expect(isValidDraftGroup(0)).toBe(false)
     expect(isValidDraftGroup(undefined)).toBe(false)
+  })
+})
+
+describe('parseEventDate', () => {
+  it('accepts valid calendar dates', () => {
+    expect(parseEventDate('2026-08-08')).toBe('2026-08-08')
+    expect(parseEventDate(' 2026-02-28 ')).toBe('2026-02-28')
+  })
+
+  it('rejects malformed and overflow calendar dates', () => {
+    expect(() => parseEventDate('08/08/2026')).toThrow(/YYYY-MM-DD/)
+    expect(() => parseEventDate('2026-02-31')).toThrow(/not a valid date/)
+    expect(() => parseEventDate('2026-13-01')).toThrow(/not a valid date/)
   })
 })

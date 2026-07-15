@@ -44,7 +44,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ? 404
         : message.includes('draftGroup')
           ? 400
-          : 400
+          : 500
     return NextResponse.json({ error: message }, { status })
   }
 }
