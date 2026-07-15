@@ -12,6 +12,7 @@ vi.mock('next/server', () => ({
 
 import {
   createAdminSessionToken,
+  getAdminSessionCookieDomain,
   isAdminAllowlistConfigured,
   isAllowedAdminEmail,
   readAdminSession,
@@ -82,5 +83,15 @@ describe('admin auth session', () => {
     expect(token).toBeTruthy()
     const session = await readAdminSessionEdge(token)
     expect(session?.email).toBe('admin@example.com')
+  })
+
+  it('uses a shared parent cookie domain on league hosts', () => {
+    expect(getAdminSessionCookieDomain('admin.bostondodgeballleague.com')).toBe(
+      '.bostondodgeballleague.com'
+    )
+    expect(getAdminSessionCookieDomain('merch.bostondodgeballleague.com')).toBe(
+      '.bostondodgeballleague.com'
+    )
+    expect(getAdminSessionCookieDomain('localhost')).toBeUndefined()
   })
 })
