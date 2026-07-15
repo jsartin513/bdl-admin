@@ -22,6 +22,7 @@ type ImportAction = {
     lastName: string
     email: string | null
     jerseyNumber: number | null
+    skillLevel: number | null
   }
   notes?: string[]
   reason?: string
@@ -288,7 +289,7 @@ export default function PlayersPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
+    <div className="container mx-auto px-4 py-6 space-y-6 text-gray-900">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Players</h1>
@@ -314,7 +315,7 @@ export default function PlayersPage() {
               setImportPreview(null)
               setFormError(null)
             }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
           >
             Import TeamLinkt CSV
           </button>
@@ -326,7 +327,7 @@ export default function PlayersPage() {
               setSurvivorId([...selectedIds][0] ?? '')
               setFormError(null)
             }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50 disabled:opacity-40"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40"
           >
             Merge selected ({selectedIds.size})
           </button>
@@ -334,21 +335,21 @@ export default function PlayersPage() {
       </div>
 
       <div className="flex flex-wrap gap-3 items-end">
-        <label className="text-sm">
+        <label className="text-sm text-gray-900">
           <span className="block text-gray-600 mb-1">Search</span>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Name, alias, or email"
-            className="rounded border border-gray-300 px-3 py-2 text-sm w-64"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 w-64"
           />
         </label>
-        <label className="text-sm">
+        <label className="text-sm text-gray-900">
           <span className="block text-gray-600 mb-1">Skill</span>
           <select
             value={skillFilter}
             onChange={(e) => setSkillFilter(e.target.value)}
-            className="rounded border border-gray-300 px-3 py-2 text-sm"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
           >
             <option value="">All</option>
             <option value="unset">Unset</option>
@@ -359,7 +360,7 @@ export default function PlayersPage() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm pb-2">
+        <label className="flex items-center gap-2 text-sm text-gray-900 pb-2">
           <input
             type="checkbox"
             checked={includeMerged}
@@ -370,7 +371,7 @@ export default function PlayersPage() {
         <button
           type="button"
           onClick={() => void loadPlayers()}
-          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
         >
           Refresh
         </button>
@@ -380,9 +381,9 @@ export default function PlayersPage() {
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}
 
       {!loading && (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-600">
+        <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white text-gray-900">
+          <table className="min-w-full text-sm text-gray-900">
+            <thead className="bg-gray-50 text-left text-gray-700">
               <tr>
                 <th className="px-3 py-2 w-10" />
                 <th className="px-3 py-2">First</th>
@@ -394,11 +395,11 @@ export default function PlayersPage() {
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="text-gray-900">
               {players.map((p) => (
                 <tr
                   key={p.id}
-                  className={`border-t border-gray-100 ${p.isMerged ? 'bg-gray-50 text-gray-500' : ''}`}
+                  className={`border-t border-gray-100 ${p.isMerged ? 'bg-gray-50 text-gray-500' : 'text-gray-900'}`}
                 >
                   <td className="px-3 py-2">
                     <input
@@ -480,8 +481,8 @@ export default function PlayersPage() {
 
       {mergeOpen ? (
         <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Merge players</h2>
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 text-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900">Merge players</h2>
             <p className="text-sm text-gray-600">
               Choose the survivor. Emails and aliases from the others will move onto them;
               the other records will be marked merged.
@@ -524,8 +525,8 @@ export default function PlayersPage() {
 
       {importOpen ? (
         <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Import TeamLinkt CSV</h2>
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900">Import TeamLinkt CSV</h2>
             <label className="block text-sm">
               <span className="text-gray-600">Filename</span>
               <input
@@ -663,9 +664,9 @@ function EditPanel(props: {
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
         <div className="flex justify-between items-start gap-4">
-          <h2 className="text-lg font-semibold">Edit player</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Edit player</h2>
           <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
             Close
           </button>
@@ -883,8 +884,8 @@ function CreatePanel(props: {
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
-        <h2 className="text-lg font-semibold">Add player</h2>
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4 text-gray-900">
+        <h2 className="text-lg font-semibold text-gray-900">Add player</h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
             First name
@@ -973,9 +974,9 @@ function CreatePanel(props: {
 function HistoryPanel(props: { history: HistoryRow[]; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Change history</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Change history</h2>
           <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
             Close
           </button>
