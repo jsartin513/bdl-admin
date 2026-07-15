@@ -145,13 +145,20 @@ export function parseTeamlinktCsv(csvText: string): {
   rows: TeamlinktRow[]
   headers: string[]
   mapping: ReturnType<typeof mapHeaders>
+  warnings: string[]
   error?: string
 } {
   // Strip BOM if present (common from Excel / TeamLinkt exports)
   const text = csvText.replace(/^\uFEFF/, '')
   const table = parseCsv(text)
   if (table.length < 2) {
-    return { rows: [], headers: [], mapping: {}, error: 'CSV must include a header row and data' }
+    return {
+      rows: [],
+      headers: [],
+      mapping: {},
+      warnings: [],
+      error: 'CSV must include a header row and data',
+    }
   }
 
   const headers = table[0]
@@ -161,6 +168,7 @@ export function parseTeamlinktCsv(csvText: string): {
       rows: [],
       headers,
       mapping,
+      warnings: [],
       error:
         'Could not find First Name and Last Name columns. Expected TeamLinkt-style headers.',
     }
@@ -219,7 +227,23 @@ export function parseTeamlinktCsv(csvText: string): {
     })
   }
 
-  return { rows, headers, mapping }
+  const warnings: string[] = []
+  if (mapping.skillLevel === undefined) {
+    warnings.push(
+      'No Skill / Skill Level column found. Association members exports usually omit it — unset skills will not be filled. Export with player additional info / custom questions, or add a Skill Level column (1–4 or Intermediate/Advanced).'
+    )
+  } else {
+    const header = headers[mapping.skillLevel]
+    const rawValues = rows.map((r) => (r.raw[header] ?? '').trim()).filter(Boolean)
+    const parsedCount = rows.filter((r) => r.skillLevel != null).length
+    if (rawValues.length > 0 && parsedCount === 0) {
+      warnings.push(
+        'Skill column present but no values parsed. Use 1–4 or labels like Intermediate / Advanced.'
+      )
+    }
+  }
+
+  return { rows, headers, mapping, warnings }
 }
 
 type MatchIndex = {
@@ -297,11 +321,17 @@ export async function previewTeamlinktImport(
 ): Promise<{
   actions: ImportPreviewAction[]
   headers: string[]
+  warnings: string[]
   error?: string
 }> {
   const parsed = parseTeamlinktCsv(csvText)
   if (parsed.error) {
-    return { actions: [], headers: parsed.headers, error: parsed.error }
+    return {
+      actions: [],
+      headers: parsed.headers,
+      warnings: parsed.warnings,
+      error: parsed.error,
+    }
   }
 
   const index = await loadMatchIndex()
@@ -394,7 +424,7 @@ export async function previewTeamlinktImport(
     }
   }
 
-  return { actions, headers: parsed.headers }
+  return { actions, headers: parsed.headers, warnings: parsed.warnings }
 }
 
 export async function commitTeamlinktImport(input: {

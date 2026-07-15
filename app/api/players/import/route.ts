@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         dryRun: true,
         headers: preview.headers,
+        warnings: preview.warnings,
         actions: preview.actions,
         summary: {
           create: preview.actions.filter((a) => a.action === 'create').length,

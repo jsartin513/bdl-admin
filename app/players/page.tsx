@@ -57,6 +57,7 @@ export default function PlayersPage() {
   const [importPreview, setImportPreview] = useState<{
     actions: ImportAction[]
     summary: Record<string, number>
+    warnings: string[]
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
 
@@ -245,6 +246,7 @@ export default function PlayersPage() {
       setImportPreview({
         actions: data.actions as ImportAction[],
         summary: data.summary as Record<string, number>,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
       })
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Preview failed')
@@ -564,6 +566,13 @@ export default function PlayersPage() {
             {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
             {importPreview ? (
               <div className="space-y-2 text-sm">
+                {importPreview.warnings.length > 0 ? (
+                  <ul className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
+                    {importPreview.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <p>
                   Preview: {importPreview.summary.create} create,{' '}
                   {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}

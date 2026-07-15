@@ -13,6 +13,14 @@ describe('parseSkillLevel', () => {
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
   })
+
+  it('parses Excel floats and composite labels', () => {
+    expect(parseSkillLevel('2.0')).toBe(2)
+    expect(parseSkillLevel('3.0')).toBe(3)
+    expect(parseSkillLevel('2 - Intermediate')).toBe(2)
+    expect(parseSkillLevel('Intermediate (2)')).toBe(2)
+    expect(parseSkillLevel('Level 3')).toBe(3)
+  })
 })
 
 describe('teamlinkt csv parse', () => {
@@ -43,6 +51,7 @@ describe('teamlinkt csv parse', () => {
     })
     expect(parsed.rows[1].email).toBeNull()
     expect(parsed.rows[1].jerseyNumber).toBeNull()
+    expect(parsed.warnings.some((w) => /Skill/.test(w))).toBe(true)
   })
 
   it('maps skill level from CSV labels or numbers', () => {
@@ -59,6 +68,7 @@ describe('teamlinkt csv parse', () => {
     expect(parsed.rows[0].skillLevel).toBe(2)
     expect(parsed.rows[1].skillLevel).toBe(3)
     expect(parsed.rows[2].skillLevel).toBe(2)
+    expect(parsed.warnings).toEqual([])
   })
 
   it('errors when name columns are missing', () => {
@@ -82,6 +92,7 @@ describe('teamlinkt csv parse', () => {
       lastName: 'Lee',
       email: 'lee@example.com',
     })
+    expect(parsed.warnings.some((w) => /No Skill/.test(w))).toBe(true)
   })
 
   it('strips a UTF-8 BOM from TeamLinkt exports', () => {
