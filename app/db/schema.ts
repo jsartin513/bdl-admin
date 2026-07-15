@@ -63,6 +63,8 @@ export const importBatches = pgTable('import_batches', {
   id: uuid('id').defaultRandom().primaryKey(),
   filename: text('filename').notNull(),
   actor: text('actor').notNull(),
+  source: text('source').notNull().default('teamlinkt'),
+  csvText: text('csv_text'),
   rowCount: integer('row_count').notNull().default(0),
   summary: jsonb('summary').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

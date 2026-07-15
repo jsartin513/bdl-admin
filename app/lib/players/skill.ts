@@ -38,9 +38,31 @@ export function skillLevelLabel(level: number | null | undefined): string {
 /** Parse TeamLinkt / CSV skill cells (labels or 1–4). */
 export function parseSkillLevel(value: string | null | undefined): SkillLevel | null {
   if (value == null) return null
-  const normalized = value.trim().toLowerCase().replace(/[_]+/g, ' ').replace(/\s+/g, ' ')
+  let normalized = value.trim().toLowerCase().replace(/[_]+/g, ' ').replace(/\s+/g, ' ')
   if (!normalized) return null
-  return SKILL_LABEL_TO_LEVEL[normalized] ?? null
+
+  const exact = SKILL_LABEL_TO_LEVEL[normalized]
+  if (exact != null) return exact
+
+  // Excel / Sheets often emit "2.0"
+  const asFloat = Number.parseFloat(normalized)
+  if (Number.isFinite(asFloat) && Number.isInteger(asFloat) && isValidSkillLevel(asFloat)) {
+    return asFloat
+  }
+
+  // "2 - Intermediate", "Intermediate (2)", "Level 3"
+  const digitMatch = normalized.match(/(?:^|[^\d])([1-4])(?:[^\d]|$)/)
+  if (digitMatch) {
+    const n = Number.parseInt(digitMatch[1], 10)
+    if (isValidSkillLevel(n)) return n
+  }
+
+  for (const [label, level] of Object.entries(SKILL_LABEL_TO_LEVEL)) {
+    if (/^\d+$/.test(label)) continue
+    if (normalized.includes(label)) return level
+  }
+
+  return null
 }
 
 export function defaultRosterName(firstName: string, lastName: string): string {

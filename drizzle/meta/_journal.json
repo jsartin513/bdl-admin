@@ -8,6 +8,13 @@
       "when": 1752528000000,
       "tag": "0000_players",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784145000000,
+      "tag": "0001_import_batches_csv_text",
+      "breakpoints": true
     }
   ]
 }
