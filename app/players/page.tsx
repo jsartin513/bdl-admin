@@ -28,6 +28,12 @@ type ImportAction = {
   playerId?: string
 }
 
+function parseJerseyNumber(value: string): number | null {
+  if (!value.trim()) return null
+  const n = Number.parseInt(value, 10)
+  return Number.isNaN(n) ? null : n
+}
+
 export default function PlayersPage() {
   const [players, setPlayers] = useState<PlayerListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,36 +102,44 @@ export default function PlayersPage() {
 
   async function openEdit(id: string) {
     setFormError(null)
-    const res = await fetch(`/api/players/${id}`)
-    const data = await res.json()
-    if (!res.ok) {
-      setError(data.error || 'Failed to load player')
-      return
+    try {
+      const res = await fetch(`/api/players/${id}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to load player')
+        return
+      }
+      setEditing(data.player)
+      setHistory(null)
+      setHistoryPlayerId(null)
+    } catch {
+      setError('Failed to load player')
     }
-    setEditing(data.player)
-    setHistory(null)
-    setHistoryPlayerId(null)
   }
 
   async function openHistory(id: string) {
     setHistoryPlayerId(id)
-    const res = await fetch(`/api/players/${id}/history`)
-    const data = await res.json()
-    if (!res.ok) {
-      setError(data.error || 'Failed to load history')
-      return
+    try {
+      const res = await fetch(`/api/players/${id}/history`)
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to load history')
+        return
+      }
+      setHistory(
+        (data.history as Array<Record<string, unknown>>).map((h) => ({
+          id: String(h.id),
+          source: String(h.source),
+          actor: String(h.actor),
+          changeType: String(h.changeType),
+          before: (h.before as Record<string, unknown> | null) ?? null,
+          after: (h.after as Record<string, unknown> | null) ?? null,
+          createdAt: String(h.createdAt),
+        }))
+      )
+    } catch {
+      setError('Failed to load history')
     }
-    setHistory(
-      (data.history as Array<Record<string, unknown>>).map((h) => ({
-        id: String(h.id),
-        source: String(h.source),
-        actor: String(h.actor),
-        changeType: String(h.changeType),
-        before: (h.before as Record<string, unknown> | null) ?? null,
-        after: (h.after as Record<string, unknown> | null) ?? null,
-        createdAt: String(h.createdAt),
-      }))
-    )
   }
 
   async function saveEdit(patch: Record<string, unknown>) {
@@ -705,9 +719,7 @@ function EditPanel(props: {
                 firstName,
                 lastName,
                 rosterName,
-                jerseyNumber: jerseyNumber.trim()
-                  ? Number.parseInt(jerseyNumber, 10)
-                  : null,
+                jerseyNumber: parseJerseyNumber(jerseyNumber),
                 skillLevel: skillLevel ? Number(skillLevel) : null,
               })
             }
@@ -921,9 +933,7 @@ function CreatePanel(props: {
                 firstName,
                 lastName,
                 rosterName: rosterName.trim() || undefined,
-                jerseyNumber: jerseyNumber.trim()
-                  ? Number.parseInt(jerseyNumber, 10)
-                  : null,
+                jerseyNumber: parseJerseyNumber(jerseyNumber),
                 skillLevel: skillLevel ? Number(skillLevel) : null,
                 email: email.trim() || undefined,
               })

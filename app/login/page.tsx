@@ -29,7 +29,8 @@ function LoginContent() {
 
   useEffect(() => {
     if (next && next.startsWith('/') && !next.startsWith('//')) {
-      document.cookie = `admin_oauth_next=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax`
+      const secure = location.protocol === 'https:' ? '; secure' : ''
+      document.cookie = `admin_oauth_next=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax${secure}`
     }
   }, [next])
 
