@@ -7,6 +7,7 @@ import {
   players,
 } from '@/app/db/schema'
 import { skillLevelLabel } from '@/app/lib/players/skill'
+import { genderGroupLabel, genderGroupSortKey, genderLabel } from '@/app/lib/players/gender'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function listPlayers(opts: {
@@ -75,7 +76,7 @@ export async function listPlayers(opts: {
     }
   }
 
-  return rows.map((r) => ({
+  const items: PlayerListItem[] = rows.map((r) => ({
     id: r.id,
     firstName: r.firstName,
     lastName: r.lastName,
@@ -83,9 +84,23 @@ export async function listPlayers(opts: {
     jerseyNumber: r.jerseyNumber,
     skillLevel: r.skillLevel,
     skillLabel: skillLevelLabel(r.skillLevel),
+    gender: r.gender,
+    genderLabel: genderLabel(r.gender),
+    genderGroupLabel: genderGroupLabel(r.gender),
     primaryEmail: primaryByPlayer.get(r.id) ?? null,
     isMerged: r.isMerged,
   }))
+
+  // W/NB/O together, then men, then unset — name order within each group
+  items.sort((a, b) => {
+    const g = genderGroupSortKey(a.gender) - genderGroupSortKey(b.gender)
+    if (g !== 0) return g
+    const last = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
+    if (last !== 0) return last
+    return a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
+  })
+
+  return items
 }
 
 export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapshot | null> {
@@ -112,6 +127,7 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     rosterName: player.rosterName,
     jerseyNumber: player.jerseyNumber,
     skillLevel: player.skillLevel,
+    gender: player.gender,
     isMerged: player.isMerged,
     mergedIntoPlayerId: player.mergedIntoPlayerId,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
@@ -127,6 +143,7 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     rosterName: snapshot.rosterName,
     jerseyNumber: snapshot.jerseyNumber,
     skillLevel: snapshot.skillLevel,
+    gender: snapshot.gender,
     isMerged: snapshot.isMerged,
     mergedIntoPlayerId: snapshot.mergedIntoPlayerId,
     emails: snapshot.emails,

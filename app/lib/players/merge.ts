@@ -7,6 +7,7 @@ import {
   snapshotToJson,
 } from '@/app/lib/players/queries'
 import { isValidSkillLevel } from '@/app/lib/players/skill'
+import { isValidGender } from '@/app/lib/players/gender'
 import { normalizeNamePart } from '@/app/lib/players/normalize'
 
 export type MergeFieldResolution = {
@@ -15,6 +16,7 @@ export type MergeFieldResolution = {
   rosterName?: string
   jerseyNumber?: number | null
   skillLevel?: number | null
+  gender?: string | null
 }
 
 export async function mergePlayers(input: {
@@ -49,10 +51,12 @@ export async function mergePlayers(input: {
   let rosterName = survivorBefore.rosterName
   let jerseyNumber = survivorBefore.jerseyNumber
   let skillLevel = survivorBefore.skillLevel
+  let gender = survivorBefore.gender
 
   for (const loser of loserSnapshots) {
     if (jerseyNumber == null && loser.jerseyNumber != null) jerseyNumber = loser.jerseyNumber
     if (skillLevel == null && loser.skillLevel != null) skillLevel = loser.skillLevel
+    if (gender == null && loser.gender != null) gender = loser.gender
   }
 
   if (input.fields?.firstName !== undefined) {
@@ -73,6 +77,12 @@ export async function mergePlayers(input: {
     }
     skillLevel = input.fields.skillLevel
   }
+  if (input.fields?.gender !== undefined) {
+    if (input.fields.gender !== null && !isValidGender(input.fields.gender)) {
+      throw new Error('Invalid gender')
+    }
+    gender = input.fields.gender
+  }
 
   await db
     .update(players)
@@ -82,6 +92,7 @@ export async function mergePlayers(input: {
       rosterName,
       jerseyNumber,
       skillLevel,
+      gender,
       updatedAt: new Date(),
     })
     .where(eq(players.id, survivorId))

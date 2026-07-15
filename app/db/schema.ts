@@ -19,6 +19,8 @@ export const players = pgTable(
     rosterName: text('roster_name').notNull(),
     jerseyNumber: integer('jersey_number'),
     skillLevel: integer('skill_level'),
+    /** Canonical: man | woman | nonbinary | other */
+    gender: text('gender'),
     isMerged: boolean('is_merged').notNull().default(false),
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
