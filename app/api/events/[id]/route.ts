@@ -3,7 +3,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { updateEvent } from '@/app/lib/events/mutations'
+import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import { eventTypeLabel, isValidEventType } from '@/app/lib/events/types'
 
@@ -62,6 +62,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update event'
     const status = message === 'Event not found' ? 404 : 400
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const session = getAdminSessionFromRequest(request)
+  if (!session) return adminUnauthorizedResponse()
+
+  try {
+    const { id } = await context.params
+    await deleteEvent(id)
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to delete event'
+    const status = message === 'Event not found' ? 404 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }
