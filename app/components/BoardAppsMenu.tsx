@@ -68,7 +68,7 @@ export default function BoardAppsMenu({
         aria-expanded={open}
         aria-haspopup="true"
       >
-        Apps
+        Switch Application
       </button>
       {open ? (
         <div className={menuClassName}>
