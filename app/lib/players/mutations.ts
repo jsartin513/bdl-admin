@@ -109,6 +109,8 @@ export async function updatePlayer(
     jerseyName?: string | null
     skillLevel?: number | null
     gender?: string | null
+    hasStrongPersonality?: boolean
+    strongPersonalityNotes?: string | null
   },
   opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
 ) {
@@ -159,6 +161,13 @@ export async function updatePlayer(
   }
   if (patch.jerseyName !== undefined) {
     updates.jerseyName = normalizeStoredJerseyName(patch.jerseyName, nextLast)
+  }
+  if (patch.hasStrongPersonality !== undefined) {
+    updates.hasStrongPersonality = patch.hasStrongPersonality
+  }
+  if (patch.strongPersonalityNotes !== undefined) {
+    updates.strongPersonalityNotes =
+      patch.strongPersonalityNotes != null ? patch.strongPersonalityNotes.trim() || null : null
   }
 
   await db.update(players).set(updates).where(eq(players.id, playerId))

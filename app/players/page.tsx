@@ -784,6 +784,15 @@ export default function PlayersPage() {
                   </td>
                   <td className="px-3 py-2">
                     <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
+                    {p.hasStrongPersonality ? (
+                      <span
+                        title={p.strongPersonalityNotes || 'Strong personality'}
+                        className="ml-1 cursor-help text-amber-500"
+                        aria-label="Strong personality"
+                      >
+                        ⚡
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2">
                     <SkillStyledText skillLevel={p.skillLevel}>{p.lastName}</SkillStyledText>
@@ -1125,6 +1134,8 @@ function EditPanel(props: {
     p.skillLevel != null ? String(p.skillLevel) : ''
   )
   const [gender, setGender] = useState(p.gender ?? '')
+  const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
+  const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
 
@@ -1137,6 +1148,8 @@ function EditPanel(props: {
     setJerseyName(p.jerseyName)
     setSkillLevel(p.skillLevel != null ? String(p.skillLevel) : '')
     setGender(p.gender ?? '')
+    setHasStrongPersonality(p.hasStrongPersonality)
+    setStrongPersonalityNotes(p.strongPersonalityNotes ?? '')
   }, [p])
 
   const nicknameDefault = defaultNickname(firstName, lastName)
@@ -1282,6 +1295,29 @@ function EditPanel(props: {
               ))}
             </select>
           </label>
+          <label className="text-sm col-span-2 flex items-start gap-2 pt-1">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={hasStrongPersonality}
+              disabled={p.isMerged}
+              onChange={(e) => setHasStrongPersonality(e.target.checked)}
+            />
+            <span>Strong personality</span>
+          </label>
+          {hasStrongPersonality ? (
+            <label className="text-sm col-span-2">
+              Strong personality notes
+              <textarea
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                rows={3}
+                value={strongPersonalityNotes}
+                disabled={p.isMerged}
+                onChange={(e) => setStrongPersonalityNotes(e.target.value)}
+                placeholder="Notes about this player's personality (shown on hover in team builder)"
+              />
+            </label>
+          ) : null}
         </div>
 
         {!p.isMerged ? (
@@ -1299,6 +1335,8 @@ function EditPanel(props: {
                 jerseyName,
                 skillLevel: skillLevel ? Number(skillLevel) : null,
                 gender: gender || null,
+                hasStrongPersonality,
+                strongPersonalityNotes: strongPersonalityNotes.trim() || null,
               })
             }
           >

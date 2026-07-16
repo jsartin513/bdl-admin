@@ -36,6 +36,13 @@
       "when": 1752630000000,
       "tag": "0004_events",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1753056000000,
+      "tag": "0005_player_strong_personality",
+      "breakpoints": true
     }
   ]
 }

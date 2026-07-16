@@ -94,6 +94,15 @@ function DraftPlayerCard(props: {
     >
       <div className="font-medium text-gray-900">
         {player.nickname || `${player.firstName} ${player.lastName}`}
+        {player.hasStrongPersonality ? (
+          <span
+            title={player.strongPersonalityNotes || 'Strong personality'}
+            className="ml-1 cursor-help text-amber-500"
+            aria-label="Strong personality"
+          >
+            ⚡
+          </span>
+        ) : null}
       </div>
       <div className="text-gray-600">
         {player.skillLevel != null ? skillLevelLabel(player.skillLevel) : '—'} ·{' '}

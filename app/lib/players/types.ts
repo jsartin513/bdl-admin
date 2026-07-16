@@ -19,6 +19,8 @@ export type PlayerSnapshot = {
   gender: string | null
   isMerged: boolean
   mergedIntoPlayerId: string | null
+  hasStrongPersonality: boolean
+  strongPersonalityNotes: string | null
   emails: { id: string; email: string; isPrimary: boolean }[]
   aliases: { id: string; alias: string }[]
 }
@@ -38,4 +40,6 @@ export type PlayerListItem = {
   genderGroupLabel: string
   primaryEmail: string | null
   isMerged: boolean
+  hasStrongPersonality: boolean
+  strongPersonalityNotes: string | null
 }

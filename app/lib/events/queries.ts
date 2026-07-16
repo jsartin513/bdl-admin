@@ -71,6 +71,8 @@ export async function listEventRegistrations(
       jerseyNumber: players.jerseyNumber,
       skillLevel: players.skillLevel,
       gender: players.gender,
+      hasStrongPersonality: players.hasStrongPersonality,
+      strongPersonalityNotes: players.strongPersonalityNotes,
     })
     .from(eventRegistrations)
     .innerJoin(players, eq(players.id, eventRegistrations.playerId))
@@ -123,6 +125,8 @@ export async function listEventRegistrations(
     genderLabel: genderLabel(r.gender),
     genderGroupLabel: genderGroupLabel(r.gender),
     primaryEmail: primaryByPlayer.get(r.playerId) ?? null,
+    hasStrongPersonality: r.hasStrongPersonality,
+    strongPersonalityNotes: r.strongPersonalityNotes,
   }))
 }
 
