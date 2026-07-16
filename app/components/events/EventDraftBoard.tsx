@@ -33,6 +33,7 @@ type Props = {
   teamCount: number
   assignments: DraftAssignment
   onAssignmentsChange: (next: DraftAssignment) => void
+  onReshuffle: () => void
   onApply: () => void
   onDiscard: () => void
   applying: boolean
@@ -187,6 +188,7 @@ export function EventDraftBoard(props: Props) {
     teamCount,
     assignments,
     onAssignmentsChange,
+    onReshuffle,
     onApply,
     onDiscard,
     applying,
@@ -319,6 +321,14 @@ export function EventDraftBoard(props: Props) {
               <option value="skill">Skill (high → low)</option>
             </select>
           </label>
+          <button
+            type="button"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
+            disabled={applying}
+            onClick={onReshuffle}
+          >
+            Reshuffle
+          </button>
           <button
             type="button"
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"

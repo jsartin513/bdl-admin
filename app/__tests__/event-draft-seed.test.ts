@@ -4,6 +4,7 @@ import {
   copyExistingDraftGroups,
   defaultTeamCount,
   emptySeedDraftGroups,
+  playersPerTeamLabel,
   teamGenderCounts,
   teamSkillTotal,
   type DraftSeedPlayer,
@@ -17,6 +18,29 @@ function player(
   return { id, skillLevel, gender }
 }
 
+/** Deterministic PRNG for shuffle tests (mulberry32). */
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0
+    let r = Math.imul(t ^ (t >>> 15), 1 | t)
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r)
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+describe('playersPerTeamLabel', () => {
+  it('shows a single size when even', () => {
+    expect(playersPerTeamLabel(14, 2)).toBe('7')
+    expect(playersPerTeamLabel(0, 2)).toBe('0')
+  })
+
+  it('shows a range when uneven', () => {
+    expect(playersPerTeamLabel(15, 2)).toBe('7–8')
+    expect(playersPerTeamLabel(22, 3)).toBe('7–8')
+  })
+})
+
 describe('defaultTeamCount', () => {
   it('targets roughly 7–8 players per team', () => {
     expect(defaultTeamCount(0)).toBe(1)
@@ -25,6 +49,10 @@ describe('defaultTeamCount', () => {
     expect(defaultTeamCount(15)).toBe(2)
     expect(defaultTeamCount(56)).toBe(7)
     expect(defaultTeamCount(60)).toBe(8)
+  })
+
+  it('prefers 6 over 9', () => {
+    expect(defaultTeamCount(18)).toBe(3) // 3×6, not 2×9
   })
 })
 
@@ -110,6 +138,35 @@ describe('autoSeedDraftGroups', () => {
     ]
     const result = autoSeedDraftGroups(players, 2)
     expect(result.size).toBe(3)
+  })
+
+  it('can produce different layouts when shuffled with different seeds', () => {
+    const players = Array.from({ length: 16 }, (_, i) =>
+      player(
+        `p${i}`,
+        (i % 4) + 1,
+        i % 2 === 0 ? 'woman' : 'man'
+      )
+    )
+    const a = autoSeedDraftGroups(players, 2, {
+      shuffle: true,
+      random: mulberry32(1),
+    })
+    const b = autoSeedDraftGroups(players, 2, {
+      shuffle: true,
+      random: mulberry32(99),
+    })
+    const same = [...a.entries()].every(([id, team]) => b.get(id) === team)
+    expect(same).toBe(false)
+  })
+
+  it('is deterministic when shuffle is off', () => {
+    const players = Array.from({ length: 12 }, (_, i) =>
+      player(`p${i}`, (i % 3) + 1, i % 2 === 0 ? 'woman' : 'man')
+    )
+    const a = autoSeedDraftGroups(players, 3)
+    const b = autoSeedDraftGroups(players, 3)
+    expect([...a.entries()]).toEqual([...b.entries()])
   })
 })
 
