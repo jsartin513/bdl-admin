@@ -51,6 +51,8 @@ export type EventRegistrationListItem = {
   genderLabel: string
   genderGroupLabel: string
   primaryEmail: string | null
+  hasStrongPersonality: boolean
+  strongPersonalityNotes: string | null
 }
 
 export function isValidEventType(value: unknown): value is EventType {

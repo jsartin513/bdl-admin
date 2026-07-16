@@ -97,6 +97,8 @@ export async function listPlayers(opts: {
     genderGroupLabel: genderGroupLabel(r.gender),
     primaryEmail: primaryByPlayer.get(r.id) ?? null,
     isMerged: r.isMerged,
+    hasStrongPersonality: r.hasStrongPersonality,
+    strongPersonalityNotes: r.strongPersonalityNotes,
   }))
 }
 
@@ -134,6 +136,8 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     gender: player.gender,
     isMerged: player.isMerged,
     mergedIntoPlayerId: player.mergedIntoPlayerId,
+    hasStrongPersonality: player.hasStrongPersonality,
+    strongPersonalityNotes: player.strongPersonalityNotes,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
     aliases: aliases.map((a) => ({ id: a.id, alias: a.alias })),
   }
@@ -154,6 +158,8 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     gender: snapshot.gender,
     isMerged: snapshot.isMerged,
     mergedIntoPlayerId: snapshot.mergedIntoPlayerId,
+    hasStrongPersonality: snapshot.hasStrongPersonality,
+    strongPersonalityNotes: snapshot.strongPersonalityNotes,
     emails: snapshot.emails,
     aliases: snapshot.aliases,
   }

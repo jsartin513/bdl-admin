@@ -28,6 +28,8 @@ export const players = pgTable(
     gender: text('gender'),
     isMerged: boolean('is_merged').notNull().default(false),
     mergedIntoPlayerId: uuid('merged_into_player_id'),
+    hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
+    strongPersonalityNotes: text('strong_personality_notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
