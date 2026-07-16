@@ -46,6 +46,9 @@ export default function TopNav() {
         <Link href={withDevMode('/players', devMode)} className="hover:underline">
           Players
         </Link>
+        <Link href={withDevMode('/events', devMode)} className="hover:underline">
+          Events
+        </Link>
         {devMode && (
           <>
             <Link href={withDevMode('/tournament', devMode)} className="hover:underline">

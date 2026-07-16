@@ -24,6 +24,7 @@ async function readJsonBody(request: NextRequest): Promise<
         filename?: string
         dryRun?: boolean
         profileFields?: ImportProfileFieldsMode
+        eventId?: string | null
       }
     }
   | { ok: false; error: string }
@@ -34,6 +35,7 @@ async function readJsonBody(request: NextRequest): Promise<
       filename?: string
       dryRun?: boolean
       profileFields?: ImportProfileFieldsMode
+      eventId?: string | null
     }
     return { ok: true, body }
   } catch {
@@ -52,13 +54,14 @@ export async function POST(request: NextRequest) {
     }
     const body = parsedBody.body
     const options = { profileFields: parseProfileFieldsMode(body.profileFields) }
+    const eventId = body.eventId?.trim() || null
 
     if (!body.csv?.trim()) {
       return NextResponse.json({ error: 'csv is required' }, { status: 400 })
     }
 
     if (body.dryRun !== false) {
-      const preview = await previewTeamlinktImport(body.csv, options)
+      const preview = await previewTeamlinktImport(body.csv, options, eventId)
       if (preview.error) {
         return NextResponse.json({ error: preview.error }, { status: 400 })
       }
@@ -72,6 +75,7 @@ export async function POST(request: NextRequest) {
           update: preview.actions.filter((a) => a.action === 'update').length,
           skip: preview.actions.filter((a) => a.action === 'skip').length,
           ambiguous: preview.actions.filter((a) => a.action === 'ambiguous').length,
+          ...(preview.registrationSummary ?? {}),
         },
       })
     }
@@ -81,6 +85,7 @@ export async function POST(request: NextRequest) {
       filename: body.filename?.trim() || 'teamlinkt.csv',
       actor: session.email,
       options,
+      eventId,
     })
 
     return NextResponse.json({ dryRun: false, ...result })

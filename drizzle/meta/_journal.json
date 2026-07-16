@@ -29,6 +29,13 @@
       "when": 1752623600000,
       "tag": "0003_player_jersey_name",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1752630000000,
+      "tag": "0004_events",
+      "breakpoints": true
     }
   ]
 }

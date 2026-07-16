@@ -977,6 +977,8 @@ export default function PlayersPage() {
             <p className="text-sm text-gray-600">
               New players always get skill, gender, and jersey from the CSV. For existing
               players, those fields are left alone by default so manual edits are preserved.
+              To attach registrations to a tournament or other event, import from the Events
+              page instead.
             </p>
             <label className="block text-sm">
               <span className="text-gray-600">Existing players: skill / gender / jersey</span>
