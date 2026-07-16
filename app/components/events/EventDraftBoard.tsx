@@ -237,11 +237,18 @@ export function EventDraftBoard(props: Props) {
     const sizedTeams = sizes.filter((n) => n > 0)
     const sizesUneven =
       sizedTeams.length > 1 && Math.max(...sizedTeams) !== Math.min(...sizedTeams)
+    const nonemptyIndexes = sizes
+      .map((n, i) => (n > 0 ? i : -1))
+      .filter((i) => i >= 0)
     const avgScore =
-      scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
+      nonemptyIndexes.length > 0
+        ? nonemptyIndexes.reduce((sum, i) => sum + scores[i], 0) /
+          nonemptyIndexes.length
+        : 0
     const avgOfAverages =
-      averages.length > 0
-        ? averages.reduce((a, b) => a + b, 0) / averages.length
+      nonemptyIndexes.length > 0
+        ? nonemptyIndexes.reduce((sum, i) => sum + averages[i], 0) /
+          nonemptyIndexes.length
         : 0
     const avgGenderDelta =
       genderDeltas.length > 0
@@ -347,6 +354,7 @@ export function EventDraftBoard(props: Props) {
             sort={playerSort}
           />
           {Array.from({ length: teamCount }, (_, i) => i + 1).map((t) => {
+            const teamPlayers = byColumn.get(columnId(t)) ?? []
             const scoreMetric = teamStats.sizesUneven
               ? teamStats.averages[t - 1]
               : teamStats.scores[t - 1]
@@ -359,13 +367,17 @@ export function EventDraftBoard(props: Props) {
                 key={t}
                 team={t}
                 label={`Team ${t}`}
-                players={byColumn.get(columnId(t)) ?? []}
+                players={teamPlayers}
                 sort={playerSort}
                 showAverage={teamStats.sizesUneven}
-                scoreImbalanced={Math.abs(scoreMetric - scoreBaseline) > scoreThreshold}
+                scoreImbalanced={
+                  teamPlayers.length > 0 &&
+                  Math.abs(scoreMetric - scoreBaseline) > scoreThreshold
+                }
                 genderImbalanced={
+                  teamPlayers.length > 0 &&
                   teamStats.genderDeltas[t - 1] >
-                  Math.max(1, teamStats.avgGenderDelta + 1)
+                    Math.max(1, teamStats.avgGenderDelta + 1)
                 }
               />
             )
