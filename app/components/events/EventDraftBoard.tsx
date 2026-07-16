@@ -21,10 +21,12 @@ import {
   teamSkillTotal,
 } from '@/app/lib/events/draft-seed'
 import type { EventRegistrationListItem } from '@/app/lib/events/types'
-import { genderGroup } from '@/app/lib/players/gender'
+import { genderGroup, genderGroupSortKey } from '@/app/lib/players/gender'
 import { skillLevelLabel } from '@/app/lib/players/skill'
 
 type DraftAssignment = Map<string, number | null>
+
+type PlayerSort = 'name' | 'gender' | 'skill'
 
 type Props = {
   registrations: EventRegistrationListItem[]
@@ -46,6 +48,29 @@ function parseColumnId(id: string): number | null {
   const m = /^team-(\d+)$/.exec(id)
   if (!m) return null
   return Number.parseInt(m[1], 10)
+}
+
+function displayName(player: EventRegistrationListItem): string {
+  return player.nickname || `${player.firstName} ${player.lastName}`
+}
+
+function sortPlayers(
+  players: EventRegistrationListItem[],
+  sort: PlayerSort
+): EventRegistrationListItem[] {
+  return [...players].sort((a, b) => {
+    if (sort === 'gender') {
+      const g = genderGroupSortKey(a.gender) - genderGroupSortKey(b.gender)
+      if (g !== 0) return g
+    } else if (sort === 'skill') {
+      const sa = a.skillLevel ?? -1
+      const sb = b.skillLevel ?? -1
+      if (sb !== sa) return sb - sa
+    }
+    return displayName(a).localeCompare(displayName(b), undefined, {
+      sensitivity: 'base',
+    })
+  })
 }
 
 function playerCardClass(gender: string | null): string {
@@ -102,6 +127,8 @@ function TeamColumn(props: {
   team: number | null
   label: string
   players: EventRegistrationListItem[]
+  sort: PlayerSort
+  showAverage?: boolean
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
 }) {
@@ -109,6 +136,12 @@ function TeamColumn(props: {
   const { setNodeRef, isOver } = useDroppable({ id })
   const score = teamSkillTotal(props.players)
   const gender = teamGenderCounts(props.players)
+  const count = props.players.length
+  const average = count > 0 ? score / count : 0
+  const sortedPlayers = useMemo(
+    () => sortPlayers(props.players, props.sort),
+    [props.players, props.sort]
+  )
 
   return (
     <div
@@ -120,12 +153,15 @@ function TeamColumn(props: {
       <div className="border-b border-gray-200 px-2 py-2">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-semibold text-gray-900">{props.label}</span>
-          <span className="text-xs text-gray-500">{props.players.length}</span>
+          <span className="text-xs text-gray-500">{count}</span>
         </div>
         {props.team != null ? (
           <div className="mt-1 space-y-0.5 text-xs text-gray-600">
             <div className={props.scoreImbalanced ? 'font-semibold text-amber-700' : ''}>
               Score {score}
+              {props.showAverage && count > 0
+                ? ` · avg ${average.toFixed(1)}`
+                : ''}
             </div>
             <div className={props.genderImbalanced ? 'font-semibold text-amber-700' : ''}>
               W/NB/O {gender.wNbO} · M {gender.men}
@@ -137,7 +173,7 @@ function TeamColumn(props: {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2">
-        {props.players.map((p) => (
+        {sortedPlayers.map((p) => (
           <DraggablePlayer key={p.id} player={p} />
         ))}
       </div>
@@ -158,6 +194,7 @@ export function EventDraftBoard(props: Props) {
   } = props
 
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [playerSort, setPlayerSort] = useState<PlayerSort>('name')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -184,20 +221,41 @@ export function EventDraftBoard(props: Props) {
 
   const teamStats = useMemo(() => {
     const scores: number[] = []
+    const averages: number[] = []
+    const sizes: number[] = []
     const genderDeltas: number[] = []
     for (let t = 1; t <= teamCount; t++) {
       const players = byColumn.get(columnId(t)) ?? []
-      scores.push(teamSkillTotal(players))
+      const total = teamSkillTotal(players)
+      const size = players.length
+      scores.push(total)
+      sizes.push(size)
+      averages.push(size > 0 ? total / size : 0)
       const g = teamGenderCounts(players)
       genderDeltas.push(Math.abs(g.wNbO - g.men))
     }
+    const sizedTeams = sizes.filter((n) => n > 0)
+    const sizesUneven =
+      sizedTeams.length > 1 && Math.max(...sizedTeams) !== Math.min(...sizedTeams)
     const avgScore =
       scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
+    const avgOfAverages =
+      averages.length > 0
+        ? averages.reduce((a, b) => a + b, 0) / averages.length
+        : 0
     const avgGenderDelta =
       genderDeltas.length > 0
         ? genderDeltas.reduce((a, b) => a + b, 0) / genderDeltas.length
         : 0
-    return { scores, genderDeltas, avgScore, avgGenderDelta }
+    return {
+      scores,
+      averages,
+      sizesUneven,
+      avgScore,
+      avgOfAverages,
+      genderDeltas,
+      avgGenderDelta,
+    }
   }, [byColumn, teamCount])
 
   const activePlayer = activeId
@@ -241,7 +299,19 @@ export function EventDraftBoard(props: Props) {
             Working copy only — permanent draft groups are unchanged until you Apply.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="text-gray-600">Sort within teams</span>
+            <select
+              className="rounded border border-gray-300 bg-white px-2 py-1.5"
+              value={playerSort}
+              onChange={(e) => setPlayerSort(e.target.value as PlayerSort)}
+            >
+              <option value="name">Name</option>
+              <option value="gender">Gender</option>
+              <option value="skill">Skill (high → low)</option>
+            </select>
+          </label>
           <button
             type="button"
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm"
@@ -274,21 +344,32 @@ export function EventDraftBoard(props: Props) {
             team={null}
             label="Unassigned"
             players={byColumn.get(columnId(null)) ?? []}
+            sort={playerSort}
           />
-          {Array.from({ length: teamCount }, (_, i) => i + 1).map((t) => (
-            <TeamColumn
-              key={t}
-              team={t}
-              label={`Team ${t}`}
-              players={byColumn.get(columnId(t)) ?? []}
-              scoreImbalanced={
-                Math.abs(teamStats.scores[t - 1] - teamStats.avgScore) > 2
-              }
-              genderImbalanced={
-                teamStats.genderDeltas[t - 1] > Math.max(1, teamStats.avgGenderDelta + 1)
-              }
-            />
-          ))}
+          {Array.from({ length: teamCount }, (_, i) => i + 1).map((t) => {
+            const scoreMetric = teamStats.sizesUneven
+              ? teamStats.averages[t - 1]
+              : teamStats.scores[t - 1]
+            const scoreBaseline = teamStats.sizesUneven
+              ? teamStats.avgOfAverages
+              : teamStats.avgScore
+            const scoreThreshold = teamStats.sizesUneven ? 0.3 : 2
+            return (
+              <TeamColumn
+                key={t}
+                team={t}
+                label={`Team ${t}`}
+                players={byColumn.get(columnId(t)) ?? []}
+                sort={playerSort}
+                showAverage={teamStats.sizesUneven}
+                scoreImbalanced={Math.abs(scoreMetric - scoreBaseline) > scoreThreshold}
+                genderImbalanced={
+                  teamStats.genderDeltas[t - 1] >
+                  Math.max(1, teamStats.avgGenderDelta + 1)
+                }
+              />
+            )
+          })}
         </div>
         <DragOverlay>
           {activePlayer ? <DraftPlayerCard player={activePlayer} dragging /> : null}
