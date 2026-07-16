@@ -18,6 +18,7 @@ import {
   copyExistingDraftGroups,
   defaultTeamCount,
   emptySeedDraftGroups,
+  playersPerTeamLabel,
 } from '@/app/lib/events/draft-seed'
 import type { EventRegistrationListItem } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
@@ -367,6 +368,21 @@ function EventTrackerPageContent() {
     setDraftPhase('board')
   }
 
+  function reshuffleDraft() {
+    const seeds = registrations.map((r) => ({
+      id: r.id,
+      skillLevel: r.skillLevel,
+      gender: r.gender,
+    }))
+    const n = Math.max(1, Math.floor(draftTeamCount))
+    const seeded = autoSeedDraftGroups(seeds, n, { shuffle: true })
+    const next = new Map<string, number | null>()
+    for (const r of registrations) {
+      next.set(r.id, seeded.get(r.id) ?? null)
+    }
+    setDraftAssignments(next)
+  }
+
   function discardDraft() {
     setDraftPhase('off')
     setDraftAssignments(new Map())
@@ -570,9 +586,7 @@ function EventTrackerPageContent() {
               }
             />
             <span className="mt-1 block text-xs text-gray-500">
-              ~{registrations.length > 0
-                ? (registrations.length / Math.max(1, draftTeamCount)).toFixed(1)
-                : 0}{' '}
+              ~{playersPerTeamLabel(registrations.length, draftTeamCount)}{' '}
               players per team
             </span>
           </label>
@@ -633,6 +647,7 @@ function EventTrackerPageContent() {
           teamCount={draftTeamCount}
           assignments={draftAssignments}
           onAssignmentsChange={setDraftAssignments}
+          onReshuffle={reshuffleDraft}
           onApply={() => void applyDraft()}
           onDiscard={discardDraft}
           applying={draftApplying}
