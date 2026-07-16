@@ -3,7 +3,10 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { updateRegistrationDraftGroup } from '@/app/lib/events/mutations'
+import {
+  deleteEventRegistration,
+  updateRegistrationDraftGroup,
+} from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import { parseDraftGroup } from '@/app/lib/events/types'
 
@@ -45,6 +48,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         : message.includes('draftGroup')
           ? 400
           : 500
+    return NextResponse.json({ error: message }, { status })
+  }
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const session = getAdminSessionFromRequest(request)
+  if (!session) return adminUnauthorizedResponse()
+
+  try {
+    const { id, registrationId } = await context.params
+    const event = await getEvent(id)
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    await deleteEventRegistration(id, registrationId)
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to remove registration'
+    const status = message === 'Registration not found' ? 404 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

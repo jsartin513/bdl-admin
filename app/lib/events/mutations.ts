@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { eventRegistrations, events } from '@/app/db/schema'
 import {
@@ -100,6 +100,12 @@ export async function updateEvent(
   return updated
 }
 
+export async function deleteEvent(id: string): Promise<void> {
+  const db = getDb()
+  const deleted = await db.delete(events).where(eq(events.id, id)).returning({ id: events.id })
+  if (deleted.length === 0) throw new Error('Event not found')
+}
+
 /**
  * Create registration if missing; if present only refresh importBatchId / updatedAt.
  * Never clears draftGroup.
@@ -176,4 +182,86 @@ export async function updateRegistrationDraftGroup(
 
   if (!updated) throw new Error('Registration not found')
   return updated
+}
+
+export async function deleteEventRegistration(
+  eventId: string,
+  registrationId: string
+): Promise<void> {
+  const db = getDb()
+  const deleted = await db
+    .delete(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .returning({ id: eventRegistrations.id })
+
+  if (deleted.length === 0) throw new Error('Registration not found')
+}
+
+export async function bulkUpdateRegistrationDraftGroups(
+  eventId: string,
+  assignments: Array<{ registrationId: string; draftGroup: number | null }>
+): Promise<Array<{ id: string; draftGroup: number | null }>> {
+  if (assignments.length === 0) return []
+
+  const parsed = assignments.map((a) => {
+    const draftGroup = parseDraftGroup(a.draftGroup)
+    if (draftGroup === undefined) {
+      throw new Error('draftGroup is required for each assignment')
+    }
+    if (!a.registrationId || typeof a.registrationId !== 'string') {
+      throw new Error('registrationId is required for each assignment')
+    }
+    return { registrationId: a.registrationId, draftGroup }
+  })
+
+  const db = getDb()
+  const ids = parsed.map((p) => p.registrationId)
+  const existing = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, ids)
+      )
+    )
+  const existingIds = new Set(existing.map((row) => row.id))
+  for (const registrationId of ids) {
+    if (!existingIds.has(registrationId)) {
+      throw new Error(`Registration not found: ${registrationId}`)
+    }
+  }
+
+  // Neon HTTP has no multi-statement transactions; preflight above avoids
+  // partial applies from missing/mismatched IDs before any writes.
+  const now = new Date()
+  const results: Array<{ id: string; draftGroup: number | null }> = []
+
+  for (const { registrationId, draftGroup } of parsed) {
+    const [updated] = await db
+      .update(eventRegistrations)
+      .set({ draftGroup, updatedAt: now })
+      .where(
+        and(
+          eq(eventRegistrations.id, registrationId),
+          eq(eventRegistrations.eventId, eventId)
+        )
+      )
+      .returning({
+        id: eventRegistrations.id,
+        draftGroup: eventRegistrations.draftGroup,
+      })
+
+    if (!updated) {
+      throw new Error(`Registration not found: ${registrationId}`)
+    }
+    results.push(updated)
+  }
+
+  return results
 }
