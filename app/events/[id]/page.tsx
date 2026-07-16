@@ -21,7 +21,11 @@ import {
 } from '@/app/lib/events/draft-seed'
 import type { EventRegistrationListItem } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
-import { SKILL_LEVELS, skillLevelLabel } from '@/app/lib/players/skill'
+import {
+  SKILL_LEVELS,
+  isValidSkillLevel,
+  skillLevelLabel,
+} from '@/app/lib/players/skill'
 
 type EventDetail = {
   id: string
@@ -203,7 +207,9 @@ function EventTrackerPageContent() {
 
     for (const r of registrations) {
       const g = genderGroup(r.gender)
-      const skillKey = r.skillLevel == null ? 'unset' : String(r.skillLevel)
+      const skillKey = isValidSkillLevel(r.skillLevel)
+        ? String(r.skillLevel)
+        : 'unset'
       matrix[g][skillKey] = (matrix[g][skillKey] ?? 0) + 1
 
       if (r.draftGroup == null) unassigned++

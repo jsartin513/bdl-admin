@@ -45,7 +45,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           { status: 400 }
         )
       }
-      parseDraftGroup(item.draftGroup)
+      const draftGroup = parseDraftGroup(item.draftGroup)
+      if (draftGroup === undefined) {
+        return NextResponse.json(
+          { error: 'Each assignment needs a draftGroup' },
+          { status: 400 }
+        )
+      }
     }
 
     const registrations = await bulkUpdateRegistrationDraftGroups(

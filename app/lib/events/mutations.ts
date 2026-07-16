@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { eventRegistrations, events } from '@/app/db/schema'
 import {
@@ -220,6 +220,25 @@ export async function bulkUpdateRegistrationDraftGroups(
   })
 
   const db = getDb()
+  const ids = parsed.map((p) => p.registrationId)
+  const existing = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, ids)
+      )
+    )
+  const existingIds = new Set(existing.map((row) => row.id))
+  for (const registrationId of ids) {
+    if (!existingIds.has(registrationId)) {
+      throw new Error(`Registration not found: ${registrationId}`)
+    }
+  }
+
+  // Neon HTTP has no multi-statement transactions; preflight above avoids
+  // partial applies from missing/mismatched IDs before any writes.
   const now = new Date()
   const results: Array<{ id: string; draftGroup: number | null }> = []
 
