@@ -52,6 +52,49 @@ type QuickFillDraft = {
   gender: string
 }
 
+/** Empty string = leave field unchanged on apply. */
+type BulkEditDraft = {
+  gender: string
+  skillLevel: string
+  strongPersonality: '' | 'on' | 'off'
+  strongPersonalityNotes: string
+  addHomeLeague: string
+  removeHomeLeague: string
+}
+
+const EMPTY_BULK_EDIT_DRAFT: BulkEditDraft = {
+  gender: '',
+  skillLevel: '',
+  strongPersonality: '',
+  strongPersonalityNotes: '',
+  addHomeLeague: '',
+  removeHomeLeague: '',
+}
+
+function buildBulkEditPatch(draft: BulkEditDraft): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {}
+  if (draft.gender !== '') {
+    patch.gender = draft.gender === '__clear__' ? null : draft.gender
+  }
+  if (draft.skillLevel !== '') {
+    patch.skillLevel = draft.skillLevel === '__clear__' ? null : Number(draft.skillLevel)
+  }
+  if (draft.strongPersonality === 'on') {
+    patch.hasStrongPersonality = true
+    patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim() || null
+  } else if (draft.strongPersonality === 'off') {
+    patch.hasStrongPersonality = false
+    if (draft.strongPersonalityNotes.trim()) {
+      patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim()
+    }
+  } else if (draft.strongPersonalityNotes.trim()) {
+    patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim()
+  }
+  if (draft.addHomeLeague) patch.addHomeLeague = draft.addHomeLeague
+  if (draft.removeHomeLeague) patch.removeHomeLeague = draft.removeHomeLeague
+  return Object.keys(patch).length > 0 ? patch : null
+}
+
 function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
@@ -305,6 +348,10 @@ export default function PlayersPage() {
   const [quickFillMode, setQuickFillMode] = useState(false)
   const [quickFillDrafts, setQuickFillDrafts] = useState<Record<string, QuickFillDraft>>({})
   const [quickFillSavingId, setQuickFillSavingId] = useState<string | null>(null)
+  const [bulkEditMode, setBulkEditMode] = useState(false)
+  const [bulkEditDraft, setBulkEditDraft] = useState<BulkEditDraft>(EMPTY_BULK_EDIT_DRAFT)
+  const [bulkEditBusy, setBulkEditBusy] = useState(false)
+  const [bulkEditMessage, setBulkEditMessage] = useState<string | null>(null)
 
   useEffect(() => {
     setVisibleColumns(loadVisibleColumns())
@@ -333,15 +380,18 @@ export default function PlayersPage() {
 
   const showGenderColumn = visibleColumns.gender || quickFillMode
   const showSkillColumn = visibleColumns.skill || quickFillMode
+  const showHomeLeaguesColumn = visibleColumns.homeLeagues || bulkEditMode
 
   const visibleColumnCount =
     2 + // first + last always shown
     COLUMN_OPTIONS.filter((c) => {
       if (c.key === 'gender') return showGenderColumn
       if (c.key === 'skill') return showSkillColumn
+      if (c.key === 'homeLeagues') return showHomeLeaguesColumn
       return visibleColumns[c.key]
     }).length +
-    2 // checkbox + actions
+    (bulkEditMode ? 1 : 0) + // checkbox
+    1 // actions
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<PlayerSnapshot | null>(null)
@@ -434,6 +484,18 @@ export default function PlayersPage() {
     [displayedPlayers, selectedIds]
   )
 
+  const selectableVisibleIds = useMemo(
+    () => displayedPlayers.filter((p) => !p.isMerged).map((p) => p.id),
+    [displayedPlayers]
+  )
+
+  const allVisibleSelected =
+    selectableVisibleIds.length > 0 &&
+    selectableVisibleIds.every((id) => selectedIds.has(id))
+
+  const someVisibleSelected =
+    selectableVisibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
+
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -441,6 +503,73 @@ export default function PlayersPage() {
       else next.add(id)
       return next
     })
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        for (const id of selectableVisibleIds) next.delete(id)
+      } else {
+        for (const id of selectableVisibleIds) next.add(id)
+      }
+      return next
+    })
+  }
+
+  function enterBulkEditMode() {
+    setQuickFillMode(false)
+    setBulkEditMode(true)
+    setBulkEditMessage(null)
+    setFormError(null)
+  }
+
+  function exitBulkEditMode() {
+    setBulkEditMode(false)
+    setSelectedIds(new Set())
+    setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+    setBulkEditMessage(null)
+    setFormError(null)
+  }
+
+  async function applyBulkEdit() {
+    if (selectedIds.size === 0 || bulkEditBusy) return
+    const patch = buildBulkEditPatch(bulkEditDraft)
+    if (!patch) {
+      setFormError('Choose at least one field to update')
+      return
+    }
+    if (
+      bulkEditDraft.strongPersonality === 'on' &&
+      shouldPromptForStrongPersonalityNotes(true, bulkEditDraft.strongPersonalityNotes)
+    ) {
+      setFormError('Add strong personality notes when enabling the flag')
+      return
+    }
+
+    setBulkEditBusy(true)
+    setFormError(null)
+    setBulkEditMessage(null)
+    try {
+      const res = await fetch('/api/players/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerIds: [...selectedIds],
+          patch,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Bulk update failed')
+      const updated = typeof data.updated === 'number' ? data.updated : selectedIds.size
+      setBulkEditMessage(`Updated ${updated} player${updated === 1 ? '' : 's'}`)
+      setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Bulk update failed')
+    } finally {
+      setBulkEditBusy(false)
+    }
   }
 
   async function openEdit(id: string) {
@@ -729,6 +858,11 @@ export default function PlayersPage() {
             type="button"
             onClick={() => {
               if (!quickFillMode) {
+                // Entering quick fill — leave bulk edit
+                setBulkEditMode(false)
+                setSelectedIds(new Set())
+                setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+                setBulkEditMessage(null)
                 setSkillFilter('')
                 setHomeLeagueFilter('')
                 setGenderFilter('')
@@ -746,6 +880,23 @@ export default function PlayersPage() {
           <button
             type="button"
             onClick={() => {
+              if (bulkEditMode) {
+                exitBulkEditMode()
+              } else {
+                enterBulkEditMode()
+              }
+            }}
+            className={`rounded px-3 py-2 text-sm ${
+              bulkEditMode
+                ? 'bg-violet-100 text-violet-900 hover:bg-violet-200'
+                : 'border border-violet-300 bg-white text-violet-900 hover:bg-violet-50'
+            }`}
+          >
+            {bulkEditMode ? 'Exit bulk edit' : 'Bulk edit'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
               setImportProfileFields('skip')
@@ -755,18 +906,20 @@ export default function PlayersPage() {
           >
             Import TeamLinkt CSV
           </button>
-          <button
-            type="button"
-            disabled={selectedIds.size < 2}
-            onClick={() => {
-              setMergeOpen(true)
-              setSurvivorId([...selectedIds][0] ?? '')
-              setFormError(null)
-            }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40"
-          >
-            Merge selected ({selectedIds.size})
-          </button>
+          {bulkEditMode ? (
+            <button
+              type="button"
+              disabled={selectedIds.size < 2}
+              onClick={() => {
+                setMergeOpen(true)
+                setSurvivorId([...selectedIds][0] ?? '')
+                setFormError(null)
+              }}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Merge selected ({selectedIds.size})
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -862,6 +1015,181 @@ export default function PlayersPage() {
         </p>
       ) : null}
 
+      {bulkEditMode ? (
+        <div className="rounded border border-violet-200 bg-violet-50 px-3 py-3 space-y-3 text-violet-950">
+          <p className="text-sm">
+            Bulk edit mode: filter the list (gender, skill, home league, search), select
+            players, then apply shared updates. Leave a field blank to leave it unchanged.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={selectableVisibleIds.length === 0}
+              className="rounded border border-violet-300 bg-white px-2.5 py-1.5 text-violet-900 hover:bg-violet-100 disabled:opacity-40"
+            >
+              {allVisibleSelected ? 'Deselect all visible' : 'Select all visible'}
+              {selectableVisibleIds.length > 0
+                ? ` (${selectableVisibleIds.length})`
+                : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={selectedIds.size === 0}
+              className="rounded border border-violet-300 bg-white px-2.5 py-1.5 text-violet-900 hover:bg-violet-100 disabled:opacity-40"
+            >
+              Clear selection
+            </button>
+            <span className="text-violet-800">
+              {selectedIds.size} selected
+            </span>
+          </div>
+
+          {selectedIds.size > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 rounded border border-violet-200 bg-white p-3 text-gray-900">
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Gender</span>
+                <select
+                  aria-label="Bulk set gender"
+                  value={bulkEditDraft.gender}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, gender: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(GENDERS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                  <option value="__clear__">Clear</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Skill</span>
+                <select
+                  aria-label="Bulk set skill"
+                  value={bulkEditDraft.skillLevel}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, skillLevel: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {value}: {label}
+                    </option>
+                  ))}
+                  <option value="__clear__">Clear</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Strong personality</span>
+                <select
+                  aria-label="Bulk set strong personality"
+                  value={bulkEditDraft.strongPersonality}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({
+                      ...d,
+                      strongPersonality: e.target.value as BulkEditDraft['strongPersonality'],
+                    }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  <option value="on">Turn on</option>
+                  <option value="off">Turn off</option>
+                </select>
+              </label>
+              {bulkEditDraft.strongPersonality === 'on' ||
+              bulkEditDraft.strongPersonalityNotes ? (
+                <label className="text-sm sm:col-span-2 lg:col-span-1">
+                  <span className="block text-gray-600 mb-1">Strong personality notes</span>
+                  <input
+                    aria-label="Bulk strong personality notes"
+                    value={bulkEditDraft.strongPersonalityNotes}
+                    onChange={(e) =>
+                      setBulkEditDraft((d) => ({
+                        ...d,
+                        strongPersonalityNotes: e.target.value,
+                      }))
+                    }
+                    placeholder={
+                      bulkEditDraft.strongPersonality === 'on'
+                        ? 'Required when turning on'
+                        : 'Optional'
+                    }
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                  />
+                </label>
+              ) : null}
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Add home league</span>
+                <select
+                  aria-label="Bulk add home league"
+                  value={bulkEditDraft.addHomeLeague}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, addHomeLeague: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Remove home league</span>
+                <select
+                  aria-label="Bulk remove home league"
+                  value={bulkEditDraft.removeHomeLeague}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, removeHomeLeague: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-end sm:col-span-2 lg:col-span-3 xl:col-span-4">
+                <button
+                  type="button"
+                  disabled={bulkEditBusy || !buildBulkEditPatch(bulkEditDraft)}
+                  onClick={() => void applyBulkEdit()}
+                  className="rounded bg-violet-700 px-3 py-2 text-sm text-white hover:bg-violet-800 disabled:opacity-40"
+                >
+                  {bulkEditBusy
+                    ? 'Applying…'
+                    : `Apply to ${selectedIds.size} player${selectedIds.size === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {bulkEditMessage ? (
+            <p className="text-sm text-violet-900" role="status">
+              {bulkEditMessage}
+            </p>
+          ) : null}
+          {formError && bulkEditMode ? (
+            <p className="text-sm text-red-700" role="alert">
+              {formError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}
 
@@ -876,7 +1204,20 @@ export default function PlayersPage() {
           <table className="min-w-full text-sm text-gray-900">
             <thead className="bg-gray-50 text-left text-gray-700">
               <tr>
-                <th className="px-3 py-2 w-10" />
+                {bulkEditMode ? (
+                  <th className="px-3 py-2 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible players"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected
+                      }}
+                      disabled={selectableVisibleIds.length === 0}
+                      onChange={toggleSelectAllVisible}
+                    />
+                  </th>
+                ) : null}
                 <SortableHeader
                   label="First"
                   active={sortKey === 'first'}
@@ -957,7 +1298,7 @@ export default function PlayersPage() {
                   </th>
                 ) : null}
                 {visibleColumns.email ? <th className="px-3 py-2">Email</th> : null}
-                {visibleColumns.homeLeagues ? (
+                {showHomeLeaguesColumn ? (
                   <th className="px-3 py-2 align-bottom">
                     <div className="space-y-1">
                       <span className="block text-sm font-medium text-gray-700">
@@ -990,14 +1331,17 @@ export default function PlayersPage() {
                   key={p.id}
                   className={`border-t border-gray-100 ${genderRowClass(p.gender, p.isMerged)}`}
                 >
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(p.id)}
-                      disabled={p.isMerged}
-                      onChange={() => toggleSelect(p.id)}
-                    />
-                  </td>
+                  {bulkEditMode ? (
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${p.rosterName}`}
+                        checked={selectedIds.has(p.id)}
+                        disabled={p.isMerged}
+                        onChange={() => toggleSelect(p.id)}
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2">
                     <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
                     {p.hasStrongPersonality ? (
@@ -1127,7 +1471,7 @@ export default function PlayersPage() {
                   {visibleColumns.email ? (
                     <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
                   ) : null}
-                  {visibleColumns.homeLeagues ? (
+                  {showHomeLeaguesColumn ? (
                     <td className="px-3 py-2">
                       {p.homeLeagues.length > 0 ? (
                         <div className="flex flex-wrap gap-x-3 gap-y-1">

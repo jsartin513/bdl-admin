@@ -251,6 +251,141 @@ describe('PlayersPage quick fill mode', () => {
   })
 })
 
+describe('PlayersPage bulk edit mode', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('selects all visible filtered players and applies a bulk gender update', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          players: [
+            player({
+              id: 'w1',
+              firstName: 'Ada',
+              lastName: 'Woman',
+              rosterName: 'Ada Woman',
+              gender: 'woman',
+            }),
+            player({
+              id: 'w2',
+              firstName: 'Bea',
+              lastName: 'Woman',
+              rosterName: 'Bea Woman',
+              gender: 'woman',
+            }),
+            player({
+              id: 'm1',
+              firstName: 'Cal',
+              lastName: 'Man',
+              rosterName: 'Cal Man',
+              gender: 'man',
+              genderLabel: 'Man',
+              genderGroupLabel: 'M',
+            }),
+          ],
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ updated: 2, players: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          players: [
+            player({
+              id: 'w1',
+              firstName: 'Ada',
+              lastName: 'Woman',
+              rosterName: 'Ada Woman',
+              skillLevel: 3,
+              skillLabel: 'Advanced',
+              gender: 'woman',
+            }),
+            player({
+              id: 'w2',
+              firstName: 'Bea',
+              lastName: 'Woman',
+              rosterName: 'Bea Woman',
+              skillLevel: 3,
+              skillLabel: 'Advanced',
+              gender: 'woman',
+            }),
+            player({
+              id: 'm1',
+              firstName: 'Cal',
+              lastName: 'Man',
+              rosterName: 'Cal Man',
+              gender: 'man',
+              genderLabel: 'Man',
+              genderGroupLabel: 'M',
+            }),
+          ],
+        })
+      )
+
+    render(<PlayersPage />)
+
+    await screen.findByText('3 players')
+    expect(screen.queryByLabelText('Select Ada Woman')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Bulk edit' }))
+    expect(screen.getByText(/Bulk edit mode:/)).toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText('Filter by gender'), 'w_nb_o')
+    expect(screen.getByText('2 players')).toBeInTheDocument()
+    expect(screen.queryByText('Cal')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Select all visible \(2\)/ }))
+    expect(screen.getByLabelText('Select Ada Woman')).toBeChecked()
+    expect(screen.getByLabelText('Select Bea Woman')).toBeChecked()
+
+    await userEvent.selectOptions(screen.getByLabelText('Bulk set skill'), '3')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply to 2 players' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/players/bulk')
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({
+        playerIds: ['w1', 'w2'],
+        patch: { skillLevel: 3 },
+      }),
+    })
+    expect(await screen.findByText('Updated 2 players')).toBeInTheDocument()
+  })
+
+  it('exits quick fill when entering bulk edit', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        players: [
+          player({
+            id: 'missing-gender',
+            gender: null,
+            genderLabel: '—',
+            genderGroupLabel: '—',
+          }),
+        ],
+      })
+    )
+
+    render(<PlayersPage />)
+    await screen.findByText('1 player')
+    await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (1)' }))
+    expect(screen.getByText(/Quick fill mode:/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Bulk edit' }))
+    expect(screen.queryByText(/Quick fill mode:/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Bulk edit mode:/)).toBeInTheDocument()
+  })
+})
+
 describe('PlayersPage home leagues', () => {
   const fetchMock = vi.fn()
 
