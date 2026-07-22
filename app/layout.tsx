@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boston Dodgeball League",
+  title: "BDL Admin",
   description: "League Admin",
 };
 
