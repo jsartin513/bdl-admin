@@ -103,22 +103,39 @@ describe('PlayersPage quick fill mode', () => {
             genderLabel: 'Man',
             genderGroupLabel: 'M',
           }),
+          player({
+            id: 'missing-both',
+            firstName: 'Drew',
+            lastName: 'BothMissing',
+            rosterName: 'Drew BothMissing',
+            skillLevel: null,
+            skillLabel: 'Unset',
+            gender: null,
+            genderLabel: '—',
+            genderGroupLabel: '—',
+          }),
         ],
       })
     )
 
     render(<PlayersPage />)
 
-    await screen.findByText('3 players')
+    await screen.findByText('4 players')
     expect(screen.queryByText('Gender')).not.toBeInTheDocument()
     expect(screen.queryByText('Skill')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (2)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (3)' }))
 
     expect(screen.getByText(/Quick fill mode:/)).toBeInTheDocument()
     expect(screen.queryByText('Casey')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Set gender for Alex NoGender')).toBeInTheDocument()
     expect(screen.getByLabelText('Set skill for Blair NoSkill')).toBeInTheDocument()
+    expect(screen.getByLabelText('Set gender for Drew BothMissing')).toBeInTheDocument()
+    expect(screen.getByLabelText('Set skill for Drew BothMissing')).toBeInTheDocument()
+
+    const saveButtons = screen.getAllByRole('button', { name: 'Save info' })
+    const firstQuickFillRow = saveButtons[0]?.closest('tr')
+    expect(firstQuickFillRow).toHaveTextContent('Drew')
   })
 
   it('saves only the missing fields from inline quick fill controls', async () => {

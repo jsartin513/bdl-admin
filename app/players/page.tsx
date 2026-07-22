@@ -63,7 +63,7 @@ function hasMissingInfo(player: { skillLevel: number | null; gender: string | nu
   return hasMissingSkill(player) || hasMissingGender(player)
 }
 
-function missingInfoCount(player: { skillLevel: number | null; gender: string | null }): number {
+function countMissingFields(player: { skillLevel: number | null; gender: string | null }): number {
   return Number(hasMissingSkill(player)) + Number(hasMissingGender(player))
 }
 
@@ -79,7 +79,7 @@ function buildQuickFillPatch(
   draft: QuickFillDraft
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
-  if (hasMissingSkill(player) && draft.skillLevel) {
+  if (hasMissingSkill(player) && draft.skillLevel !== '') {
     patch.skillLevel = Number(draft.skillLevel)
   }
   if (hasMissingGender(player) && draft.gender) {
@@ -366,7 +366,7 @@ export default function PlayersPage() {
     const sorted = [...quickFillFiltered]
     sorted.sort((a, b) => {
       if (quickFillMode) {
-        const missingCmp = missingInfoCount(b) - missingInfoCount(a)
+        const missingCmp = countMissingFields(b) - countMissingFields(a)
         if (missingCmp !== 0) return missingCmp
       }
       const cmp = comparePlayers(a, b, sortKey)
