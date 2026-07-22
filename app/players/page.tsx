@@ -13,6 +13,7 @@ import {
   genderGroupSortKey,
   type GenderGroup,
 } from '@/app/lib/players/gender'
+import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 type HistoryRow = {
@@ -44,13 +45,6 @@ function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
   return Number.isNaN(n) ? null : n
-}
-
-export function shouldPromptForStrongPersonalityNotes(
-  nextChecked: boolean,
-  notes: string
-): boolean {
-  return nextChecked && !notes.trim()
 }
 
 /** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */

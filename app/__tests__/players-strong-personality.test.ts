@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shouldPromptForStrongPersonalityNotes } from '@/app/players/page'
+import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 
 describe('shouldPromptForStrongPersonalityNotes', () => {
   it('prompts when enabling strong personality without notes', () => {
