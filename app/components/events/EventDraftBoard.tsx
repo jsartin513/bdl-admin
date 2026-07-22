@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   teamGenderCounts,
   teamSkillTotal,
@@ -27,6 +27,8 @@ import { skillLevelLabel } from '@/app/lib/players/skill'
 type DraftAssignment = Map<string, number | null>
 
 type PlayerSort = 'name' | 'gender' | 'skill'
+
+const COPY_FEEDBACK_DURATION_MS = 2000
 
 type Props = {
   registrations: EventRegistrationListItem[]
@@ -133,6 +135,26 @@ function DraggablePlayer(props: { player: EventRegistrationListItem }) {
   )
 }
 
+function CopyIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
 function TeamColumn(props: {
   team: number | null
   label: string
@@ -141,6 +163,7 @@ function TeamColumn(props: {
   showAverage?: boolean
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
+  onCopy?: () => Promise<void>
 }) {
   const id = columnId(props.team)
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -152,6 +175,39 @@ function TeamColumn(props: {
     () => sortPlayers(props.players, props.sort),
     [props.players, props.sort]
   )
+  const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState(false)
+  const [isCopying, setIsCopying] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
+
+  function scheduleReset() {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => {
+      setCopied(false)
+      setCopyError(false)
+      setIsCopying(false)
+    }, COPY_FEEDBACK_DURATION_MS)
+  }
+
+  function handleCopy() {
+    if (!props.onCopy || isCopying) return
+    setIsCopying(true)
+    props.onCopy().then(() => {
+      setCopied(true)
+      setCopyError(false)
+      scheduleReset()
+    }).catch(() => {
+      setCopyError(true)
+      setCopied(false)
+      scheduleReset()
+    })
+  }
 
   return (
     <div
@@ -163,7 +219,26 @@ function TeamColumn(props: {
       <div className="border-b border-gray-200 px-2 py-2">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-semibold text-gray-900">{props.label}</span>
-          <span className="text-xs text-gray-500">{count}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">{count}</span>
+            {props.onCopy && props.team != null ? (
+              <button
+                type="button"
+                title="Copy roster names"
+                onClick={handleCopy}
+                disabled={isCopying}
+                className="text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
+              >
+                {copied ? (
+                  <span className="text-xs font-medium text-green-600">Copied!</span>
+                ) : copyError ? (
+                  <span className="text-xs font-medium text-red-600">Failed</span>
+                ) : (
+                  <CopyIcon />
+                )}
+              </button>
+            ) : null}
+          </div>
         </div>
         {props.team != null ? (
           <div className="mt-1 space-y-0.5 text-xs text-gray-600">
@@ -206,6 +281,8 @@ export function EventDraftBoard(props: Props) {
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [playerSort, setPlayerSort] = useState<PlayerSort>('name')
+  const [copyIncludeJersey, setCopyIncludeJersey] = useState(false)
+  const [copyUseRosterName, setCopyUseRosterName] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -279,6 +356,22 @@ export function EventDraftBoard(props: Props) {
   const activePlayer = activeId
     ? registrations.find((r) => r.id === activeId) ?? null
     : null
+
+  async function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
+    const sorted = sortPlayers(teamPlayers, playerSort)
+    const lines = sorted.map((p) => {
+      const name = copyUseRosterName ? (p.rosterName || displayName(p)) : displayName(p)
+      if (copyIncludeJersey && p.jerseyNumber != null) {
+        return `#${p.jerseyNumber} ${name}`
+      }
+      return name
+    })
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+    } catch {
+      throw new Error('Could not copy to clipboard. Check browser permissions.')
+    }
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id))
@@ -359,6 +452,26 @@ export function EventDraftBoard(props: Props) {
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-700 border border-gray-200 rounded bg-white px-3 py-2">
+        <span className="font-medium text-gray-600">Copy roster options</span>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={copyIncludeJersey}
+            onChange={(e) => setCopyIncludeJersey(e.target.checked)}
+          />
+          Include jersey #
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={copyUseRosterName}
+            onChange={(e) => setCopyUseRosterName(e.target.checked)}
+          />
+          Use roster name
+        </label>
+      </div>
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -398,6 +511,7 @@ export function EventDraftBoard(props: Props) {
                   teamStats.genderDeltas[t - 1] >
                     Math.max(1, teamStats.avgGenderDelta + 1)
                 }
+                onCopy={() => copyTeam(teamPlayers)}
               />
             )
           })}
