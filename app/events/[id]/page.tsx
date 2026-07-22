@@ -294,6 +294,34 @@ function EventTrackerPageContent() {
     }
   }
 
+  async function toggleCaptain(registrationId: string, isCaptain: boolean) {
+    setSavingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isCaptain }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update captain status')
+      setRegistrations((prev) =>
+        prev.map((r) =>
+          r.id === registrationId
+            ? { ...r, isCaptain: data.registration.isCaptain }
+            : r
+        )
+      )
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update captain status')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   async function removeRegistration(registrationId: string, label: string) {
     if (!window.confirm(`Remove ${label} from this event?`)) return
     setRemovingId(registrationId)
@@ -767,13 +795,14 @@ function EventTrackerPageContent() {
                   <th className="px-3 py-2 font-medium">Gender</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Draft group</th>
+                  <th className="px-3 py-2 font-medium">Captain</th>
                   <th className="px-3 py-2 font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                    <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
                       {registrations.length === 0
                         ? 'No registrations yet. Import a TeamLinkt CSV for this event.'
                         : 'No players match this filter.'}
@@ -792,6 +821,9 @@ function EventTrackerPageContent() {
                           <SkillStyledText skillLevel={r.skillLevel}>
                             {label}
                           </SkillStyledText>
+                          {r.isCaptain ? (
+                            <span className="ml-1 text-xs font-medium text-blue-700">(C)</span>
+                          ) : null}
                           <div className="text-xs text-gray-500">
                             {r.firstName} {r.lastName}
                           </div>
@@ -821,6 +853,17 @@ function EventTrackerPageContent() {
                               </option>
                             ))}
                           </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            className={`text-xs disabled:opacity-40 ${r.isCaptain ? 'font-medium text-blue-700 hover:text-blue-900' : 'text-gray-500 hover:text-gray-700'}`}
+                            disabled={savingId === r.id}
+                            onClick={() => void toggleCaptain(r.id, !r.isCaptain)}
+                            title={r.isCaptain ? 'Remove captain' : 'Set as captain'}
+                          >
+                            {r.isCaptain ? '(C) Remove' : 'Set (C)'}
+                          </button>
                         </td>
                         <td className="px-3 py-2">
                           <button

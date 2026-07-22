@@ -127,6 +127,7 @@ export const eventRegistrations = pgTable(
     status: text('status').notNull().default('registered'),
     /** Positive int draft bucket; null = unassigned */
     draftGroup: integer('draft_group'),
+    isCaptain: boolean('is_captain').notNull().default(false),
     importBatchId: uuid('import_batch_id').references(() => importBatches.id, {
       onDelete: 'set null',
     }),
