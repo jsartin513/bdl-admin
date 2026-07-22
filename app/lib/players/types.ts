@@ -23,6 +23,7 @@ export type PlayerSnapshot = {
   strongPersonalityNotes: string | null
   emails: { id: string; email: string; isPrimary: boolean }[]
   aliases: { id: string; alias: string }[]
+  homeLeagues: { id: string; homeLeague: string; label: string; sortOrder: number }[]
 }
 
 export type PlayerListItem = {
@@ -42,4 +43,5 @@ export type PlayerListItem = {
   isMerged: boolean
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null
+  homeLeagues: { homeLeague: string; label: string }[]
 }

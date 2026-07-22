@@ -1,6 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, max } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
-import { playerAliases, playerEmails, players } from '@/app/db/schema'
+import { playerAliases, playerEmails, playerHomeLeagues, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import {
   defaultRosterName,
@@ -9,6 +9,7 @@ import {
   normalizeStoredNickname,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
+import { isValidHomeLeague } from '@/app/lib/players/home-league'
 import {
   getPlayerSnapshot,
   snapshotToJson,
@@ -343,6 +344,137 @@ export async function removePlayerAlias(
   await db
     .delete(playerAliases)
     .where(and(eq(playerAliases.id, aliasId), eq(playerAliases.playerId, playerId)))
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function addPlayerHomeLeague(
+  playerId: string,
+  homeLeagueRaw: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  if (!isValidHomeLeague(homeLeagueRaw)) {
+    throw new Error('Invalid home league')
+  }
+  if (before.homeLeagues.some((h) => h.homeLeague === homeLeagueRaw)) {
+    throw new Error('Home league already on this player')
+  }
+
+  const db = getDb()
+  const [agg] = await db
+    .select({ maxSort: max(playerHomeLeagues.sortOrder) })
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+  const nextSort = (agg?.maxSort ?? -1) + 1
+
+  await db.insert(playerHomeLeagues).values({
+    playerId,
+    homeLeague: homeLeagueRaw,
+    sortOrder: nextSort,
+  })
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function removePlayerHomeLeague(
+  playerId: string,
+  homeLeagueId: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .delete(playerHomeLeagues)
+    .where(
+      and(eq(playerHomeLeagues.id, homeLeagueId), eq(playerHomeLeagues.playerId, playerId))
+    )
+
+  const remaining = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
+  for (let i = 0; i < remaining.length; i++) {
+    if (remaining[i].sortOrder !== i) {
+      await db
+        .update(playerHomeLeagues)
+        .set({ sortOrder: i })
+        .where(eq(playerHomeLeagues.id, remaining[i].id))
+    }
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function reorderPlayerHomeLeagues(
+  playerId: string,
+  homeLeagueIds: string[],
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const existingIds = before.homeLeagues.map((h) => h.id)
+  if (homeLeagueIds.length !== existingIds.length) {
+    throw new Error('Home league reorder must include every current home league')
+  }
+  const existingSet = new Set(existingIds)
+  const seen = new Set<string>()
+  for (const id of homeLeagueIds) {
+    if (!existingSet.has(id)) {
+      throw new Error('Unknown home league id in reorder')
+    }
+    if (seen.has(id)) {
+      throw new Error('Duplicate home league id in reorder')
+    }
+    seen.add(id)
+  }
+
+  const db = getDb()
+  for (let i = 0; i < homeLeagueIds.length; i++) {
+    await db
+      .update(playerHomeLeagues)
+      .set({ sortOrder: i })
+      .where(
+        and(eq(playerHomeLeagues.id, homeLeagueIds[i]), eq(playerHomeLeagues.playerId, playerId))
+      )
+  }
 
   const after = await getPlayerSnapshot(playerId)
   await writePlayerChange({

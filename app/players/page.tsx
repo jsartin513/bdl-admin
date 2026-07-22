@@ -13,6 +13,7 @@ import {
   genderGroupSortKey,
   type GenderGroup,
 } from '@/app/lib/players/gender'
+import { HOME_LEAGUES, type HomeLeague } from '@/app/lib/players/home-league'
 import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
@@ -172,6 +173,7 @@ type ColumnKey =
   | 'gender'
   | 'skill'
   | 'email'
+  | 'homeLeagues'
 
 const COLUMN_OPTIONS: { key: ColumnKey; label: string }[] = [
   { key: 'roster', label: 'Roster name' },
@@ -181,6 +183,7 @@ const COLUMN_OPTIONS: { key: ColumnKey; label: string }[] = [
   { key: 'gender', label: 'Gender' },
   { key: 'skill', label: 'Skill' },
   { key: 'email', label: 'Email' },
+  { key: 'homeLeagues', label: 'Home leagues' },
 ]
 
 const DEFAULT_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
@@ -191,6 +194,7 @@ const DEFAULT_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
   gender: true,
   skill: true,
   email: true,
+  homeLeagues: false,
 }
 
 const COLUMNS_STORAGE_KEY = 'bdl-admin.players.visibleColumns'
@@ -263,6 +267,7 @@ export default function PlayersPage() {
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [skillFilter, setSkillFilter] = useState('')
+  const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | HomeLeague>('')
   const [genderFilter, setGenderFilter] = useState<'' | GenderGroup>('')
   const [sortKey, setSortKey] = useState<SortKey>('last')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -343,6 +348,7 @@ export default function PlayersPage() {
       const params = new URLSearchParams()
       if (q.trim()) params.set('q', q.trim())
       if (skillFilter) params.set('skill', skillFilter)
+      if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
       if (includeMerged) params.set('includeMerged', '1')
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
@@ -353,7 +359,7 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, includeMerged])
+  }, [q, skillFilter, homeLeagueFilter, includeMerged])
 
   useEffect(() => {
     void loadPlayers()
@@ -678,7 +684,8 @@ export default function PlayersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Players</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Roster names, jersey numbers, skill levels, gender, aliases, and emails.
+            Roster names, jersey numbers, skill levels, gender, home leagues, aliases, and
+            emails.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -697,6 +704,7 @@ export default function PlayersPage() {
             onClick={() => {
               if (!quickFillMode) {
                 setSkillFilter('')
+                setHomeLeagueFilter('')
                 setGenderFilter('')
               }
               setQuickFillMode((value) => !value)
@@ -923,6 +931,30 @@ export default function PlayersPage() {
                   </th>
                 ) : null}
                 {visibleColumns.email ? <th className="px-3 py-2">Email</th> : null}
+                {visibleColumns.homeLeagues ? (
+                  <th className="px-3 py-2 align-bottom">
+                    <div className="space-y-1">
+                      <span className="block text-sm font-medium text-gray-700">
+                        Home leagues
+                      </span>
+                      <select
+                        aria-label="Filter by home league"
+                        value={homeLeagueFilter}
+                        onChange={(e) =>
+                          setHomeLeagueFilter(e.target.value as '' | HomeLeague)
+                        }
+                        className="block w-full max-w-[12rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900"
+                      >
+                        <option value="">All</option>
+                        {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </th>
+                ) : null}
                 <th className="px-3 py-2">Actions</th>
               </tr>
             </thead>
@@ -1069,6 +1101,13 @@ export default function PlayersPage() {
                   {visibleColumns.email ? (
                     <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
                   ) : null}
+                  {visibleColumns.homeLeagues ? (
+                    <td className="px-3 py-2">
+                      {p.homeLeagues.length > 0
+                        ? p.homeLeagues.map((h) => h.label).join(', ')
+                        : '—'}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
                     {quickFillMode && quickFillSavingId === p.id ? (
                       <span className="text-amber-800">Saving…</span>
@@ -1138,6 +1177,9 @@ export default function PlayersPage() {
           onSetPrimary={(id) => void saveEdit({ setPrimaryEmailId: id })}
           onAddAlias={(alias) => void saveEdit({ addAlias: alias })}
           onRemoveAlias={(id) => void saveEdit({ removeAliasId: id })}
+          onAddHomeLeague={(homeLeague) => void saveEdit({ addHomeLeague: homeLeague })}
+          onRemoveHomeLeague={(id) => void saveEdit({ removeHomeLeagueId: id })}
+          onReorderHomeLeagues={(ids) => void saveEdit({ reorderHomeLeagueIds: ids })}
           onUnmerge={() => void runUnmerge(editing.id)}
         />
       ) : null}
@@ -1166,8 +1208,8 @@ export default function PlayersPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 text-gray-900">
             <h2 className="text-lg font-semibold text-gray-900">Merge players</h2>
             <p className="text-sm text-gray-600">
-              Choose the survivor. Emails and aliases from the others will move onto them;
-              the other records will be marked merged.
+              Choose the survivor. Emails, aliases, and home leagues from the others will
+              move onto them; the other records will be marked merged.
             </p>
             <label className="block text-sm">
               <span className="text-gray-600">Survivor</span>
@@ -1345,6 +1387,9 @@ function EditPanel(props: {
   onSetPrimary: (id: string) => void
   onAddAlias: (alias: string) => void
   onRemoveAlias: (id: string) => void
+  onAddHomeLeague: (homeLeague: string) => void
+  onRemoveHomeLeague: (id: string) => void
+  onReorderHomeLeagues: (ids: string[]) => void
   onUnmerge: () => void
 }) {
   const p = props.player
@@ -1368,6 +1413,7 @@ function EditPanel(props: {
   )
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
+  const [newHomeLeague, setNewHomeLeague] = useState('')
 
   useEffect(() => {
     setFirstName(p.firstName)
@@ -1384,6 +1430,21 @@ function EditPanel(props: {
 
   const nicknameDefault = defaultNickname(firstName, lastName)
   const jerseyNameDefault = defaultJerseyName(lastName)
+  const availableHomeLeagues = Object.entries(HOME_LEAGUES).filter(
+    ([code]) => !p.homeLeagues.some((h) => h.homeLeague === code)
+  )
+
+  function moveHomeLeague(id: string, direction: -1 | 1) {
+    const ids = p.homeLeagues.map((h) => h.id)
+    const index = ids.indexOf(id)
+    if (index < 0) return
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= ids.length) return
+    const next = [...ids]
+    const [moved] = next.splice(index, 1)
+    next.splice(nextIndex, 0, moved)
+    props.onReorderHomeLeagues(next)
+  }
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
@@ -1403,8 +1464,8 @@ function EditPanel(props: {
               edited until unmerged.
             </p>
             <p className="text-amber-700/90">
-              Unmerge reactivates this player and moves emails/aliases that still
-              belong on the survivor back here. It does not undo jersey/skill/gender
+              Unmerge reactivates this player and moves emails/aliases/home leagues that
+              still belong on the survivor back here. It does not undo jersey/skill/gender
               fills on the survivor.
             </p>
             <button
@@ -1678,6 +1739,80 @@ function EditPanel(props: {
                   if (!newAlias.trim()) return
                   props.onAddAlias(newAlias.trim())
                   setNewAlias('')
+                }}
+              >
+                Add
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Home leagues</h3>
+          <p className="text-xs text-gray-500">
+            Ordered preference — first is primary home league.
+          </p>
+          <ul className="space-y-1 text-sm">
+            {p.homeLeagues.map((h, index) => (
+              <li key={h.id} className="flex items-center justify-between gap-2">
+                <span>
+                  <span className="mr-2 text-xs text-gray-400">{index + 1}.</span>
+                  {h.label}
+                </span>
+                {!p.isMerged ? (
+                  <span className="space-x-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline disabled:opacity-40"
+                      disabled={index === 0}
+                      onClick={() => moveHomeLeague(h.id, -1)}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline disabled:opacity-40"
+                      disabled={index === p.homeLeagues.length - 1}
+                      onClick={() => moveHomeLeague(h.id, 1)}
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-600 hover:underline"
+                      onClick={() => props.onRemoveHomeLeague(h.id)}
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+            {p.homeLeagues.length === 0 ? (
+              <li className="text-gray-500">No home leagues yet</li>
+            ) : null}
+          </ul>
+          {!p.isMerged && availableHomeLeagues.length > 0 ? (
+            <div className="flex gap-2">
+              <select
+                className="flex-1 rounded border px-3 py-2 text-sm"
+                value={newHomeLeague}
+                onChange={(e) => setNewHomeLeague(e.target.value)}
+              >
+                <option value="">Select home league</option>
+                {availableHomeLeagues.map(([code, label]) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="rounded border px-3 py-2 text-sm"
+                onClick={() => {
+                  if (!newHomeLeague) return
+                  props.onAddHomeLeague(newHomeLeague)
+                  setNewHomeLeague('')
                 }}
               >
                 Add

@@ -1,6 +1,12 @@
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
-import { playerAliases, playerChanges, playerEmails, players } from '@/app/db/schema'
+import {
+  playerAliases,
+  playerChanges,
+  playerEmails,
+  playerHomeLeagues,
+  players,
+} from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import {
   getPlayerSnapshot,
@@ -12,6 +18,7 @@ import {
   normalizeStoredNickname,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
+import { isValidHomeLeague } from '@/app/lib/players/home-league'
 import { normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
 
 export type MergeFieldResolution = {
@@ -186,6 +193,28 @@ export async function mergePlayers(input: {
     }
   }
 
+  // Move home leagues (skip duplicates; append after survivor order)
+  const existingHomeLeagues = new Set(
+    survivorBefore.homeLeagues.map((h) => h.homeLeague)
+  )
+  let nextHomeLeagueSort = survivorBefore.homeLeagues.length
+  for (const loser of loserSnapshots) {
+    for (const homeLeague of loser.homeLeagues) {
+      if (existingHomeLeagues.has(homeLeague.homeLeague)) {
+        await db
+          .delete(playerHomeLeagues)
+          .where(eq(playerHomeLeagues.id, homeLeague.id))
+        continue
+      }
+      await db
+        .update(playerHomeLeagues)
+        .set({ playerId: survivorId, sortOrder: nextHomeLeagueSort })
+        .where(eq(playerHomeLeagues.id, homeLeague.id))
+      existingHomeLeagues.add(homeLeague.homeLeague)
+      nextHomeLeagueSort += 1
+    }
+  }
+
   // Soft-merge losers
   await db
     .update(players)
@@ -235,14 +264,17 @@ export async function mergePlayers(input: {
 
 type SnapshotEmail = { id?: string; email: string; isPrimary?: boolean }
 type SnapshotAlias = { id?: string; alias: string }
+type SnapshotHomeLeague = { id?: string; homeLeague: string; sortOrder?: number }
 
 function readMergeBefore(before: Record<string, unknown> | null | undefined): {
   emails: SnapshotEmail[]
   aliases: SnapshotAlias[]
+  homeLeagues: SnapshotHomeLeague[]
   firstName: string | null
 } {
   const emailsRaw = before?.emails
   const aliasesRaw = before?.aliases
+  const homeLeaguesRaw = before?.homeLeagues
   const emails: SnapshotEmail[] = []
   if (Array.isArray(emailsRaw)) {
     for (const item of emailsRaw) {
@@ -264,9 +296,23 @@ function readMergeBefore(before: Record<string, unknown> | null | undefined): {
       aliases.push({ alias: alias.trim() })
     }
   }
+  const homeLeagues: SnapshotHomeLeague[] = []
+  if (Array.isArray(homeLeaguesRaw)) {
+    for (const item of homeLeaguesRaw) {
+      if (!item || typeof item !== 'object') continue
+      const homeLeague = (item as { homeLeague?: unknown }).homeLeague
+      if (typeof homeLeague !== 'string' || !isValidHomeLeague(homeLeague)) continue
+      const sortOrderRaw = (item as { sortOrder?: unknown }).sortOrder
+      homeLeagues.push({
+        homeLeague,
+        sortOrder: typeof sortOrderRaw === 'number' ? sortOrderRaw : undefined,
+      })
+    }
+  }
+  homeLeagues.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
   const firstName =
     typeof before?.firstName === 'string' ? before.firstName.trim() : null
-  return { emails, aliases, firstName }
+  return { emails, aliases, homeLeagues, firstName }
 }
 
 /**
@@ -314,6 +360,9 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
   const survivorHadEmail = new Set(survivorOwnedBefore.emails.map((e) => e.email))
   const survivorHadAlias = new Set(
     survivorOwnedBefore.aliases.map((a) => a.alias.toLowerCase())
+  )
+  const survivorHadHomeLeague = new Set(
+    survivorOwnedBefore.homeLeagues.map((h) => h.homeLeague)
   )
   const canDetectSurvivorOwned = survivorMergeEvent != null
 
@@ -416,6 +465,72 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
           eq(playerAliases.alias, mergeBefore.firstName)
         )
       )
+  }
+
+  // Restore home leagues that were moved (skip ones the survivor already had).
+  for (const homeLeague of mergeBefore.homeLeagues) {
+    if (canDetectSurvivorOwned && survivorHadHomeLeague.has(homeLeague.homeLeague)) {
+      continue
+    }
+
+    const [onSurvivor] = await db
+      .select()
+      .from(playerHomeLeagues)
+      .where(
+        and(
+          eq(playerHomeLeagues.playerId, survivorId),
+          eq(playerHomeLeagues.homeLeague, homeLeague.homeLeague)
+        )
+      )
+      .limit(1)
+    if (onSurvivor && canDetectSurvivorOwned) {
+      await db
+        .update(playerHomeLeagues)
+        .set({ playerId })
+        .where(eq(playerHomeLeagues.id, onSurvivor.id))
+      continue
+    }
+
+    const [already] = await db
+      .select()
+      .from(playerHomeLeagues)
+      .where(
+        and(
+          eq(playerHomeLeagues.playerId, playerId),
+          eq(playerHomeLeagues.homeLeague, homeLeague.homeLeague)
+        )
+      )
+      .limit(1)
+    if (!already) {
+      const [agg] = await db
+        .select({ maxSort: playerHomeLeagues.sortOrder })
+        .from(playerHomeLeagues)
+        .where(eq(playerHomeLeagues.playerId, playerId))
+        .orderBy(desc(playerHomeLeagues.sortOrder))
+        .limit(1)
+      await db.insert(playerHomeLeagues).values({
+        playerId,
+        homeLeague: homeLeague.homeLeague,
+        sortOrder: (agg?.maxSort ?? -1) + 1,
+      })
+    }
+  }
+
+  // Compact sort orders on both sides after restore
+  for (const id of [playerId, survivorId]) {
+    const ordered = await db
+      .select()
+      .from(playerHomeLeagues)
+      .where(eq(playerHomeLeagues.playerId, id))
+      .orderBy(asc(playerHomeLeagues.sortOrder))
+    for (let i = 0; i < ordered.length; i++) {
+      if (ordered[i].sortOrder !== i) {
+        await db
+          .update(playerHomeLeagues)
+          .set({ sortOrder: i })
+          .where(eq(playerHomeLeagues.id, ordered[i].id))
+      }
+    }
   }
 
   const playerAfter = await getPlayerSnapshot(playerId)

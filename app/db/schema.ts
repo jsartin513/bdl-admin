@@ -68,6 +68,26 @@ export const playerAliases = pgTable(
   ]
 )
 
+export const playerHomeLeagues = pgTable(
+  'player_home_leagues',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    homeLeague: text('home_league').notNull(),
+    sortOrder: integer('sort_order').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('player_home_leagues_player_league_uidx').on(
+      table.playerId,
+      table.homeLeague
+    ),
+    index('player_home_leagues_player_sort_idx').on(table.playerId, table.sortOrder),
+  ]
+)
+
 export const events = pgTable(
   'events',
   {
