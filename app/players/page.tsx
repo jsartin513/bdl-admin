@@ -1315,8 +1315,10 @@ function EditPanel(props: {
                   const nextChecked = e.target.checked
                   setHasStrongPersonality(nextChecked)
                   if (shouldPromptForStrongPersonalityNotes(nextChecked, strongPersonalityNotes)) {
-                    window.alert('Please add a note for strong personality.')
-                    requestAnimationFrame(() => strongPersonalityNotesRef.current?.focus())
+                    window.alert(
+                      "Please add a note describing the player's strong personality and communication considerations."
+                    )
+                    setTimeout(() => strongPersonalityNotesRef.current?.focus(), 0)
                   }
                 }}
               />
