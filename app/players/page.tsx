@@ -82,7 +82,7 @@ function buildQuickFillPatch(
   if (hasMissingSkill(player) && draft.skillLevel !== '') {
     patch.skillLevel = Number(draft.skillLevel)
   }
-  if (hasMissingGender(player) && draft.gender) {
+  if (hasMissingGender(player) && draft.gender !== '') {
     patch.gender = draft.gender
   }
   return patch
@@ -952,7 +952,7 @@ export default function PlayersPage() {
                           onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
                         >
                           <option value="" disabled>
-                            Set gender
+                            Select gender (required)
                           </option>
                           {Object.entries(GENDERS).map(([value, label]) => (
                             <option key={value} value={value}>
@@ -997,7 +997,7 @@ export default function PlayersPage() {
                           }
                         >
                           <option value="" disabled>
-                            Set skill
+                            Select skill (required)
                           </option>
                           {Object.entries(SKILL_LEVELS).map(([value, label]) => (
                             <option key={value} value={value}>
