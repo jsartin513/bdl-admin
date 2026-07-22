@@ -276,6 +276,7 @@ describe('PlayersPage home leagues', () => {
                 id: 'hl-1',
                 homeLeague: 'boston_dodgeball_league',
                 label: 'Boston Dodgeball League',
+                logoUrl: '/home-leagues/boston_dodgeball_league.webp',
                 sortOrder: 0,
               },
             ],
@@ -290,6 +291,7 @@ describe('PlayersPage home leagues', () => {
                 {
                   homeLeague: 'boston_dodgeball_league',
                   label: 'Boston Dodgeball League',
+                  logoUrl: '/home-leagues/boston_dodgeball_league.webp',
                 },
               ],
             }),

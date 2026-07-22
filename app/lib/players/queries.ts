@@ -13,7 +13,7 @@ import {
   skillLevelLabel,
 } from '@/app/lib/players/skill'
 import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
-import { homeLeagueLabel, isValidHomeLeague } from '@/app/lib/players/home-league'
+import { homeLeagueLabel, homeLeagueLogoUrl, isValidHomeLeague } from '@/app/lib/players/home-league'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function listPlayers(opts: {
@@ -99,12 +99,16 @@ export async function listPlayers(opts: {
     }
   }
 
-  const homeLeaguesByPlayer = new Map<string, { homeLeague: string; label: string }[]>()
+  const homeLeaguesByPlayer = new Map<
+    string,
+    { homeLeague: string; label: string; logoUrl: string | null }[]
+  >()
   for (const row of homeLeagueRows) {
     const list = homeLeaguesByPlayer.get(row.playerId) ?? []
     list.push({
       homeLeague: row.homeLeague,
       label: homeLeagueLabel(row.homeLeague),
+      logoUrl: homeLeagueLogoUrl(row.homeLeague),
     })
     homeLeaguesByPlayer.set(row.playerId, list)
   }
@@ -178,6 +182,7 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
       id: h.id,
       homeLeague: h.homeLeague,
       label: homeLeagueLabel(h.homeLeague),
+      logoUrl: homeLeagueLogoUrl(h.homeLeague),
       sortOrder: h.sortOrder,
     })),
   }

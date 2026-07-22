@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   HOME_LEAGUES,
   HOME_LEAGUE_CODES,
   homeLeagueLabel,
+  homeLeagueLogoUrl,
   isValidHomeLeague,
 } from '@/app/lib/players/home-league'
 
@@ -26,5 +29,15 @@ describe('home league enum', () => {
     expect(homeLeagueLabel('cactus_dodgeball')).toBe('Cactus Dodgeball (Arizona)')
     expect(homeLeagueLabel('unknown')).toBe('—')
     expect(homeLeagueLabel(null)).toBe('—')
+  })
+
+  it('maps every catalog code to a local logo asset', () => {
+    for (const code of HOME_LEAGUE_CODES) {
+      expect(homeLeagueLogoUrl(code)).toBe(`/home-leagues/${code}.webp`)
+      expect(
+        existsSync(resolve(process.cwd(), 'public', 'home-leagues', `${code}.webp`))
+      ).toBe(true)
+    }
+    expect(homeLeagueLogoUrl('not-a-league')).toBeNull()
   })
 })

@@ -13,7 +13,12 @@ import {
   genderGroupSortKey,
   type GenderGroup,
 } from '@/app/lib/players/gender'
-import { HOME_LEAGUES, type HomeLeague } from '@/app/lib/players/home-league'
+import {
+  HOME_LEAGUES,
+  HOME_LEAGUE_LOGOS,
+  isValidHomeLeague,
+  type HomeLeague,
+} from '@/app/lib/players/home-league'
 import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
@@ -98,6 +103,27 @@ function isQuickFillReady(player: PlayerListItem, draft: QuickFillDraft): boolea
 }
 
 /** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
+function HomeLeagueMark(props: {
+  label: string
+  logoUrl?: string | null
+  size?: 'sm' | 'md'
+}) {
+  const sizeClass = props.size === 'md' ? 'h-7 w-7' : 'h-5 w-5'
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      {props.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={props.logoUrl}
+          alt=""
+          className={`${sizeClass} rounded-sm object-contain bg-white shrink-0`}
+        />
+      ) : null}
+      <span className="truncate">{props.label}</span>
+    </span>
+  )
+}
+
 function SkillStyledText(props: {
   skillLevel: number | null
   children: ReactNode
@@ -1103,9 +1129,19 @@ export default function PlayersPage() {
                   ) : null}
                   {visibleColumns.homeLeagues ? (
                     <td className="px-3 py-2">
-                      {p.homeLeagues.length > 0
-                        ? p.homeLeagues.map((h) => h.label).join(', ')
-                        : '—'}
+                      {p.homeLeagues.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {p.homeLeagues.map((h) => (
+                            <HomeLeagueMark
+                              key={h.homeLeague}
+                              label={h.label}
+                              logoUrl={h.logoUrl}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                   ) : null}
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
@@ -1755,9 +1791,9 @@ function EditPanel(props: {
           <ul className="space-y-1 text-sm">
             {p.homeLeagues.map((h, index) => (
               <li key={h.id} className="flex items-center justify-between gap-2">
-                <span>
-                  <span className="mr-2 text-xs text-gray-400">{index + 1}.</span>
-                  {h.label}
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-gray-400 shrink-0">{index + 1}.</span>
+                  <HomeLeagueMark label={h.label} logoUrl={h.logoUrl} size="md" />
                 </span>
                 {!p.isMerged ? (
                   <span className="space-x-2 whitespace-nowrap">
@@ -1793,30 +1829,39 @@ function EditPanel(props: {
             ) : null}
           </ul>
           {!p.isMerged && availableHomeLeagues.length > 0 ? (
-            <div className="flex gap-2">
-              <select
-                className="flex-1 rounded border px-3 py-2 text-sm"
-                value={newHomeLeague}
-                onChange={(e) => setNewHomeLeague(e.target.value)}
-              >
-                <option value="">Select home league</option>
-                {availableHomeLeagues.map(([code, label]) => (
-                  <option key={code} value={code}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="rounded border px-3 py-2 text-sm"
-                onClick={() => {
-                  if (!newHomeLeague) return
-                  props.onAddHomeLeague(newHomeLeague)
-                  setNewHomeLeague('')
-                }}
-              >
-                Add
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <select
+                  className="flex-1 rounded border px-3 py-2 text-sm"
+                  value={newHomeLeague}
+                  onChange={(e) => setNewHomeLeague(e.target.value)}
+                >
+                  <option value="">Select home league</option>
+                  {availableHomeLeagues.map(([code, label]) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="rounded border px-3 py-2 text-sm"
+                  onClick={() => {
+                    if (!newHomeLeague) return
+                    props.onAddHomeLeague(newHomeLeague)
+                    setNewHomeLeague('')
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              {newHomeLeague && isValidHomeLeague(newHomeLeague) ? (
+                <HomeLeagueMark
+                  label={HOME_LEAGUES[newHomeLeague]}
+                  logoUrl={HOME_LEAGUE_LOGOS[newHomeLeague]}
+                  size="md"
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
