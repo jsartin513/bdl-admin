@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   SKILL_LEVELS,
   defaultJerseyName,
@@ -1143,8 +1143,10 @@ function EditPanel(props: {
   const [gender, setGender] = useState(p.gender ?? '')
   const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
   const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
-  const [focusStrongPersonalityNotes, setFocusStrongPersonalityNotes] = useState(false)
-  const strongPersonalityNotesRef = useRef<HTMLTextAreaElement | null>(null)
+  const showStrongPersonalityNotesPrompt = shouldPromptForStrongPersonalityNotes(
+    hasStrongPersonality,
+    strongPersonalityNotes
+  )
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
 
@@ -1159,14 +1161,7 @@ function EditPanel(props: {
     setGender(p.gender ?? '')
     setHasStrongPersonality(p.hasStrongPersonality)
     setStrongPersonalityNotes(p.strongPersonalityNotes ?? '')
-    setFocusStrongPersonalityNotes(false)
   }, [p])
-
-  useEffect(() => {
-    if (!focusStrongPersonalityNotes || !hasStrongPersonality) return
-    strongPersonalityNotesRef.current?.focus()
-    setFocusStrongPersonalityNotes(false)
-  }, [focusStrongPersonalityNotes, hasStrongPersonality])
 
   const nicknameDefault = defaultNickname(firstName, lastName)
   const jerseyNameDefault = defaultJerseyName(lastName)
@@ -1320,24 +1315,22 @@ function EditPanel(props: {
                 checked={hasStrongPersonality}
                 disabled={p.isMerged}
                 onChange={(e) => {
-                  const nextChecked = e.target.checked
-                  setHasStrongPersonality(nextChecked)
-                  if (shouldPromptForStrongPersonalityNotes(nextChecked, strongPersonalityNotes)) {
-                    setFocusStrongPersonalityNotes(true)
-                    window.alert(
-                      "Please add a note describing the player's strong personality and communication considerations."
-                    )
-                  }
+                  setHasStrongPersonality(e.target.checked)
                 }}
               />
               <span>Strong personality</span>
             </label>
+            {showStrongPersonalityNotesPrompt ? (
+              <p className="mt-2 text-xs text-amber-900" role="alert" aria-live="polite">
+                Add a note describing the player&apos;s strong personality and communication
+                considerations.
+              </p>
+            ) : null}
           </div>
           {hasStrongPersonality ? (
             <label className="text-sm col-span-2">
               Strong personality notes
               <textarea
-                ref={strongPersonalityNotesRef}
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"
                 rows={3}
                 value={strongPersonalityNotes}
