@@ -3,6 +3,10 @@ import { getDb } from '@/app/lib/db'
 import { playerAliases, playerEmails, playerHomeLeagues, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import {
+  bulkPatchHasCoreFields,
+  type BulkPlayerPatch,
+} from '@/app/lib/players/bulk'
+import {
   defaultRosterName,
   isValidSkillLevel,
   normalizeStoredJerseyName,
@@ -15,7 +19,7 @@ import {
   snapshotToJson,
 } from '@/app/lib/players/queries'
 import { normalizeAlias, normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
-import type { ChangeSource } from '@/app/lib/players/types'
+import type { ChangeSource, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function createPlayer(input: {
   firstName: string
@@ -544,4 +548,78 @@ export async function ensurePlayerAlias(
     source: 'import',
     importBatchId: opts.importBatchId,
   })
+}
+
+/**
+ * Apply the same patch to many players. Home-league add is idempotent;
+ * remove-by-code is a no-op when the league is not on the player.
+ */
+export async function bulkUpdatePlayers(
+  playerIds: string[],
+  patch: BulkPlayerPatch,
+  opts: { actor: string }
+): Promise<{ updated: number; players: PlayerSnapshot[] }> {
+  if (playerIds.length === 0) {
+    throw new Error('playerIds must be a non-empty array')
+  }
+  if (
+    !bulkPatchHasCoreFields(patch) &&
+    patch.addHomeLeague === undefined &&
+    patch.removeHomeLeague === undefined
+  ) {
+    throw new Error('patch must include at least one field to update')
+  }
+
+  const results: PlayerSnapshot[] = []
+
+  for (const playerId of playerIds) {
+    let snapshot = await getPlayerSnapshot(playerId)
+    if (!snapshot) {
+      throw new Error(`Player not found: ${playerId}`)
+    }
+    if (snapshot.isMerged) {
+      throw new Error(`Cannot edit a merged player: ${playerId}`)
+    }
+
+    if (bulkPatchHasCoreFields(patch)) {
+      const next = await updatePlayer(
+        playerId,
+        {
+          gender: patch.gender,
+          skillLevel: patch.skillLevel,
+          hasStrongPersonality: patch.hasStrongPersonality,
+          strongPersonalityNotes: patch.strongPersonalityNotes,
+        },
+        { actor: opts.actor, source: 'admin' }
+      )
+      if (!next) throw new Error(`Player not found: ${playerId}`)
+      snapshot = next
+    }
+
+    if (patch.addHomeLeague) {
+      const already = snapshot.homeLeagues.some((h) => h.homeLeague === patch.addHomeLeague)
+      if (!already) {
+        const next = await addPlayerHomeLeague(playerId, patch.addHomeLeague, {
+          actor: opts.actor,
+        })
+        if (!next) throw new Error(`Player not found: ${playerId}`)
+        snapshot = next
+      }
+    }
+
+    if (patch.removeHomeLeague) {
+      const match = snapshot.homeLeagues.find((h) => h.homeLeague === patch.removeHomeLeague)
+      if (match) {
+        const next = await removePlayerHomeLeague(playerId, match.id, {
+          actor: opts.actor,
+        })
+        if (!next) throw new Error(`Player not found: ${playerId}`)
+        snapshot = next
+      }
+    }
+
+    results.push(snapshot)
+  }
+
+  return { updated: results.length, players: results }
 }
