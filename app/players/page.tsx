@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   SKILL_LEVELS,
   defaultJerseyName,
@@ -44,6 +44,13 @@ function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
   return Number.isNaN(n) ? null : n
+}
+
+export function shouldPromptForStrongPersonalityNotes(
+  nextChecked: boolean,
+  notes: string
+): boolean {
+  return nextChecked && !notes.trim()
 }
 
 /** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
@@ -1136,6 +1143,7 @@ function EditPanel(props: {
   const [gender, setGender] = useState(p.gender ?? '')
   const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
   const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
+  const strongPersonalityNotesRef = useRef<HTMLTextAreaElement | null>(null)
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
 
@@ -1295,20 +1303,31 @@ function EditPanel(props: {
               ))}
             </select>
           </label>
-          <label className="text-sm col-span-2 flex items-start gap-2 pt-1">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={hasStrongPersonality}
-              disabled={p.isMerged}
-              onChange={(e) => setHasStrongPersonality(e.target.checked)}
-            />
-            <span>Strong personality</span>
-          </label>
+          <div className="col-span-2 rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
+            <p className="text-sm font-medium text-amber-900">Player flags</p>
+            <label className="mt-2 text-sm flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={hasStrongPersonality}
+                disabled={p.isMerged}
+                onChange={(e) => {
+                  const nextChecked = e.target.checked
+                  setHasStrongPersonality(nextChecked)
+                  if (shouldPromptForStrongPersonalityNotes(nextChecked, strongPersonalityNotes)) {
+                    window.alert('Please add a note for strong personality.')
+                    requestAnimationFrame(() => strongPersonalityNotesRef.current?.focus())
+                  }
+                }}
+              />
+              <span>Strong personality</span>
+            </label>
+          </div>
           {hasStrongPersonality ? (
             <label className="text-sm col-span-2">
               Strong personality notes
               <textarea
+                ref={strongPersonalityNotesRef}
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"
                 rows={3}
                 value={strongPersonalityNotes}
