@@ -177,6 +177,7 @@ function TeamColumn(props: {
   )
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
+  const [isCopying, setIsCopying] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -190,11 +191,13 @@ function TeamColumn(props: {
     copyTimerRef.current = setTimeout(() => {
       setCopied(false)
       setCopyError(false)
+      setIsCopying(false)
     }, COPY_FEEDBACK_DURATION_MS)
   }
 
   function handleCopy() {
-    if (!props.onCopy) return
+    if (!props.onCopy || isCopying) return
+    setIsCopying(true)
     props.onCopy().then(() => {
       setCopied(true)
       setCopyError(false)
@@ -223,7 +226,8 @@ function TeamColumn(props: {
                 type="button"
                 title="Copy roster names"
                 onClick={handleCopy}
-                className="text-gray-400 hover:text-gray-700 transition-colors"
+                disabled={isCopying}
+                className="text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
               >
                 {copied ? (
                   <span className="text-xs font-medium text-green-600">Copied!</span>
@@ -353,7 +357,7 @@ export function EventDraftBoard(props: Props) {
     ? registrations.find((r) => r.id === activeId) ?? null
     : null
 
-  function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
+  async function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
     const sorted = sortPlayers(teamPlayers, playerSort)
     const lines = sorted.map((p) => {
       const name = copyUseRosterName ? (p.rosterName || displayName(p)) : displayName(p)
@@ -362,7 +366,11 @@ export function EventDraftBoard(props: Props) {
       }
       return name
     })
-    return navigator.clipboard.writeText(lines.join('\n'))
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+    } catch {
+      throw new Error('Could not copy to clipboard. Check browser permissions.')
+    }
   }
 
   function handleDragStart(event: DragStartEvent) {
