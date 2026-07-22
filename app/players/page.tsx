@@ -52,11 +52,11 @@ function parseJerseyNumber(value: string): number | null {
 }
 
 function hasMissingSkill(player: { skillLevel: number | null }): boolean {
-  return player.skillLevel == null
+  return player.skillLevel === null
 }
 
 function hasMissingGender(player: { gender: string | null }): boolean {
-  return player.gender == null
+  return player.gender === null
 }
 
 function hasMissingInfo(player: { skillLevel: number | null; gender: string | null }): boolean {
@@ -951,7 +951,9 @@ export default function PlayersPage() {
                           value={getQuickFillDraft(p).gender}
                           onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
                         >
-                          <option value="">Set gender</option>
+                          <option value="" disabled>
+                            Set gender
+                          </option>
                           {Object.entries(GENDERS).map(([value, label]) => (
                             <option key={value} value={value}>
                               {label}
@@ -994,7 +996,9 @@ export default function PlayersPage() {
                             updateQuickFillDraft(p, { skillLevel: e.target.value })
                           }
                         >
-                          <option value="">Set skill</option>
+                          <option value="" disabled>
+                            Set skill
+                          </option>
                           {Object.entries(SKILL_LEVELS).map(([value, label]) => (
                             <option key={value} value={value}>
                               {value}: {label}
