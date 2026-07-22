@@ -39,6 +39,9 @@ export type EventRegistrationListItem = {
   status: string
   draftGroup: number | null
   isCaptain: boolean
+  pairId: string | null
+  partnerRegistrationId: string | null
+  partnerNickname: string | null
   registeredAt: Date
   updatedAt: Date
   firstName: string
@@ -54,6 +57,15 @@ export type EventRegistrationListItem = {
   primaryEmail: string | null
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null
+}
+
+export type EventDraftSnapshotListItem = {
+  id: string
+  eventId: string
+  name: string
+  assignments: Record<string, number | null>
+  createdAt: Date
+  updatedAt: Date
 }
 
 export function isValidEventType(value: unknown): value is EventType {

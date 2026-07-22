@@ -4,6 +4,8 @@ export type DraftSeedPlayer = {
   id: string
   skillLevel: number | null
   gender: string | null
+  /** Shared id links two players as a pair that must stay together. */
+  pairId?: string | null
 }
 
 export type AutoSeedOptions = {
@@ -11,6 +13,14 @@ export type AutoSeedOptions = {
   shuffle?: boolean
   /** RNG in [0, 1). Defaults to Math.random. Inject for tests. */
   random?: () => number
+}
+
+type DraftUnit = {
+  id: string
+  members: DraftSeedPlayer[]
+  skillTotal: number
+  preferGender: 'w_nb_o' | 'men' | null
+  poolGender: GenderGroup
 }
 
 /**
@@ -69,9 +79,62 @@ function skillScore(skillLevel: number | null): number {
   return skillLevel ?? 0
 }
 
-function sortBySkillDesc(players: DraftSeedPlayer[]): DraftSeedPlayer[] {
-  return [...players].sort((a, b) => {
-    const skillDiff = skillScore(b.skillLevel) - skillScore(a.skillLevel)
+function unitPreferGender(members: DraftSeedPlayer[]): 'w_nb_o' | 'men' | null {
+  const groups = members.map((m) => genderGroup(m.gender))
+  if (groups.some((g) => g === 'w_nb_o')) return 'w_nb_o'
+  if (groups.some((g) => g === 'men')) return 'men'
+  return null
+}
+
+function unitPoolGender(members: DraftSeedPlayer[]): GenderGroup {
+  const prefer = unitPreferGender(members)
+  if (prefer === 'w_nb_o') return 'w_nb_o'
+  if (prefer === 'men') return 'men'
+  return 'unset'
+}
+
+function buildDraftUnits(players: DraftSeedPlayer[]): DraftUnit[] {
+  const units: DraftUnit[] = []
+  const seenPairIds = new Set<string>()
+  const byPairId = new Map<string, DraftSeedPlayer[]>()
+
+  for (const p of players) {
+    if (p.pairId) {
+      const list = byPairId.get(p.pairId) ?? []
+      list.push(p)
+      byPairId.set(p.pairId, list)
+    }
+  }
+
+  for (const p of players) {
+    if (p.pairId) {
+      if (seenPairIds.has(p.pairId)) continue
+      seenPairIds.add(p.pairId)
+      const members = byPairId.get(p.pairId) ?? [p]
+      units.push({
+        id: `pair:${p.pairId}`,
+        members,
+        skillTotal: members.reduce((sum, m) => sum + skillScore(m.skillLevel), 0),
+        preferGender: unitPreferGender(members),
+        poolGender: unitPoolGender(members),
+      })
+      continue
+    }
+    units.push({
+      id: `solo:${p.id}`,
+      members: [p],
+      skillTotal: skillScore(p.skillLevel),
+      preferGender: unitPreferGender([p]),
+      poolGender: unitPoolGender([p]),
+    })
+  }
+
+  return units
+}
+
+function sortUnitsBySkillDesc(units: DraftUnit[]): DraftUnit[] {
+  return [...units].sort((a, b) => {
+    const skillDiff = b.skillTotal - a.skillTotal
     if (skillDiff !== 0) return skillDiff
     return a.id.localeCompare(b.id)
   })
@@ -79,15 +142,15 @@ function sortBySkillDesc(players: DraftSeedPlayer[]): DraftSeedPlayer[] {
 
 /** Fisher–Yates shuffle within equal-skill bands (list already skill-sorted). */
 function shuffleEqualSkillBands(
-  players: DraftSeedPlayer[],
+  units: DraftUnit[],
   random: () => number
-): DraftSeedPlayer[] {
-  const result = [...players]
+): DraftUnit[] {
+  const result = [...units]
   let i = 0
   while (i < result.length) {
     let j = i + 1
-    const skill = skillScore(result[i].skillLevel)
-    while (j < result.length && skillScore(result[j].skillLevel) === skill) {
+    const skill = result[i].skillTotal
+    while (j < result.length && result[j].skillTotal === skill) {
       j++
     }
     for (let k = j - 1; k > i; k--) {
@@ -119,6 +182,7 @@ function teamTieBreakRanks(n: number, random: () => number): number[] {
 
 /**
  * Auto-seed teams: gender-balanced (W/NB/O vs men), skill-aware snake draft.
+ * Paired players (shared pairId) are placed on the same team as one unit.
  * Returns map of player id → team number (1..teamCount). Unset gender players
  * are placed last into the currently smallest / lowest-score teams.
  */
@@ -134,16 +198,17 @@ export function autoSeedDraftGroups(
 
   if (players.length === 0) return assignments
 
-  const pools: Record<GenderGroup, DraftSeedPlayer[]> = {
+  const units = buildDraftUnits(players)
+  const pools: Record<GenderGroup, DraftUnit[]> = {
     w_nb_o: [],
     men: [],
     unset: [],
   }
-  for (const p of players) {
-    pools[genderGroup(p.gender)].push(p)
+  for (const unit of units) {
+    pools[unit.poolGender].push(unit)
   }
   for (const key of Object.keys(pools) as GenderGroup[]) {
-    const sorted = sortBySkillDesc(pools[key])
+    const sorted = sortUnitsBySkillDesc(pools[key])
     pools[key] = shuffle ? shuffleEqualSkillBands(sorted, random) : sorted
   }
 
@@ -190,14 +255,16 @@ export function autoSeedDraftGroups(
     return best
   }
 
-  function assign(player: DraftSeedPlayer, teamIndex: number) {
+  function assignUnit(unit: DraftUnit, teamIndex: number) {
     const team = teamIndex + 1
-    assignments.set(player.id, team)
-    teamSizes[teamIndex]++
-    teamScores[teamIndex] += skillScore(player.skillLevel)
-    const g = genderGroup(player.gender)
-    if (g === 'w_nb_o') teamGender[teamIndex].w_nb_o++
-    else if (g === 'men') teamGender[teamIndex].men++
+    for (const member of unit.members) {
+      assignments.set(member.id, team)
+      const g = genderGroup(member.gender)
+      if (g === 'w_nb_o') teamGender[teamIndex].w_nb_o++
+      else if (g === 'men') teamGender[teamIndex].men++
+    }
+    teamSizes[teamIndex] += unit.members.length
+    teamScores[teamIndex] += unit.skillTotal
   }
 
   // Interleave W/NB/O and men by skill (snake-style via pickTeam heuristics).
@@ -209,19 +276,19 @@ export function autoSeedDraftGroups(
 
   while (i < primary.length || j < secondary.length) {
     if (takePrimary && i < primary.length) {
-      assign(primary[i++], pickTeam('w_nb_o'))
+      assignUnit(primary[i++], pickTeam('w_nb_o'))
     } else if (!takePrimary && j < secondary.length) {
-      assign(secondary[j++], pickTeam('men'))
+      assignUnit(secondary[j++], pickTeam('men'))
     } else if (i < primary.length) {
-      assign(primary[i++], pickTeam('w_nb_o'))
+      assignUnit(primary[i++], pickTeam('w_nb_o'))
     } else if (j < secondary.length) {
-      assign(secondary[j++], pickTeam('men'))
+      assignUnit(secondary[j++], pickTeam('men'))
     }
     takePrimary = !takePrimary
   }
 
-  for (const player of pools.unset) {
-    assign(player, pickTeam(null))
+  for (const unit of pools.unset) {
+    assignUnit(unit, pickTeam(null))
   }
 
   return assignments
@@ -270,4 +337,60 @@ export function teamGenderCounts(players: Array<{ gender: string | null }>): {
     else unset++
   }
   return { wNbO, men, unset }
+}
+
+/** Build assignment map stats for snapshot compare UI. */
+export function summarizeDraftAssignments(
+  registrations: Array<{
+    id: string
+    skillLevel: number | null
+    gender: string | null
+  }>,
+  assignments: Map<string, number | null> | Record<string, number | null>,
+  teamCount: number
+): {
+  unassigned: number
+  teams: Array<{
+    team: number
+    size: number
+    skillTotal: number
+    skillAvg: number
+    gender: { wNbO: number; men: number; unset: number }
+  }>
+} {
+  const get =
+    assignments instanceof Map
+      ? (id: string) => assignments.get(id) ?? null
+      : (id: string) => assignments[id] ?? null
+
+  const byTeam = new Map<number | null, typeof registrations>()
+  byTeam.set(null, [])
+  for (let t = 1; t <= teamCount; t++) byTeam.set(t, [])
+
+  for (const r of registrations) {
+    const team = get(r.id)
+    const key =
+      team != null && team >= 1 && team <= teamCount ? team : null
+    const list = byTeam.get(key) ?? []
+    list.push(r)
+    byTeam.set(key, list)
+  }
+
+  const teams = Array.from({ length: teamCount }, (_, i) => {
+    const team = i + 1
+    const players = byTeam.get(team) ?? []
+    const skillTotal = teamSkillTotal(players)
+    return {
+      team,
+      size: players.length,
+      skillTotal,
+      skillAvg: players.length > 0 ? skillTotal / players.length : 0,
+      gender: teamGenderCounts(players),
+    }
+  })
+
+  return {
+    unassigned: (byTeam.get(null) ?? []).length,
+    teams,
+  }
 }

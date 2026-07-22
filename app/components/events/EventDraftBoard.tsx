@@ -17,10 +17,14 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  summarizeDraftAssignments,
   teamGenderCounts,
   teamSkillTotal,
 } from '@/app/lib/events/draft-seed'
-import type { EventRegistrationListItem } from '@/app/lib/events/types'
+import type {
+  EventDraftSnapshotListItem,
+  EventRegistrationListItem,
+} from '@/app/lib/events/types'
 import { genderGroup, genderGroupSortKey } from '@/app/lib/players/gender'
 import { skillLevelLabel } from '@/app/lib/players/skill'
 
@@ -40,6 +44,13 @@ type Props = {
   onDiscard: () => void
   applying: boolean
   error: string | null
+  snapshots: EventDraftSnapshotListItem[]
+  snapshotsBusy: boolean
+  onSaveSnapshot: (name: string) => Promise<void>
+  onLoadSnapshot: (snapshotId: string) => void
+  onRenameSnapshot: (snapshotId: string, name: string) => Promise<void>
+  onDeleteSnapshot: (snapshotId: string) => Promise<void>
+  onPromoteSnapshot: (snapshotId: string) => Promise<void>
 }
 
 function columnId(team: number | null): string {
@@ -105,6 +116,19 @@ function DraftPlayerCard(props: {
             ⚡
           </span>
         ) : null}
+        {player.pairId ? (
+          <span
+            className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
+            title={
+              player.partnerNickname
+                ? `Paired with ${player.partnerNickname}`
+                : 'Paired'
+            }
+          >
+            Pair
+            {player.partnerNickname ? ` · ${player.partnerNickname}` : ''}
+          </span>
+        ) : null}
       </div>
       <div className="text-gray-600">
         {player.skillLevel != null ? skillLevelLabel(player.skillLevel) : '—'} ·{' '}
@@ -163,6 +187,7 @@ function TeamColumn(props: {
   showAverage?: boolean
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
+  emphasizeUnassigned?: boolean
   onCopy?: () => Promise<void>
 }) {
   const id = columnId(props.team)
@@ -179,6 +204,7 @@ function TeamColumn(props: {
   const [copyError, setCopyError] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const emphasizeUnassigned = Boolean(props.emphasizeUnassigned && count > 0)
 
   useEffect(() => {
     return () => {
@@ -213,14 +239,36 @@ function TeamColumn(props: {
     <div
       ref={setNodeRef}
       className={`flex min-h-[220px] w-56 shrink-0 flex-col rounded-lg border ${
-        isOver ? 'border-blue-400 bg-blue-50/40' : 'border-gray-200 bg-gray-50/50'
+        isOver
+          ? 'border-blue-400 bg-blue-50/40'
+          : emphasizeUnassigned
+            ? 'border-amber-300 bg-amber-50/50'
+            : 'border-gray-200 bg-gray-50/50'
       }`}
     >
-      <div className="border-b border-gray-200 px-2 py-2">
+      <div
+        className={`border-b px-2 py-2 ${
+          emphasizeUnassigned ? 'border-amber-200' : 'border-gray-200'
+        }`}
+      >
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-semibold text-gray-900">{props.label}</span>
+          <span
+            className={`text-sm font-semibold ${
+              emphasizeUnassigned ? 'text-amber-900' : 'text-gray-900'
+            }`}
+          >
+            {props.label}
+          </span>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500">{count}</span>
+            <span
+              className={`text-xs ${
+                emphasizeUnassigned
+                  ? 'font-semibold text-amber-800'
+                  : 'text-gray-500'
+              }`}
+            >
+              {count}
+            </span>
             {props.onCopy && props.team != null ? (
               <button
                 type="button"
@@ -254,7 +302,15 @@ function TeamColumn(props: {
             </div>
           </div>
         ) : (
-          <div className="mt-1 text-xs text-gray-500">Drag onto a team</div>
+          <div
+            className={`mt-1 text-xs ${
+              emphasizeUnassigned ? 'font-medium text-amber-800' : 'text-gray-500'
+            }`}
+          >
+            {emphasizeUnassigned
+              ? `${count} not on a team — drag onto a team`
+              : 'Drag onto a team'}
+          </div>
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2">
@@ -277,12 +333,22 @@ export function EventDraftBoard(props: Props) {
     onDiscard,
     applying,
     error,
+    snapshots,
+    snapshotsBusy,
+    onSaveSnapshot,
+    onLoadSnapshot,
+    onRenameSnapshot,
+    onDeleteSnapshot,
+    onPromoteSnapshot,
   } = props
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const [playerSort, setPlayerSort] = useState<PlayerSort>('name')
   const [copyIncludeJersey, setCopyIncludeJersey] = useState(false)
   const [copyUseRosterName, setCopyUseRosterName] = useState(false)
+  const [snapshotName, setSnapshotName] = useState('')
+  const [compareA, setCompareA] = useState<'workspace' | string>('workspace')
+  const [compareB, setCompareB] = useState<string>('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -357,6 +423,27 @@ export function EventDraftBoard(props: Props) {
     ? registrations.find((r) => r.id === activeId) ?? null
     : null
 
+  const unassignedPlayers = byColumn.get(columnId(null)) ?? []
+  const unassignedCount = unassignedPlayers.length
+
+  const compareSummary = useMemo(() => {
+    if (!compareB) return null
+    const resolve = (key: 'workspace' | string) => {
+      if (key === 'workspace') return assignments
+      const snap = snapshots.find((s) => s.id === key)
+      return snap?.assignments ?? {}
+    }
+    return {
+      a: summarizeDraftAssignments(registrations, resolve(compareA), teamCount),
+      b: summarizeDraftAssignments(registrations, resolve(compareB), teamCount),
+      aLabel:
+        compareA === 'workspace'
+          ? 'Current workspace'
+          : (snapshots.find((s) => s.id === compareA)?.name ?? 'A'),
+      bLabel: snapshots.find((s) => s.id === compareB)?.name ?? 'B',
+    }
+  }, [assignments, compareA, compareB, registrations, snapshots, teamCount])
+
   async function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
     const sorted = sortPlayers(teamPlayers, playerSort)
     const lines = sorted.map((p) => {
@@ -398,7 +485,18 @@ export function EventDraftBoard(props: Props) {
 
     const next = new Map(assignments)
     next.set(playerId, targetTeam)
+    const dragged = registrations.find((r) => r.id === playerId)
+    if (dragged?.partnerRegistrationId) {
+      next.set(dragged.partnerRegistrationId, targetTeam)
+    }
     onAssignmentsChange(next)
+  }
+
+  async function handleSaveSnapshot() {
+    const name = snapshotName.trim()
+    if (!name) return
+    await onSaveSnapshot(name)
+    setSnapshotName('')
   }
 
   return (
@@ -408,9 +506,19 @@ export function EventDraftBoard(props: Props) {
           <h2 className="text-lg font-semibold text-gray-900">Draft mode</h2>
           <p className="text-sm text-gray-600">
             Working copy only — permanent draft groups are unchanged until you Apply.
+            Paired players move together.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {unassignedCount > 0 ? (
+            <span className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-sm font-semibold text-amber-900">
+              Unassigned {unassignedCount}
+            </span>
+          ) : (
+            <span className="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-600">
+              Unassigned 0
+            </span>
+          )}
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <span className="text-gray-600">Sort within teams</span>
             <select
@@ -452,6 +560,182 @@ export function EventDraftBoard(props: Props) {
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+      <div className="space-y-3 rounded border border-violet-200 bg-white px-3 py-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="text-gray-600">Save draft as</span>
+            <input
+              className="mt-1 block w-52 rounded border border-gray-300 px-2 py-1.5"
+              value={snapshotName}
+              disabled={snapshotsBusy || applying}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              placeholder="e.g. Balanced A"
+            />
+          </label>
+          <button
+            type="button"
+            className="rounded border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-900 disabled:opacity-40"
+            disabled={snapshotsBusy || applying || !snapshotName.trim()}
+            onClick={() => void handleSaveSnapshot()}
+          >
+            Save snapshot
+          </button>
+        </div>
+
+        {snapshots.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-gray-600">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">Saved drafts</th>
+                  <th className="py-1 pr-3 font-medium"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshots.map((s) => (
+                  <tr key={s.id} className="border-t border-gray-100">
+                    <td className="py-2 pr-3">
+                      <div className="font-medium text-gray-900">{s.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(s.createdAt).toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="text-xs text-blue-700 hover:underline disabled:opacity-40"
+                          disabled={snapshotsBusy || applying}
+                          onClick={() => onLoadSnapshot(s.id)}
+                        >
+                          Load
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-gray-700 hover:underline disabled:opacity-40"
+                          disabled={snapshotsBusy || applying}
+                          onClick={() => {
+                            const next = window.prompt('Rename snapshot', s.name)
+                            if (next == null) return
+                            void onRenameSnapshot(s.id, next)
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-violet-700 hover:underline disabled:opacity-40"
+                          disabled={snapshotsBusy || applying}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Promote “${s.name}” to the live event roster?`
+                              )
+                            ) {
+                              return
+                            }
+                            void onPromoteSnapshot(s.id)
+                          }}
+                        >
+                          Promote
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs text-red-700 hover:underline disabled:opacity-40"
+                          disabled={snapshotsBusy || applying}
+                          onClick={() => {
+                            if (!window.confirm(`Delete snapshot “${s.name}”?`)) {
+                              return
+                            }
+                            void onDeleteSnapshot(s.id)
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No saved drafts yet.</p>
+        )}
+
+        {snapshots.length > 0 ? (
+          <div className="space-y-2 border-t border-gray-100 pt-3">
+            <p className="text-sm font-medium text-gray-800">Compare</p>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <label className="flex items-center gap-2">
+                <span className="text-gray-600">A</span>
+                <select
+                  className="rounded border border-gray-300 px-2 py-1"
+                  value={compareA}
+                  onChange={(e) => setCompareA(e.target.value)}
+                >
+                  <option value="workspace">Current workspace</option>
+                  {snapshots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2">
+                <span className="text-gray-600">B</span>
+                <select
+                  className="rounded border border-gray-300 px-2 py-1"
+                  value={compareB}
+                  onChange={(e) => setCompareB(e.target.value)}
+                >
+                  <option value="">Select snapshot…</option>
+                  {snapshots.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {compareSummary ? (
+              <div className="grid gap-3 md:grid-cols-2 text-xs">
+                {[
+                  {
+                    label: compareSummary.aLabel,
+                    summary: compareSummary.a,
+                  },
+                  {
+                    label: compareSummary.bLabel,
+                    summary: compareSummary.b,
+                  },
+                ].map((side) => (
+                  <div
+                    key={side.label}
+                    className="rounded border border-gray-200 bg-gray-50 px-3 py-2"
+                  >
+                    <div className="font-semibold text-gray-900">{side.label}</div>
+                    <div className="mt-1 text-amber-800">
+                      Unassigned {side.summary.unassigned}
+                    </div>
+                    <ul className="mt-2 space-y-1 text-gray-700">
+                      {side.summary.teams.map((t) => (
+                        <li key={t.team}>
+                          Team {t.team}: {t.size} · score {t.skillTotal}
+                          {t.size > 0 ? ` (avg ${t.skillAvg.toFixed(1)})` : ''} ·
+                          W/NB/O {t.gender.wNbO} · M {t.gender.men}
+                          {t.gender.unset ? ` · — ${t.gender.unset}` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-gray-700 border border-gray-200 rounded bg-white px-3 py-2">
         <span className="font-medium text-gray-600">Copy roster options</span>
         <label className="flex items-center gap-1.5 cursor-pointer">
@@ -482,8 +766,9 @@ export function EventDraftBoard(props: Props) {
           <TeamColumn
             team={null}
             label="Unassigned"
-            players={byColumn.get(columnId(null)) ?? []}
+            players={unassignedPlayers}
             sort={playerSort}
+            emphasizeUnassigned
           />
           {Array.from({ length: teamCount }, (_, i) => i + 1).map((t) => {
             const teamPlayers = byColumn.get(columnId(t)) ?? []
