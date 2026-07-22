@@ -464,9 +464,13 @@ export default function PlayersPage() {
     }))
   }
 
+  function hasQuickFillChanges(player: PlayerListItem): boolean {
+    return Object.keys(buildQuickFillPatch(player, getQuickFillDraft(player))).length > 0
+  }
+
   async function saveQuickFill(player: PlayerListItem) {
+    if (!hasQuickFillChanges(player)) return
     const patch = buildQuickFillPatch(player, getQuickFillDraft(player))
-    if (Object.keys(patch).length === 0) return
 
     setQuickFillSavingId(player.id)
     setError(null)
@@ -945,21 +949,28 @@ export default function PlayersPage() {
                   {showGenderColumn ? (
                     <td className="px-3 py-2">
                       {quickFillMode && !p.isMerged && hasMissingGender(p) ? (
-                        <select
-                          aria-label={`Set gender for ${p.rosterName}`}
-                          className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
-                          value={getQuickFillDraft(p).gender}
-                          onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
-                        >
-                          <option value="" disabled>
-                            Select gender (required)
-                          </option>
-                          {Object.entries(GENDERS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
+                        <>
+                          <span id={`quick-fill-gender-help-${p.id}`} className="sr-only">
+                            Gender is missing for {p.rosterName}. Select a gender, then save
+                            the row.
+                          </span>
+                          <select
+                            aria-label={`Set gender for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-gender-help-${p.id}`}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).gender}
+                            onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
+                          >
+                            <option value="" disabled>
+                              Select gender (required)
                             </option>
-                          ))}
-                        </select>
+                            {Object.entries(GENDERS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
                       ) : (
                         <span
                           className={
@@ -988,23 +999,30 @@ export default function PlayersPage() {
                   {showSkillColumn ? (
                     <td className="px-3 py-2">
                       {quickFillMode && !p.isMerged && hasMissingSkill(p) ? (
-                        <select
-                          aria-label={`Set skill for ${p.rosterName}`}
-                          className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
-                          value={getQuickFillDraft(p).skillLevel}
-                          onChange={(e) =>
-                            updateQuickFillDraft(p, { skillLevel: e.target.value })
-                          }
-                        >
-                          <option value="" disabled>
-                            Select skill (required)
-                          </option>
-                          {Object.entries(SKILL_LEVELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {value}: {label}
+                        <>
+                          <span id={`quick-fill-skill-help-${p.id}`} className="sr-only">
+                            Skill is missing for {p.rosterName}. Select a skill level, then
+                            save the row.
+                          </span>
+                          <select
+                            aria-label={`Set skill for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-skill-help-${p.id}`}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).skillLevel}
+                            onChange={(e) =>
+                              updateQuickFillDraft(p, { skillLevel: e.target.value })
+                            }
+                          >
+                            <option value="" disabled>
+                              Select skill (required)
                             </option>
-                          ))}
-                        </select>
+                            {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {value}: {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
                       ) : (
                         <SkillStyledText skillLevel={p.skillLevel}>{p.skillLabel}</SkillStyledText>
                       )}
@@ -1018,10 +1036,7 @@ export default function PlayersPage() {
                       <button
                         type="button"
                         className="text-amber-800 hover:underline disabled:text-gray-400"
-                        disabled={
-                          quickFillSavingId === p.id ||
-                          Object.keys(buildQuickFillPatch(p, getQuickFillDraft(p))).length === 0
-                        }
+                        disabled={quickFillSavingId === p.id || !hasQuickFillChanges(p)}
                         onClick={() => void saveQuickFill(p)}
                       >
                         Save info
