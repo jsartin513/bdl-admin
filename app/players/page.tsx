@@ -1143,6 +1143,7 @@ function EditPanel(props: {
   const [gender, setGender] = useState(p.gender ?? '')
   const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
   const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
+  const [focusStrongPersonalityNotes, setFocusStrongPersonalityNotes] = useState(false)
   const strongPersonalityNotesRef = useRef<HTMLTextAreaElement | null>(null)
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
@@ -1158,7 +1159,14 @@ function EditPanel(props: {
     setGender(p.gender ?? '')
     setHasStrongPersonality(p.hasStrongPersonality)
     setStrongPersonalityNotes(p.strongPersonalityNotes ?? '')
+    setFocusStrongPersonalityNotes(false)
   }, [p])
+
+  useEffect(() => {
+    if (!focusStrongPersonalityNotes || !hasStrongPersonality) return
+    strongPersonalityNotesRef.current?.focus()
+    setFocusStrongPersonalityNotes(false)
+  }, [focusStrongPersonalityNotes, hasStrongPersonality])
 
   const nicknameDefault = defaultNickname(firstName, lastName)
   const jerseyNameDefault = defaultJerseyName(lastName)
@@ -1315,10 +1323,10 @@ function EditPanel(props: {
                   const nextChecked = e.target.checked
                   setHasStrongPersonality(nextChecked)
                   if (shouldPromptForStrongPersonalityNotes(nextChecked, strongPersonalityNotes)) {
+                    setFocusStrongPersonalityNotes(true)
                     window.alert(
                       "Please add a note describing the player's strong personality and communication considerations."
                     )
-                    setTimeout(() => strongPersonalityNotesRef.current?.focus(), 0)
                   }
                 }}
               />
