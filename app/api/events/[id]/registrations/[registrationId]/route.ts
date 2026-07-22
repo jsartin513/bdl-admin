@@ -5,6 +5,7 @@ import {
 } from '@/app/lib/admin-auth'
 import {
   deleteEventRegistration,
+  updateRegistrationCaptain,
   updateRegistrationDraftGroup,
 } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
@@ -25,7 +26,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    const body = (await request.json()) as { draftGroup?: unknown }
+    const body = (await request.json()) as { draftGroup?: unknown; isCaptain?: unknown }
+
+    if ('isCaptain' in body) {
+      if (typeof body.isCaptain !== 'boolean') {
+        return NextResponse.json({ error: 'isCaptain must be a boolean' }, { status: 400 })
+      }
+      const registration = await updateRegistrationCaptain(id, registrationId, body.isCaptain)
+      return NextResponse.json({ registration })
+    }
+
     if (!('draftGroup' in body)) {
       return NextResponse.json({ error: 'draftGroup is required' }, { status: 400 })
     }

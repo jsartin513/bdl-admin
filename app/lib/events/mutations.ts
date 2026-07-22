@@ -184,6 +184,30 @@ export async function updateRegistrationDraftGroup(
   return updated
 }
 
+export async function updateRegistrationCaptain(
+  eventId: string,
+  registrationId: string,
+  isCaptain: boolean
+): Promise<{ id: string; isCaptain: boolean }> {
+  const db = getDb()
+  const [updated] = await db
+    .update(eventRegistrations)
+    .set({ isCaptain, updatedAt: new Date() })
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .returning({
+      id: eventRegistrations.id,
+      isCaptain: eventRegistrations.isCaptain,
+    })
+
+  if (!updated) throw new Error('Registration not found')
+  return updated
+}
+
 export async function deleteEventRegistration(
   eventId: string,
   registrationId: string

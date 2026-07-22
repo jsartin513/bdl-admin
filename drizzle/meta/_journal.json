@@ -43,6 +43,13 @@
       "when": 1753056000000,
       "tag": "0005_player_strong_personality",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1753228276000,
+      "tag": "0006_event_registration_captain",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,7 @@ export type EventRegistrationListItem = {
   playerId: string
   status: string
   draftGroup: number | null
+  isCaptain: boolean
   registeredAt: Date
   updatedAt: Date
   firstName: string
