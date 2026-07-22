@@ -13,6 +13,7 @@ import {
   genderGroupSortKey,
   type GenderGroup,
 } from '@/app/lib/players/gender'
+import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 type HistoryRow = {
@@ -1331,6 +1332,10 @@ function EditPanel(props: {
   const [gender, setGender] = useState(p.gender ?? '')
   const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
   const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
+  const showStrongPersonalityNotesPrompt = shouldPromptForStrongPersonalityNotes(
+    hasStrongPersonality,
+    strongPersonalityNotes
+  )
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
 
@@ -1490,16 +1495,27 @@ function EditPanel(props: {
               ))}
             </select>
           </label>
-          <label className="text-sm col-span-2 flex items-start gap-2 pt-1">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={hasStrongPersonality}
-              disabled={p.isMerged}
-              onChange={(e) => setHasStrongPersonality(e.target.checked)}
-            />
-            <span>Strong personality</span>
-          </label>
+          <div className="col-span-2 rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
+            <p className="text-sm font-medium text-amber-900">Player flags</p>
+            <label className="mt-2 text-sm flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={hasStrongPersonality}
+                disabled={p.isMerged}
+                onChange={(e) => {
+                  setHasStrongPersonality(e.target.checked)
+                }}
+              />
+              <span>Strong personality</span>
+            </label>
+            {showStrongPersonalityNotesPrompt ? (
+              <p className="mt-2 text-xs text-amber-900" role="alert" aria-live="polite">
+                Add a note describing the player&apos;s strong personality and communication
+                considerations.
+              </p>
+            ) : null}
+          </div>
           {hasStrongPersonality ? (
             <label className="text-sm col-span-2">
               Strong personality notes
