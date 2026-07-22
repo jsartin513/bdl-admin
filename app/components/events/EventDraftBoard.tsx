@@ -28,6 +28,8 @@ type DraftAssignment = Map<string, number | null>
 
 type PlayerSort = 'name' | 'gender' | 'skill'
 
+const COPY_FEEDBACK_DURATION_MS = 2000
+
 type Props = {
   registrations: EventRegistrationListItem[]
   teamCount: number
@@ -161,7 +163,7 @@ function TeamColumn(props: {
   showAverage?: boolean
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
-  onCopy?: () => void
+  onCopy?: () => Promise<void>
 }) {
   const id = columnId(props.team)
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -174,6 +176,7 @@ function TeamColumn(props: {
     [props.players, props.sort]
   )
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -182,12 +185,25 @@ function TeamColumn(props: {
     }
   }, [])
 
+  function scheduleReset() {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => {
+      setCopied(false)
+      setCopyError(false)
+    }, COPY_FEEDBACK_DURATION_MS)
+  }
+
   function handleCopy() {
     if (!props.onCopy) return
-    props.onCopy()
-    setCopied(true)
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
-    copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
+    props.onCopy().then(() => {
+      setCopied(true)
+      setCopyError(false)
+      scheduleReset()
+    }).catch(() => {
+      setCopyError(true)
+      setCopied(false)
+      scheduleReset()
+    })
   }
 
   return (
@@ -211,6 +227,8 @@ function TeamColumn(props: {
               >
                 {copied ? (
                   <span className="text-xs font-medium text-green-600">Copied!</span>
+                ) : copyError ? (
+                  <span className="text-xs font-medium text-red-600">Failed</span>
                 ) : (
                   <CopyIcon />
                 )}
@@ -335,7 +353,7 @@ export function EventDraftBoard(props: Props) {
     ? registrations.find((r) => r.id === activeId) ?? null
     : null
 
-  function copyTeam(teamPlayers: EventRegistrationListItem[]) {
+  function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
     const sorted = sortPlayers(teamPlayers, playerSort)
     const lines = sorted.map((p) => {
       const name = copyUseRosterName ? (p.rosterName || displayName(p)) : displayName(p)
@@ -344,7 +362,7 @@ export function EventDraftBoard(props: Props) {
       }
       return name
     })
-    void navigator.clipboard.writeText(lines.join('\n'))
+    return navigator.clipboard.writeText(lines.join('\n'))
   }
 
   function handleDragStart(event: DragStartEvent) {
