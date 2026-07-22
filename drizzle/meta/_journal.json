@@ -64,6 +64,13 @@
       "when": 1753231000000,
       "tag": "0008_event_draft_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1753232000000,
+      "tag": "0009_player_home_leagues",
+      "breakpoints": true
     }
   ]
 }

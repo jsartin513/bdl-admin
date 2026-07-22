@@ -7,8 +7,11 @@ import { getPlayerSnapshot } from '@/app/lib/players/queries'
 import {
   addPlayerAlias,
   addPlayerEmail,
+  addPlayerHomeLeague,
   removePlayerAlias,
   removePlayerEmail,
+  removePlayerHomeLeague,
+  reorderPlayerHomeLeagues,
   setPrimaryEmail,
   updatePlayer,
 } from '@/app/lib/players/mutations'
@@ -54,6 +57,9 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       setPrimaryEmailId?: string
       addAlias?: string
       removeAliasId?: string
+      addHomeLeague?: string
+      removeHomeLeagueId?: string
+      reorderHomeLeagueIds?: string[]
     }
 
     let player = await getPlayerSnapshot(id)
@@ -110,6 +116,21 @@ export async function PATCH(request: NextRequest, context: Ctx) {
     }
     if (body.removeAliasId) {
       player = await removePlayerAlias(id, body.removeAliasId, {
+        actor: session.email,
+      })
+    }
+    if (body.addHomeLeague) {
+      player = await addPlayerHomeLeague(id, body.addHomeLeague, {
+        actor: session.email,
+      })
+    }
+    if (body.removeHomeLeagueId) {
+      player = await removePlayerHomeLeague(id, body.removeHomeLeagueId, {
+        actor: session.email,
+      })
+    }
+    if (body.reorderHomeLeagueIds) {
+      player = await reorderPlayerHomeLeagues(id, body.reorderHomeLeagueIds, {
         actor: session.email,
       })
     }

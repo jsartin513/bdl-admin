@@ -23,6 +23,7 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     isMerged: false,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
+    homeLeagues: [],
     ...overrides,
   }
 }
@@ -46,6 +47,7 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     strongPersonalityNotes: null,
     emails: [],
     aliases: [],
+    homeLeagues: [],
     ...overrides,
   }
 }
@@ -246,5 +248,78 @@ describe('PlayersPage quick fill mode', () => {
       method: 'PATCH',
       body: JSON.stringify({ skillLevel: 2, gender: 'man' }),
     })
+  })
+})
+
+describe('PlayersPage home leagues', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('adds a home league from the edit panel', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(jsonResponse({ player: playerSnapshot() }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          player: playerSnapshot({
+            homeLeagues: [
+              {
+                id: 'hl-1',
+                homeLeague: 'boston_dodgeball_league',
+                label: 'Boston Dodgeball League',
+                logoUrl: '/home-leagues/boston_dodgeball_league.webp',
+                sortOrder: 0,
+              },
+            ],
+          }),
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          players: [
+            player({
+              homeLeagues: [
+                {
+                  homeLeague: 'boston_dodgeball_league',
+                  label: 'Boston Dodgeball League',
+                  logoUrl: '/home-leagues/boston_dodgeball_league.webp',
+                },
+              ],
+            }),
+          ],
+        })
+      )
+
+    render(<PlayersPage />)
+
+    await screen.findByText('1 player')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByText('Home leagues')).toBeInTheDocument()
+
+    await userEvent.selectOptions(
+      screen.getByDisplayValue('Select home league'),
+      'boston_dodgeball_league'
+    )
+    const homeLeagueSelect = screen.getByDisplayValue('Boston Dodgeball League')
+    const addHomeLeagueButton = homeLeagueSelect.parentElement?.querySelector('button')
+    expect(addHomeLeagueButton).toBeTruthy()
+    await userEvent.click(addHomeLeagueButton!)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('/api/players/player-1')
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ addHomeLeague: 'boston_dodgeball_league' }),
+    })
+    expect(await screen.findByText(/1\.\s*Boston Dodgeball League|Boston Dodgeball League/)).toBeInTheDocument()
   })
 })

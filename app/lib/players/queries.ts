@@ -4,6 +4,7 @@ import {
   playerAliases,
   playerChanges,
   playerEmails,
+  playerHomeLeagues,
   players,
 } from '@/app/db/schema'
 import {
@@ -12,11 +13,13 @@ import {
   skillLevelLabel,
 } from '@/app/lib/players/skill'
 import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
+import { homeLeagueLabel, homeLeagueLogoUrl, isValidHomeLeague } from '@/app/lib/players/home-league'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function listPlayers(opts: {
   q?: string
   skill?: number | 'unset' | null
+  homeLeague?: string | null
   includeMerged?: boolean
 }): Promise<PlayerListItem[]> {
   const db = getDb()
@@ -30,6 +33,14 @@ export async function listPlayers(opts: {
     conditions.push(isNull(players.skillLevel))
   } else if (typeof opts.skill === 'number') {
     conditions.push(eq(players.skillLevel, opts.skill))
+  }
+
+  if (opts.homeLeague && isValidHomeLeague(opts.homeLeague)) {
+    const matchingHomeLeagueIds = db
+      .select({ playerId: playerHomeLeagues.playerId })
+      .from(playerHomeLeagues)
+      .where(eq(playerHomeLeagues.homeLeague, opts.homeLeague))
+    conditions.push(inArray(players.id, matchingHomeLeagueIds))
   }
 
   if (opts.q?.trim()) {
@@ -70,6 +81,12 @@ export async function listPlayers(opts: {
     .from(playerEmails)
     .where(inArray(playerEmails.playerId, ids))
 
+  const homeLeagueRows = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(inArray(playerHomeLeagues.playerId, ids))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
   const primaryByPlayer = new Map<string, string>()
   for (const e of emails) {
     if (e.isPrimary && !primaryByPlayer.has(e.playerId)) {
@@ -80,6 +97,20 @@ export async function listPlayers(opts: {
     if (!primaryByPlayer.has(e.playerId)) {
       primaryByPlayer.set(e.playerId, e.email)
     }
+  }
+
+  const homeLeaguesByPlayer = new Map<
+    string,
+    { homeLeague: string; label: string; logoUrl: string | null }[]
+  >()
+  for (const row of homeLeagueRows) {
+    const list = homeLeaguesByPlayer.get(row.playerId) ?? []
+    list.push({
+      homeLeague: row.homeLeague,
+      label: homeLeagueLabel(row.homeLeague),
+      logoUrl: homeLeagueLogoUrl(row.homeLeague),
+    })
+    homeLeaguesByPlayer.set(row.playerId, list)
   }
 
   return rows.map((r) => ({
@@ -99,6 +130,7 @@ export async function listPlayers(opts: {
     isMerged: r.isMerged,
     hasStrongPersonality: r.hasStrongPersonality,
     strongPersonalityNotes: r.strongPersonalityNotes,
+    homeLeagues: homeLeaguesByPlayer.get(r.id) ?? [],
   }))
 }
 
@@ -118,6 +150,12 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     .from(playerAliases)
     .where(eq(playerAliases.playerId, playerId))
     .orderBy(asc(playerAliases.alias))
+
+  const homeLeagues = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
 
   const nicknameCustom = player.nickname?.trim() ? player.nickname.trim() : null
   const jerseyNameCustom = player.jerseyName?.trim() ? player.jerseyName.trim() : null
@@ -140,6 +178,13 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     strongPersonalityNotes: player.strongPersonalityNotes,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
     aliases: aliases.map((a) => ({ id: a.id, alias: a.alias })),
+    homeLeagues: homeLeagues.map((h) => ({
+      id: h.id,
+      homeLeague: h.homeLeague,
+      label: homeLeagueLabel(h.homeLeague),
+      logoUrl: homeLeagueLogoUrl(h.homeLeague),
+      sortOrder: h.sortOrder,
+    })),
   }
 }
 
@@ -162,6 +207,7 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     strongPersonalityNotes: snapshot.strongPersonalityNotes,
     emails: snapshot.emails,
     aliases: snapshot.aliases,
+    homeLeagues: snapshot.homeLeagues,
   }
 }
 

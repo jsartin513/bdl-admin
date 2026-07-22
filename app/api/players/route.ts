@@ -7,6 +7,7 @@ import { listPlayers } from '@/app/lib/players/queries'
 import { createPlayer } from '@/app/lib/players/mutations'
 import { isValidSkillLevel } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
+import { isValidHomeLeague } from '@/app/lib/players/home-league'
 
 export async function GET(request: NextRequest) {
   const session = getAdminSessionFromRequest(request)
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const q = searchParams.get('q') ?? undefined
     const skillParam = searchParams.get('skill')
+    const homeLeagueParam = searchParams.get('homeLeague')
     const includeMerged = searchParams.get('includeMerged') === '1'
 
     let skill: number | 'unset' | null = null
@@ -25,7 +27,12 @@ export async function GET(request: NextRequest) {
       if (isValidSkillLevel(n)) skill = n
     }
 
-    const players = await listPlayers({ q, skill, includeMerged })
+    let homeLeague: string | null = null
+    if (homeLeagueParam && isValidHomeLeague(homeLeagueParam)) {
+      homeLeague = homeLeagueParam
+    }
+
+    const players = await listPlayers({ q, skill, homeLeague, includeMerged })
     return NextResponse.json({ players })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list players'
