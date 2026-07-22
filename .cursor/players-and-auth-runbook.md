@@ -39,14 +39,18 @@ Auth env for the stable preview host is scoped to the **`preview`** Git branch i
 
 ## Database setup
 
-1. Provision Neon (Vercel Marketplace → Neon) and set `DATABASE_URL`.
-2. Apply schema:
+1. Provision Neon (Vercel Marketplace → Neon) and set `DATABASE_URL` for
+   **Production** and **Preview** (available at build time).
+2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). Deploys apply
+   them automatically: `npm run build` runs `db:migrate:deploy` before
+   `next build` whenever `DATABASE_URL` is set.
+3. Locally (or if you need to migrate without a full build):
 
 ```bash
-npm run db:push
-# or, with migrations:
 npm run db:migrate
 ```
+
+`db:migrate:deploy` skips cleanly when `DATABASE_URL` is unset (CI builds).
 
 SQL migration source: [`drizzle/0000_players.sql`](../drizzle/0000_players.sql).
 

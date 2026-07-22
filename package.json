@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "npm run db:migrate:deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
@@ -13,6 +13,7 @@
     "test:league": "node test-create-league.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:deploy": "node scripts/migrate-on-deploy.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
