@@ -40,10 +40,52 @@ type ImportAction = {
   playerId?: string
 }
 
+type QuickFillDraft = {
+  skillLevel: string
+  gender: string
+}
+
 function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
   return Number.isNaN(n) ? null : n
+}
+
+function hasMissingSkill(player: { skillLevel: number | null }): boolean {
+  return player.skillLevel === null
+}
+
+function hasMissingGender(player: { gender: string | null }): boolean {
+  return player.gender === null
+}
+
+function hasMissingInfo(player: { skillLevel: number | null; gender: string | null }): boolean {
+  return hasMissingSkill(player) || hasMissingGender(player)
+}
+
+function countMissingFields(player: { skillLevel: number | null; gender: string | null }): number {
+  return Number(hasMissingSkill(player)) + Number(hasMissingGender(player))
+}
+
+function quickFillDraftForPlayer(player: PlayerListItem): QuickFillDraft {
+  return {
+    skillLevel: player.skillLevel != null ? String(player.skillLevel) : '',
+    gender: player.gender ?? '',
+  }
+}
+
+function buildQuickFillPatch(
+  player: PlayerListItem,
+  draft: QuickFillDraft
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {}
+  if (hasMissingSkill(player) && draft.skillLevel !== '') {
+    patch.skillLevel = Number(draft.skillLevel)
+  }
+  if (hasMissingGender(player) && draft.gender !== '') {
+    patch.gender = draft.gender
+  }
+  return patch
 }
 
 /** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
@@ -221,6 +263,9 @@ export default function PlayersPage() {
     DEFAULT_VISIBLE_COLUMNS
   )
   const [columnsOpen, setColumnsOpen] = useState(false)
+  const [quickFillMode, setQuickFillMode] = useState(false)
+  const [quickFillDrafts, setQuickFillDrafts] = useState<Record<string, QuickFillDraft>>({})
+  const [quickFillSavingId, setQuickFillSavingId] = useState<string | null>(null)
 
   useEffect(() => {
     setVisibleColumns(loadVisibleColumns())
@@ -247,9 +292,16 @@ export default function PlayersPage() {
     setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  const showGenderColumn = visibleColumns.gender || quickFillMode
+  const showSkillColumn = visibleColumns.skill || quickFillMode
+
   const visibleColumnCount =
     2 + // first + last always shown
-    COLUMN_OPTIONS.filter((c) => visibleColumns[c.key]).length +
+    COLUMN_OPTIONS.filter((c) => {
+      if (c.key === 'gender') return showGenderColumn
+      if (c.key === 'skill') return showSkillColumn
+      return visibleColumns[c.key]
+    }).length +
     2 // checkbox + actions
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -299,17 +351,29 @@ export default function PlayersPage() {
     void loadPlayers()
   }, [loadPlayers])
 
+  const missingPlayersCount = useMemo(
+    () => players.filter((player) => !player.isMerged && hasMissingInfo(player)).length,
+    [players]
+  )
+
   const displayedPlayers = useMemo(() => {
     const filtered = genderFilter
       ? players.filter((p) => genderGroup(p.gender) === genderFilter)
       : players
-    const sorted = [...filtered]
+    const quickFillFiltered = quickFillMode
+      ? filtered.filter((p) => !p.isMerged && hasMissingInfo(p))
+      : filtered
+    const sorted = [...quickFillFiltered]
     sorted.sort((a, b) => {
+      if (quickFillMode) {
+        const missingCmp = countMissingFields(b) - countMissingFields(a)
+        if (missingCmp !== 0) return missingCmp
+      }
       const cmp = comparePlayers(a, b, sortKey)
       return sortDir === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [players, genderFilter, sortKey, sortDir])
+  }, [players, genderFilter, sortKey, sortDir, quickFillMode])
 
   const selectedPlayers = useMemo(
     () => displayedPlayers.filter((p) => selectedIds.has(p.id)),
@@ -385,6 +449,49 @@ export default function PlayersPage() {
       setFormError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setSaving(false)
+    }
+  }
+
+  function getQuickFillDraft(player: PlayerListItem): QuickFillDraft {
+    return quickFillDrafts[player.id] ?? quickFillDraftForPlayer(player)
+  }
+
+  function updateQuickFillDraft(player: PlayerListItem, patch: Partial<QuickFillDraft>) {
+    const current = getQuickFillDraft(player)
+    setQuickFillDrafts((prev) => ({
+      ...prev,
+      [player.id]: { ...current, ...patch },
+    }))
+  }
+
+  function hasQuickFillChanges(player: PlayerListItem): boolean {
+    return Object.keys(buildQuickFillPatch(player, getQuickFillDraft(player))).length > 0
+  }
+
+  async function saveQuickFill(player: PlayerListItem) {
+    if (!hasQuickFillChanges(player)) return
+    const patch = buildQuickFillPatch(player, getQuickFillDraft(player))
+
+    setQuickFillSavingId(player.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/players/${player.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Save failed')
+      setQuickFillDrafts((prev) => {
+        const next = { ...prev }
+        delete next[player.id]
+        return next
+      })
+      await loadPlayers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setQuickFillSavingId(null)
     }
   }
 
@@ -566,6 +673,23 @@ export default function PlayersPage() {
           <button
             type="button"
             onClick={() => {
+              if (!quickFillMode) {
+                setSkillFilter('')
+                setGenderFilter('')
+              }
+              setQuickFillMode((value) => !value)
+            }}
+            className={`rounded px-3 py-2 text-sm ${
+              quickFillMode
+                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                : 'border border-amber-300 bg-white text-amber-900 hover:bg-amber-50'
+            }`}
+          >
+            {quickFillMode ? 'Exit quick fill' : `Quick fill missing info (${missingPlayersCount})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
               setImportProfileFields('skip')
@@ -672,6 +796,13 @@ export default function PlayersPage() {
         </span>
       </p>
 
+      {quickFillMode ? (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Quick fill mode: showing players missing gender or skill. Fill the blank fields
+          inline, then use <span className="font-medium">Save info</span>.
+        </p>
+      ) : null}
+
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}
 
@@ -715,7 +846,7 @@ export default function PlayersPage() {
                     onClick={() => toggleSort('jerseyName')}
                   />
                 ) : null}
-                {visibleColumns.gender ? (
+                {showGenderColumn ? (
                   <th className="px-3 py-2 align-bottom">
                     <div className="space-y-1">
                       <SortableHeaderButton
@@ -738,7 +869,7 @@ export default function PlayersPage() {
                     </div>
                   </th>
                 ) : null}
-                {visibleColumns.skill ? (
+                {showSkillColumn ? (
                   <th className="px-3 py-2 align-bottom">
                     <div className="space-y-1">
                       <SortableHeaderButton
@@ -815,40 +946,102 @@ export default function PlayersPage() {
                       <SkillStyledText skillLevel={p.skillLevel}>{p.jerseyName}</SkillStyledText>
                     </td>
                   ) : null}
-                  {visibleColumns.gender ? (
+                  {showGenderColumn ? (
                     <td className="px-3 py-2">
-                      <span
-                        className={
-                          genderGroup(p.gender) === 'w_nb_o'
-                            ? 'font-medium text-rose-800'
-                            : genderGroup(p.gender) === 'men'
-                              ? 'font-medium text-sky-900'
-                              : 'text-gray-500'
-                        }
-                      >
-                        {genderGroup(p.gender) === 'w_nb_o' ||
-                        genderGroup(p.gender) === 'men' ? (
-                          <>
-                            {p.genderGroupLabel}
-                            <span className="ml-1 font-normal text-gray-600">
-                              ({p.genderLabel})
-                            </span>
-                          </>
-                        ) : (
-                          p.genderLabel
-                        )}
-                      </span>
+                      {quickFillMode && !p.isMerged && hasMissingGender(p) ? (
+                        <>
+                          <span id={`quick-fill-gender-help-${p.id}`} className="sr-only">
+                            Gender is missing for {p.rosterName}. Select a gender, then save
+                            the row.
+                          </span>
+                          <select
+                            aria-label={`Set gender for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-gender-help-${p.id}`}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).gender}
+                            onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
+                          >
+                            <option value="" disabled>
+                              Select gender (required)
+                            </option>
+                            {Object.entries(GENDERS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <span
+                          className={
+                            genderGroup(p.gender) === 'w_nb_o'
+                              ? 'font-medium text-rose-800'
+                              : genderGroup(p.gender) === 'men'
+                                ? 'font-medium text-sky-900'
+                                : 'text-gray-500'
+                          }
+                        >
+                          {genderGroup(p.gender) === 'w_nb_o' ||
+                          genderGroup(p.gender) === 'men' ? (
+                            <>
+                              {p.genderGroupLabel}
+                              <span className="ml-1 font-normal text-gray-600">
+                                ({p.genderLabel})
+                              </span>
+                            </>
+                          ) : (
+                            p.genderLabel
+                          )}
+                        </span>
+                      )}
                     </td>
                   ) : null}
-                  {visibleColumns.skill ? (
+                  {showSkillColumn ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.skillLabel}</SkillStyledText>
+                      {quickFillMode && !p.isMerged && hasMissingSkill(p) ? (
+                        <>
+                          <span id={`quick-fill-skill-help-${p.id}`} className="sr-only">
+                            Skill is missing for {p.rosterName}. Select a skill level, then
+                            save the row.
+                          </span>
+                          <select
+                            aria-label={`Set skill for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-skill-help-${p.id}`}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).skillLevel}
+                            onChange={(e) =>
+                              updateQuickFillDraft(p, { skillLevel: e.target.value })
+                            }
+                          >
+                            <option value="" disabled>
+                              Select skill (required)
+                            </option>
+                            {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {value}: {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <SkillStyledText skillLevel={p.skillLevel}>{p.skillLabel}</SkillStyledText>
+                      )}
                     </td>
                   ) : null}
                   {visibleColumns.email ? (
                     <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
                   ) : null}
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
+                    {quickFillMode && !p.isMerged && hasMissingInfo(p) ? (
+                      <button
+                        type="button"
+                        className="text-amber-800 hover:underline disabled:text-gray-400"
+                        disabled={quickFillSavingId === p.id || !hasQuickFillChanges(p)}
+                        onClick={() => void saveQuickFill(p)}
+                      >
+                        Save info
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="text-blue-600 hover:underline"
@@ -890,7 +1083,9 @@ export default function PlayersPage() {
                     colSpan={visibleColumnCount}
                     className="px-3 py-8 text-center text-gray-500"
                   >
-                    No players yet. Import a TeamLinkt CSV or add one manually.
+                    {quickFillMode
+                      ? 'Everyone currently has gender and skill filled in.'
+                      : 'No players yet. Import a TeamLinkt CSV or add one manually.'}
                   </td>
                 </tr>
               ) : null}
