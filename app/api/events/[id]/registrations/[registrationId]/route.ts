@@ -5,6 +5,8 @@ import {
 } from '@/app/lib/admin-auth'
 import {
   deleteEventRegistration,
+  pairRegistrations,
+  unpairRegistration,
   updateRegistrationCaptain,
   updateRegistrationDraftGroup,
 } from '@/app/lib/events/mutations'
@@ -26,7 +28,35 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    const body = (await request.json()) as { draftGroup?: unknown; isCaptain?: unknown }
+    const body = (await request.json()) as {
+      draftGroup?: unknown
+      isCaptain?: unknown
+      pairWithRegistrationId?: unknown
+      unpair?: unknown
+    }
+
+    if (body.unpair === true) {
+      const result = await unpairRegistration(id, registrationId)
+      return NextResponse.json({ result })
+    }
+
+    if ('pairWithRegistrationId' in body) {
+      if (
+        typeof body.pairWithRegistrationId !== 'string' ||
+        !body.pairWithRegistrationId
+      ) {
+        return NextResponse.json(
+          { error: 'pairWithRegistrationId must be a registration id' },
+          { status: 400 }
+        )
+      }
+      const result = await pairRegistrations(
+        id,
+        registrationId,
+        body.pairWithRegistrationId
+      )
+      return NextResponse.json({ result })
+    }
 
     if ('isCaptain' in body) {
       if (typeof body.isCaptain !== 'boolean') {
@@ -55,7 +85,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const status =
       message === 'Registration not found'
         ? 404
-        : message.includes('draftGroup')
+        : message.includes('draftGroup') ||
+            message.includes('pair') ||
+            message.includes('Cannot pair') ||
+            message.includes('already paired')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

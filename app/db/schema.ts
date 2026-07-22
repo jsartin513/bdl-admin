@@ -128,6 +128,8 @@ export const eventRegistrations = pgTable(
     /** Positive int draft bucket; null = unassigned */
     draftGroup: integer('draft_group'),
     isCaptain: boolean('is_captain').notNull().default(false),
+    /** Shared UUID links two registrations as a pair; null = unpaired */
+    pairId: uuid('pair_id'),
     importBatchId: uuid('import_batch_id').references(() => importBatches.id, {
       onDelete: 'set null',
     }),
@@ -138,5 +140,25 @@ export const eventRegistrations = pgTable(
     uniqueIndex('event_registrations_event_player_uidx').on(table.eventId, table.playerId),
     index('event_registrations_event_id_idx').on(table.eventId),
     index('event_registrations_player_id_idx').on(table.playerId),
+    index('event_registrations_event_pair_id_idx').on(table.eventId, table.pairId),
   ]
+)
+
+export const eventDraftSnapshots = pgTable(
+  'event_draft_snapshots',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Map of registrationId → draftGroup (number) or null */
+    assignments: jsonb('assignments')
+      .$type<Record<string, number | null>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('event_draft_snapshots_event_id_idx').on(table.eventId)]
 )

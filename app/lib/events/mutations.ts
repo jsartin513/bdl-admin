@@ -1,9 +1,15 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
+import { randomUUID } from 'crypto'
 import { getDb } from '@/app/lib/db'
-import { eventRegistrations, events } from '@/app/db/schema'
+import {
+  eventDraftSnapshots,
+  eventRegistrations,
+  events,
+} from '@/app/db/schema'
 import {
   isValidEventType,
   parseDraftGroup,
+  type EventDraftSnapshotListItem,
   type EventRecord,
   type EventType,
 } from '@/app/lib/events/types'
@@ -206,6 +212,256 @@ export async function updateRegistrationCaptain(
 
   if (!updated) throw new Error('Registration not found')
   return updated
+}
+
+export async function pairRegistrations(
+  eventId: string,
+  registrationIdA: string,
+  registrationIdB: string
+): Promise<{ pairId: string; registrationIds: [string, string] }> {
+  if (registrationIdA === registrationIdB) {
+    throw new Error('Cannot pair a registration with itself')
+  }
+
+  const db = getDb()
+  const rows = await db
+    .select({
+      id: eventRegistrations.id,
+      pairId: eventRegistrations.pairId,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, [registrationIdA, registrationIdB])
+      )
+    )
+
+  if (rows.length !== 2) throw new Error('Registration not found')
+  for (const row of rows) {
+    if (row.pairId != null) {
+      throw new Error('Registration is already paired')
+    }
+  }
+
+  const pairId = randomUUID()
+  const now = new Date()
+  await db
+    .update(eventRegistrations)
+    .set({ pairId, updatedAt: now })
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, [registrationIdA, registrationIdB])
+      )
+    )
+
+  return { pairId, registrationIds: [registrationIdA, registrationIdB] }
+}
+
+export async function unpairRegistration(
+  eventId: string,
+  registrationId: string
+): Promise<{ clearedPairId: string | null; registrationIds: string[] }> {
+  const db = getDb()
+  const [row] = await db
+    .select({
+      id: eventRegistrations.id,
+      pairId: eventRegistrations.pairId,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .limit(1)
+
+  if (!row) throw new Error('Registration not found')
+  if (row.pairId == null) {
+    return { clearedPairId: null, registrationIds: [row.id] }
+  }
+
+  const members = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        eq(eventRegistrations.pairId, row.pairId)
+      )
+    )
+
+  const ids = members.map((m) => m.id)
+  await db
+    .update(eventRegistrations)
+    .set({ pairId: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, ids)
+      )
+    )
+
+  return { clearedPairId: row.pairId, registrationIds: ids }
+}
+
+function parseSnapshotAssignments(
+  value: unknown
+): Record<string, number | null> {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('assignments must be an object')
+  }
+  const result: Record<string, number | null> = {}
+  for (const [registrationId, draftGroup] of Object.entries(
+    value as Record<string, unknown>
+  )) {
+    if (!registrationId) throw new Error('registrationId is required')
+    const parsed = parseDraftGroup(draftGroup)
+    if (parsed === undefined) {
+      throw new Error('draftGroup is required for each assignment')
+    }
+    result[registrationId] = parsed
+  }
+  return result
+}
+
+export async function listEventDraftSnapshots(
+  eventId: string
+): Promise<EventDraftSnapshotListItem[]> {
+  const db = getDb()
+  const rows = await db
+    .select()
+    .from(eventDraftSnapshots)
+    .where(eq(eventDraftSnapshots.eventId, eventId))
+    .orderBy(asc(eventDraftSnapshots.createdAt))
+
+  return rows.map((r) => ({
+    id: r.id,
+    eventId: r.eventId,
+    name: r.name,
+    assignments: r.assignments ?? {},
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  }))
+}
+
+export async function createEventDraftSnapshot(input: {
+  eventId: string
+  name: string
+  assignments: unknown
+}): Promise<EventDraftSnapshotListItem> {
+  const name = input.name.trim()
+  if (!name) throw new Error('name is required')
+  const assignments = parseSnapshotAssignments(input.assignments)
+
+  const db = getDb()
+  const [created] = await db
+    .insert(eventDraftSnapshots)
+    .values({
+      eventId: input.eventId,
+      name,
+      assignments,
+    })
+    .returning()
+
+  return {
+    id: created.id,
+    eventId: created.eventId,
+    name: created.name,
+    assignments: created.assignments ?? {},
+    createdAt: created.createdAt,
+    updatedAt: created.updatedAt,
+  }
+}
+
+export async function renameEventDraftSnapshot(
+  eventId: string,
+  snapshotId: string,
+  nameInput: string
+): Promise<EventDraftSnapshotListItem> {
+  const name = nameInput.trim()
+  if (!name) throw new Error('name is required')
+
+  const db = getDb()
+  const [updated] = await db
+    .update(eventDraftSnapshots)
+    .set({ name, updatedAt: new Date() })
+    .where(
+      and(
+        eq(eventDraftSnapshots.id, snapshotId),
+        eq(eventDraftSnapshots.eventId, eventId)
+      )
+    )
+    .returning()
+
+  if (!updated) throw new Error('Snapshot not found')
+  return {
+    id: updated.id,
+    eventId: updated.eventId,
+    name: updated.name,
+    assignments: updated.assignments ?? {},
+    createdAt: updated.createdAt,
+    updatedAt: updated.updatedAt,
+  }
+}
+
+export async function deleteEventDraftSnapshot(
+  eventId: string,
+  snapshotId: string
+): Promise<void> {
+  const db = getDb()
+  const deleted = await db
+    .delete(eventDraftSnapshots)
+    .where(
+      and(
+        eq(eventDraftSnapshots.id, snapshotId),
+        eq(eventDraftSnapshots.eventId, eventId)
+      )
+    )
+    .returning({ id: eventDraftSnapshots.id })
+
+  if (deleted.length === 0) throw new Error('Snapshot not found')
+}
+
+export async function getEventDraftSnapshot(
+  eventId: string,
+  snapshotId: string
+): Promise<EventDraftSnapshotListItem | null> {
+  const db = getDb()
+  const [row] = await db
+    .select()
+    .from(eventDraftSnapshots)
+    .where(
+      and(
+        eq(eventDraftSnapshots.id, snapshotId),
+        eq(eventDraftSnapshots.eventId, eventId)
+      )
+    )
+    .limit(1)
+  if (!row) return null
+  return {
+    id: row.id,
+    eventId: row.eventId,
+    name: row.name,
+    assignments: row.assignments ?? {},
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+export async function promoteEventDraftSnapshot(
+  eventId: string,
+  snapshotId: string
+): Promise<Array<{ id: string; draftGroup: number | null }>> {
+  const snapshot = await getEventDraftSnapshot(eventId, snapshotId)
+  if (!snapshot) throw new Error('Snapshot not found')
+
+  const assignments = Object.entries(snapshot.assignments).map(
+    ([registrationId, draftGroup]) => ({ registrationId, draftGroup })
+  )
+  return bulkUpdateRegistrationDraftGroups(eventId, assignments)
 }
 
 export async function deleteEventRegistration(

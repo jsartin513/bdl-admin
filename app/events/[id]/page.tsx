@@ -20,7 +20,10 @@ import {
   emptySeedDraftGroups,
   playersPerTeamLabel,
 } from '@/app/lib/events/draft-seed'
-import type { EventRegistrationListItem } from '@/app/lib/events/types'
+import type {
+  EventDraftSnapshotListItem,
+  EventRegistrationListItem,
+} from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
 import {
   SKILL_LEVELS,
@@ -155,22 +158,29 @@ function EventTrackerPageContent() {
   )
   const [draftApplying, setDraftApplying] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
+  const [snapshots, setSnapshots] = useState<EventDraftSnapshotListItem[]>([])
+  const [snapshotsBusy, setSnapshotsBusy] = useState(false)
 
   const load = useCallback(async () => {
     if (!eventId) return
     setLoading(true)
     setError(null)
     try {
-      const [eventRes, regRes] = await Promise.all([
+      const [eventRes, regRes, snapRes] = await Promise.all([
         fetch(`/api/events/${eventId}`),
         fetch(`/api/events/${eventId}/registrations`),
+        fetch(`/api/events/${eventId}/draft-snapshots`),
       ])
       const eventData = await eventRes.json()
       const regData = await regRes.json()
+      const snapData = await snapRes.json()
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to load event')
       if (!regRes.ok) throw new Error(regData.error || 'Failed to load roster')
       setEvent(eventData.event)
       setRegistrations(regData.registrations)
+      if (snapRes.ok) {
+        setSnapshots(snapData.snapshots ?? [])
+      }
       const groups = (regData.registrations as EventRegistrationListItem[])
         .map((r) => r.draftGroup)
         .filter((g): g is number => g != null)
@@ -322,45 +332,60 @@ function EventTrackerPageContent() {
     }
   }
 
-  async function removeRegistration(registrationId: string, label: string) {
-    if (!window.confirm(`Remove ${label} from this event?`)) return
-    setRemovingId(registrationId)
+  async function pairWith(registrationId: string, partnerRegistrationId: string) {
+    setSavingId(registrationId)
     setFormError(null)
     try {
       const res = await fetch(
         `/api/events/${eventId}/registrations/${registrationId}`,
-        { method: 'DELETE' }
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairWithRegistrationId: partnerRegistrationId }),
+        }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to remove player')
-      setRegistrations((prev) => prev.filter((r) => r.id !== registrationId))
-      setMessage(`Removed ${label} from event`)
+      if (!res.ok) throw new Error(data.error || 'Failed to pair players')
+      await load()
+      setMessage('Players paired')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to remove player')
+      setFormError(err instanceof Error ? err.message : 'Failed to pair players')
     } finally {
-      setRemovingId(null)
+      setSavingId(null)
     }
   }
 
-  async function deleteEvent() {
-    if (
-      !window.confirm(
-        `Delete “${event?.name}”? This removes the event and all its registrations.`
-      )
-    ) {
-      return
-    }
-    setDeletingEvent(true)
+  async function unpair(registrationId: string) {
+    setSavingId(registrationId)
     setFormError(null)
     try {
-      const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' })
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ unpair: true }),
+        }
+      )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to delete event')
-      router.push(withDevMode('/events', devMode))
+      if (!res.ok) throw new Error(data.error || 'Failed to unpair')
+      await load()
+      setMessage('Pair cleared')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to delete event')
-      setDeletingEvent(false)
+      setFormError(err instanceof Error ? err.message : 'Failed to unpair')
+    } finally {
+      setSavingId(null)
     }
+  }
+
+  function seedPlayersFromRegistrations() {
+    return registrations.map((r) => ({
+      id: r.id,
+      skillLevel: r.skillLevel,
+      gender: r.gender,
+      pairId: r.pairId,
+      draftGroup: r.draftGroup,
+    }))
   }
 
   function openDraftSetup() {
@@ -371,12 +396,7 @@ function EventTrackerPageContent() {
   }
 
   function startDraftBoard() {
-    const seeds = registrations.map((r) => ({
-      id: r.id,
-      skillLevel: r.skillLevel,
-      gender: r.gender,
-      draftGroup: r.draftGroup,
-    }))
+    const seeds = seedPlayersFromRegistrations()
     const n = Math.max(1, Math.floor(draftTeamCount))
     let next: Map<string, number | null>
     if (draftSeedMode === 'auto') {
@@ -397,11 +417,7 @@ function EventTrackerPageContent() {
   }
 
   function reshuffleDraft() {
-    const seeds = registrations.map((r) => ({
-      id: r.id,
-      skillLevel: r.skillLevel,
-      gender: r.gender,
-    }))
+    const seeds = seedPlayersFromRegistrations()
     const n = Math.max(1, Math.floor(draftTeamCount))
     const seeded = autoSeedDraftGroups(seeds, n, { shuffle: true })
     const next = new Map<string, number | null>()
@@ -450,6 +466,162 @@ function EventTrackerPageContent() {
       setDraftError(err instanceof Error ? err.message : 'Failed to apply draft')
     } finally {
       setDraftApplying(false)
+    }
+  }
+
+  function assignmentsObjectFromMap(
+    map: Map<string, number | null>
+  ): Record<string, number | null> {
+    const obj: Record<string, number | null> = {}
+    for (const r of registrations) {
+      obj[r.id] = map.get(r.id) ?? null
+    }
+    return obj
+  }
+
+  async function saveSnapshot(name: string) {
+    setSnapshotsBusy(true)
+    setDraftError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}/draft-snapshots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          assignments: assignmentsObjectFromMap(draftAssignments),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save snapshot')
+      setSnapshots((prev) => [...prev, data.snapshot])
+      setMessage(`Saved draft “${data.snapshot.name}”`)
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Failed to save snapshot')
+    } finally {
+      setSnapshotsBusy(false)
+    }
+  }
+
+  function loadSnapshot(snapshotId: string) {
+    const snap = snapshots.find((s) => s.id === snapshotId)
+    if (!snap) return
+    const next = new Map<string, number | null>()
+    for (const r of registrations) {
+      next.set(r.id, snap.assignments[r.id] ?? null)
+    }
+    const maxAssigned = Math.max(
+      0,
+      ...Object.values(snap.assignments).filter((g): g is number => g != null)
+    )
+    if (maxAssigned > 0) {
+      setDraftTeamCount((prev) => Math.max(prev, maxAssigned))
+      setMaxGroup((prev) => Math.max(prev, maxAssigned))
+    }
+    setDraftAssignments(next)
+    setMessage(`Loaded draft “${snap.name}” into workspace`)
+  }
+
+  async function renameSnapshot(snapshotId: string, name: string) {
+    setSnapshotsBusy(true)
+    setDraftError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/draft-snapshots/${snapshotId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to rename snapshot')
+      setSnapshots((prev) =>
+        prev.map((s) => (s.id === snapshotId ? data.snapshot : s))
+      )
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Failed to rename snapshot')
+    } finally {
+      setSnapshotsBusy(false)
+    }
+  }
+
+  async function deleteSnapshot(snapshotId: string) {
+    setSnapshotsBusy(true)
+    setDraftError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/draft-snapshots/${snapshotId}`,
+        { method: 'DELETE' }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to delete snapshot')
+      setSnapshots((prev) => prev.filter((s) => s.id !== snapshotId))
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Failed to delete snapshot')
+    } finally {
+      setSnapshotsBusy(false)
+    }
+  }
+
+  async function promoteSnapshot(snapshotId: string) {
+    setSnapshotsBusy(true)
+    setDraftError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/draft-snapshots/${snapshotId}/promote`,
+        { method: 'POST' }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to promote snapshot')
+      await load()
+      setDraftPhase('off')
+      setDraftAssignments(new Map())
+      setMessage('Snapshot promoted to live roster')
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Failed to promote snapshot')
+    } finally {
+      setSnapshotsBusy(false)
+    }
+  }
+
+  async function removeRegistration(registrationId: string, label: string) {
+    if (!window.confirm(`Remove ${label} from this event?`)) return
+    setRemovingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        { method: 'DELETE' }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to remove player')
+      setRegistrations((prev) => prev.filter((r) => r.id !== registrationId))
+      setMessage(`Removed ${label} from event`)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to remove player')
+    } finally {
+      setRemovingId(null)
+    }
+  }
+
+  async function deleteEvent() {
+    if (
+      !window.confirm(
+        `Delete “${event?.name}”? This removes the event and all its registrations.`
+      )
+    ) {
+      return
+    }
+    setDeletingEvent(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to delete event')
+      router.push(withDevMode('/events', devMode))
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to delete event')
+      setDeletingEvent(false)
     }
   }
 
@@ -592,6 +764,27 @@ function EventTrackerPageContent() {
         <p className="text-sm text-red-600">{formError}</p>
       ) : null}
 
+      {draftPhase !== 'board' && counts.unassigned > 0 ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-medium">
+            {counts.unassigned} registered{' '}
+            {counts.unassigned === 1 ? 'player is' : 'players are'} not on a team
+          </p>
+          {draftPhase === 'off' ? (
+            <button
+              type="button"
+              className="rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              onClick={() => setDraftFilter('unassigned')}
+            >
+              Show unassigned
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {draftPhase === 'setup' ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-4 space-y-4">
           <div>
@@ -680,6 +873,13 @@ function EventTrackerPageContent() {
           onDiscard={discardDraft}
           applying={draftApplying}
           error={draftError}
+          snapshots={snapshots}
+          snapshotsBusy={snapshotsBusy}
+          onSaveSnapshot={saveSnapshot}
+          onLoadSnapshot={loadSnapshot}
+          onRenameSnapshot={renameSnapshot}
+          onDeleteSnapshot={deleteSnapshot}
+          onPromoteSnapshot={promoteSnapshot}
         />
       ) : null}
 
@@ -688,10 +888,24 @@ function EventTrackerPageContent() {
           <div className="text-gray-500">Total</div>
           <div className="text-xl font-semibold">{counts.total}</div>
         </div>
-        <div className="rounded border border-gray-200 px-3 py-2">
+        <div
+          className={`rounded border px-3 py-2 ${
+            counts.unassigned > 0
+              ? 'border-amber-300 bg-amber-50/60'
+              : 'border-gray-200'
+          }`}
+        >
           <div className="text-gray-500">Draft buckets</div>
           <div>
-            Unassigned {counts.unassigned} · Assigned {counts.assigned}
+            <span
+              className={
+                counts.unassigned > 0 ? 'font-semibold text-amber-800' : undefined
+              }
+            >
+              Unassigned {counts.unassigned}
+            </span>
+            {' · '}
+            Assigned {counts.assigned}
           </div>
           {groupOptions.length > 0 ? (
             <div className="text-xs mt-1 text-gray-600">
@@ -796,13 +1010,14 @@ function EventTrackerPageContent() {
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Draft group</th>
                   <th className="px-3 py-2 font-medium">Captain</th>
+                  <th className="px-3 py-2 font-medium">Pair</th>
                   <th className="px-3 py-2 font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-gray-500">
+                    <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
                       {registrations.length === 0
                         ? 'No registrations yet. Import a TeamLinkt CSV for this event.'
                         : 'No players match this filter.'}
@@ -812,6 +1027,12 @@ function EventTrackerPageContent() {
                   filtered.map((r) => {
                     const label =
                       r.nickname || `${r.firstName} ${r.lastName}`
+                    const unpairedOptions = registrations.filter(
+                      (other) =>
+                        other.id !== r.id &&
+                        other.pairId == null &&
+                        r.pairId == null
+                    )
                     return (
                       <tr
                         key={r.id}
@@ -823,6 +1044,11 @@ function EventTrackerPageContent() {
                           </SkillStyledText>
                           {r.isCaptain ? (
                             <span className="ml-1 text-xs font-medium text-blue-700">(C)</span>
+                          ) : null}
+                          {r.partnerNickname ? (
+                            <div className="text-xs text-violet-700">
+                              Paired with {r.partnerNickname}
+                            </div>
                           ) : null}
                           <div className="text-xs text-gray-500">
                             {r.firstName} {r.lastName}
@@ -864,6 +1090,40 @@ function EventTrackerPageContent() {
                           >
                             {r.isCaptain ? '(C) Remove' : 'Set (C)'}
                           </button>
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.pairId ? (
+                            <button
+                              type="button"
+                              className="text-xs text-violet-700 hover:underline disabled:opacity-40"
+                              disabled={savingId === r.id}
+                              onClick={() => void unpair(r.id)}
+                            >
+                              Unpair
+                            </button>
+                          ) : unpairedOptions.length > 0 ? (
+                            <select
+                              className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+                              disabled={savingId === r.id}
+                              defaultValue=""
+                              onChange={(e) => {
+                                const partnerId = e.target.value
+                                e.target.value = ''
+                                if (!partnerId) return
+                                void pairWith(r.id, partnerId)
+                              }}
+                            >
+                              <option value="">Pair with…</option>
+                              {unpairedOptions.map((other) => (
+                                <option key={other.id} value={other.id}>
+                                  {other.nickname ||
+                                    `${other.firstName} ${other.lastName}`}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <button

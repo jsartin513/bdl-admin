@@ -5,6 +5,7 @@ import {
   defaultTeamCount,
   emptySeedDraftGroups,
   playersPerTeamLabel,
+  summarizeDraftAssignments,
   teamGenderCounts,
   teamSkillTotal,
   type DraftSeedPlayer,
@@ -167,6 +168,56 @@ describe('autoSeedDraftGroups', () => {
     const a = autoSeedDraftGroups(players, 3)
     const b = autoSeedDraftGroups(players, 3)
     expect([...a.entries()]).toEqual([...b.entries()])
+  })
+
+  it('keeps paired players on the same team', () => {
+    const players: DraftSeedPlayer[] = [
+      { id: 'a', skillLevel: 4, gender: 'woman', pairId: 'pair-1' },
+      { id: 'b', skillLevel: 3, gender: 'man', pairId: 'pair-1' },
+      { id: 'c', skillLevel: 2, gender: 'woman' },
+      { id: 'd', skillLevel: 2, gender: 'man' },
+      { id: 'e', skillLevel: 1, gender: 'woman' },
+      { id: 'f', skillLevel: 1, gender: 'man' },
+    ]
+    const result = autoSeedDraftGroups(players, 2)
+    expect(result.get('a')).toBe(result.get('b'))
+    expect(result.get('a')).toBeGreaterThanOrEqual(1)
+  })
+
+  it('still assigns all players when pairs are present', () => {
+    const players: DraftSeedPlayer[] = [
+      { id: 'a', skillLevel: 4, gender: 'woman', pairId: 'p1' },
+      { id: 'b', skillLevel: 4, gender: 'man', pairId: 'p1' },
+      { id: 'c', skillLevel: 3, gender: 'woman', pairId: 'p2' },
+      { id: 'd', skillLevel: 3, gender: 'man', pairId: 'p2' },
+      { id: 'e', skillLevel: 2, gender: 'woman' },
+      { id: 'f', skillLevel: 2, gender: 'man' },
+    ]
+    const result = autoSeedDraftGroups(players, 3)
+    expect(result.size).toBe(6)
+    expect(result.get('a')).toBe(result.get('b'))
+    expect(result.get('c')).toBe(result.get('d'))
+  })
+})
+
+describe('summarizeDraftAssignments', () => {
+  it('summarizes unassigned and per-team stats', () => {
+    const registrations = [
+      { id: 'a', skillLevel: 4, gender: 'woman' },
+      { id: 'b', skillLevel: 2, gender: 'man' },
+      { id: 'c', skillLevel: 3, gender: 'woman' },
+    ]
+    const summary = summarizeDraftAssignments(
+      registrations,
+      { a: 1, b: 1, c: null },
+      2
+    )
+    expect(summary.unassigned).toBe(1)
+    expect(summary.teams[0].size).toBe(2)
+    expect(summary.teams[0].skillTotal).toBe(6)
+    expect(summary.teams[0].gender.wNbO).toBe(1)
+    expect(summary.teams[0].gender.men).toBe(1)
+    expect(summary.teams[1].size).toBe(0)
   })
 })
 

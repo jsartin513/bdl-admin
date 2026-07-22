@@ -50,6 +50,20 @@
       "when": 1753228276000,
       "tag": "0006_event_registration_captain",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1753230000000,
+      "tag": "0007_event_registration_pairs",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1753231000000,
+      "tag": "0008_event_draft_snapshots",
+      "breakpoints": true
     }
   ]
 }

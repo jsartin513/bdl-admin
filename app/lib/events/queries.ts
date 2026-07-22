@@ -63,6 +63,7 @@ export async function listEventRegistrations(
       status: eventRegistrations.status,
       draftGroup: eventRegistrations.draftGroup,
       isCaptain: eventRegistrations.isCaptain,
+      pairId: eventRegistrations.pairId,
       registeredAt: eventRegistrations.registeredAt,
       updatedAt: eventRegistrations.updatedAt,
       firstName: players.firstName,
@@ -107,29 +108,57 @@ export async function listEventRegistrations(
     }
   }
 
-  return rows.map((r) => ({
-    id: r.id,
-    eventId: r.eventId,
-    playerId: r.playerId,
-    status: r.status,
-    draftGroup: r.draftGroup,
-    isCaptain: r.isCaptain,
-    registeredAt: r.registeredAt,
-    updatedAt: r.updatedAt,
-    firstName: r.firstName,
-    lastName: r.lastName,
-    rosterName: r.rosterName,
-    nickname: resolveNickname(r.nickname, r.firstName, r.lastName),
-    jerseyNumber: r.jerseyNumber,
-    skillLevel: r.skillLevel,
-    skillLabel: skillLevelLabel(r.skillLevel),
-    gender: r.gender,
-    genderLabel: genderLabel(r.gender),
-    genderGroupLabel: genderGroupLabel(r.gender),
-    primaryEmail: primaryByPlayer.get(r.playerId) ?? null,
-    hasStrongPersonality: r.hasStrongPersonality,
-    strongPersonalityNotes: r.strongPersonalityNotes,
-  }))
+  const nicknameById = new Map(
+    rows.map((r) => [
+      r.id,
+      resolveNickname(r.nickname, r.firstName, r.lastName),
+    ])
+  )
+  const partnerByRegistrationId = new Map<string, string>()
+  const byPairId = new Map<string, string[]>()
+  for (const r of rows) {
+    if (!r.pairId) continue
+    const list = byPairId.get(r.pairId) ?? []
+    list.push(r.id)
+    byPairId.set(r.pairId, list)
+  }
+  for (const members of byPairId.values()) {
+    if (members.length !== 2) continue
+    partnerByRegistrationId.set(members[0], members[1])
+    partnerByRegistrationId.set(members[1], members[0])
+  }
+
+  return rows.map((r) => {
+    const partnerRegistrationId = partnerByRegistrationId.get(r.id) ?? null
+    return {
+      id: r.id,
+      eventId: r.eventId,
+      playerId: r.playerId,
+      status: r.status,
+      draftGroup: r.draftGroup,
+      isCaptain: r.isCaptain,
+      pairId: r.pairId,
+      partnerRegistrationId,
+      partnerNickname: partnerRegistrationId
+        ? (nicknameById.get(partnerRegistrationId) ?? null)
+        : null,
+      registeredAt: r.registeredAt,
+      updatedAt: r.updatedAt,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      rosterName: r.rosterName,
+      nickname: nicknameById.get(r.id)!,
+      jerseyNumber: r.jerseyNumber,
+      skillLevel: r.skillLevel,
+      skillLabel: skillLevelLabel(r.skillLevel),
+      gender: r.gender,
+      genderLabel: genderLabel(r.gender),
+      genderGroupLabel: genderGroupLabel(r.gender),
+      primaryEmail: primaryByPlayer.get(r.playerId) ?? null,
+      hasStrongPersonality: r.hasStrongPersonality,
+      strongPersonalityNotes: r.strongPersonalityNotes,
+    }
+  })
 }
 
 export async function getRegisteredPlayerIds(eventId: string): Promise<Set<string>> {
