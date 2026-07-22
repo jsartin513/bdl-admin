@@ -89,6 +89,13 @@ function buildQuickFillPatch(
   return patch
 }
 
+/** True when every currently-missing field has a value ready to save. */
+function isQuickFillReady(player: PlayerListItem, draft: QuickFillDraft): boolean {
+  if (hasMissingSkill(player) && draft.skillLevel === '') return false
+  if (hasMissingGender(player) && draft.gender === '') return false
+  return hasMissingInfo(player)
+}
+
 /** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
 function SkillStyledText(props: {
   skillLevel: number | null
@@ -376,6 +383,20 @@ export default function PlayersPage() {
     return sorted
   }, [players, genderFilter, sortKey, sortDir, quickFillMode])
 
+  // One player at a time in quick fill; queue length stays on displayedPlayers.
+  const quickFillRows = useMemo(
+    () => (quickFillMode ? displayedPlayers.slice(0, 1) : displayedPlayers),
+    [displayedPlayers, quickFillMode]
+  )
+
+  useEffect(() => {
+    if (!quickFillMode || quickFillSavingId) return
+    const focusEl = document.querySelector<HTMLSelectElement>(
+      'select[data-quick-fill-focus="true"]'
+    )
+    focusEl?.focus()
+  }, [quickFillMode, quickFillSavingId, quickFillRows[0]?.id, quickFillDrafts])
+
   const selectedPlayers = useMemo(
     () => displayedPlayers.filter((p) => selectedIds.has(p.id)),
     [displayedPlayers, selectedIds]
@@ -457,21 +478,9 @@ export default function PlayersPage() {
     return quickFillDrafts[player.id] ?? quickFillDraftForPlayer(player)
   }
 
-  function updateQuickFillDraft(player: PlayerListItem, patch: Partial<QuickFillDraft>) {
-    const current = getQuickFillDraft(player)
-    setQuickFillDrafts((prev) => ({
-      ...prev,
-      [player.id]: { ...current, ...patch },
-    }))
-  }
-
-  function hasQuickFillChanges(player: PlayerListItem): boolean {
-    return Object.keys(buildQuickFillPatch(player, getQuickFillDraft(player))).length > 0
-  }
-
-  async function saveQuickFill(player: PlayerListItem) {
-    if (!hasQuickFillChanges(player)) return
-    const patch = buildQuickFillPatch(player, getQuickFillDraft(player))
+  async function saveQuickFill(player: PlayerListItem, draft: QuickFillDraft) {
+    const patch = buildQuickFillPatch(player, draft)
+    if (Object.keys(patch).length === 0) return
 
     setQuickFillSavingId(player.id)
     setError(null)
@@ -493,6 +502,18 @@ export default function PlayersPage() {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setQuickFillSavingId(null)
+    }
+  }
+
+  function applyQuickFillDraft(player: PlayerListItem, patch: Partial<QuickFillDraft>) {
+    if (quickFillSavingId) return
+    const next = { ...getQuickFillDraft(player), ...patch }
+    setQuickFillDrafts((prev) => ({
+      ...prev,
+      [player.id]: next,
+    }))
+    if (isQuickFillReady(player, next)) {
+      void saveQuickFill(player, next)
     }
   }
 
@@ -799,8 +820,11 @@ export default function PlayersPage() {
 
       {quickFillMode ? (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Quick fill mode: showing players missing gender or skill. Fill the blank fields
-          inline, then use <span className="font-medium">Save info</span>.
+          Quick fill mode: one player at a time
+          {displayedPlayers.length > 0
+            ? ` (${displayedPlayers.length} remaining)`
+            : ''}. Select missing gender/skill — saves automatically and advances to the
+          next player.
         </p>
       ) : null}
 
@@ -810,7 +834,9 @@ export default function PlayersPage() {
       {!loading && (
         <div className="space-y-2">
           <p className="text-sm text-gray-600">
-            {displayedPlayers.length} player{displayedPlayers.length === 1 ? '' : 's'}
+            {quickFillMode
+              ? `${displayedPlayers.length} player${displayedPlayers.length === 1 ? '' : 's'} remaining`
+              : `${displayedPlayers.length} player${displayedPlayers.length === 1 ? '' : 's'}`}
           </p>
           <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white text-gray-900">
           <table className="min-w-full text-sm text-gray-900">
@@ -901,7 +927,7 @@ export default function PlayersPage() {
               </tr>
             </thead>
             <tbody className="text-gray-900">
-              {displayedPlayers.map((p) => (
+              {quickFillRows.map((p) => (
                 <tr
                   key={p.id}
                   className={`border-t border-gray-100 ${genderRowClass(p.gender, p.isMerged)}`}
@@ -952,15 +978,19 @@ export default function PlayersPage() {
                       {quickFillMode && !p.isMerged && hasMissingGender(p) ? (
                         <>
                           <span id={`quick-fill-gender-help-${p.id}`} className="sr-only">
-                            Gender is missing for {p.rosterName}. Select a gender, then save
-                            the row.
+                            Gender is missing for {p.rosterName}. Select a gender to save
+                            automatically.
                           </span>
                           <select
                             aria-label={`Set gender for ${p.rosterName}`}
                             aria-describedby={`quick-fill-gender-help-${p.id}`}
+                            data-quick-fill-focus={
+                              getQuickFillDraft(p).gender === '' ? 'true' : undefined
+                            }
+                            disabled={quickFillSavingId === p.id}
                             className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
                             value={getQuickFillDraft(p).gender}
-                            onChange={(e) => updateQuickFillDraft(p, { gender: e.target.value })}
+                            onChange={(e) => applyQuickFillDraft(p, { gender: e.target.value })}
                           >
                             <option value="" disabled>
                               Select gender (required)
@@ -1002,16 +1032,23 @@ export default function PlayersPage() {
                       {quickFillMode && !p.isMerged && hasMissingSkill(p) ? (
                         <>
                           <span id={`quick-fill-skill-help-${p.id}`} className="sr-only">
-                            Skill is missing for {p.rosterName}. Select a skill level, then
-                            save the row.
+                            Skill is missing for {p.rosterName}. Select a skill level to save
+                            automatically.
                           </span>
                           <select
                             aria-label={`Set skill for ${p.rosterName}`}
                             aria-describedby={`quick-fill-skill-help-${p.id}`}
+                            data-quick-fill-focus={
+                              (!hasMissingGender(p) || getQuickFillDraft(p).gender !== '') &&
+                              getQuickFillDraft(p).skillLevel === ''
+                                ? 'true'
+                                : undefined
+                            }
+                            disabled={quickFillSavingId === p.id}
                             className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
                             value={getQuickFillDraft(p).skillLevel}
                             onChange={(e) =>
-                              updateQuickFillDraft(p, { skillLevel: e.target.value })
+                              applyQuickFillDraft(p, { skillLevel: e.target.value })
                             }
                           >
                             <option value="" disabled>
@@ -1033,15 +1070,8 @@ export default function PlayersPage() {
                     <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
                   ) : null}
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
-                    {quickFillMode && !p.isMerged && hasMissingInfo(p) ? (
-                      <button
-                        type="button"
-                        className="text-amber-800 hover:underline disabled:text-gray-400"
-                        disabled={quickFillSavingId === p.id || !hasQuickFillChanges(p)}
-                        onClick={() => void saveQuickFill(p)}
-                      >
-                        Save info
-                      </button>
+                    {quickFillMode && quickFillSavingId === p.id ? (
+                      <span className="text-amber-800">Saving…</span>
                     ) : null}
                     <button
                       type="button"

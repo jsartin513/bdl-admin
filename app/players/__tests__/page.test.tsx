@@ -70,7 +70,7 @@ describe('PlayersPage quick fill mode', () => {
     vi.clearAllMocks()
   })
 
-  it('shows only players missing info and forces skill/gender controls visible in quick fill mode', async () => {
+  it('shows one missing player at a time and forces skill/gender controls visible', async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -127,18 +127,18 @@ describe('PlayersPage quick fill mode', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (3)' }))
 
     expect(screen.getByText(/Quick fill mode:/)).toBeInTheDocument()
+    expect(screen.getByText('3 players remaining')).toBeInTheDocument()
     expect(screen.queryByText('Casey')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Set gender for Alex NoGender')).toBeInTheDocument()
-    expect(screen.getByLabelText('Set skill for Blair NoSkill')).toBeInTheDocument()
+    // Most-incomplete first, and only that one row is shown.
+    expect(screen.getByText('Drew')).toBeInTheDocument()
     expect(screen.getByLabelText('Set gender for Drew BothMissing')).toBeInTheDocument()
     expect(screen.getByLabelText('Set skill for Drew BothMissing')).toBeInTheDocument()
-
-    const saveButtons = screen.getAllByRole('button', { name: 'Save info' })
-    const firstQuickFillRow = saveButtons[0]?.closest('tr')
-    expect(firstQuickFillRow).toHaveTextContent('Drew')
+    expect(screen.queryByText('Alex')).not.toBeInTheDocument()
+    expect(screen.queryByText('Blair')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save info' })).not.toBeInTheDocument()
   })
 
-  it('saves only the missing fields from inline quick fill controls', async () => {
+  it('auto-saves when the last missing field is selected', async () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse({
@@ -183,7 +183,6 @@ describe('PlayersPage quick fill mode', () => {
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (1)' }))
     await userEvent.selectOptions(screen.getByLabelText('Set gender for Alex NoGender'), 'woman')
-    await userEvent.click(screen.getByRole('button', { name: 'Save info' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
 
@@ -197,5 +196,55 @@ describe('PlayersPage quick fill mode', () => {
     await waitFor(() =>
       expect(screen.getByText('Everyone currently has gender and skill filled in.')).toBeInTheDocument()
     )
+  })
+
+  it('waits until both missing fields are set before auto-saving', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          players: [
+            player({
+              id: 'missing-both',
+              firstName: 'Drew',
+              lastName: 'BothMissing',
+              rosterName: 'Drew BothMissing',
+              skillLevel: null,
+              skillLabel: 'Unset',
+              gender: null,
+              genderLabel: '—',
+              genderGroupLabel: '—',
+            }),
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          player: playerSnapshot({
+            id: 'missing-both',
+            firstName: 'Drew',
+            lastName: 'BothMissing',
+            rosterName: 'Drew BothMissing',
+            skillLevel: 2,
+            gender: 'man',
+          }),
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ players: [] }))
+
+    render(<PlayersPage />)
+
+    await screen.findByText('1 player')
+    await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (1)' }))
+    await userEvent.selectOptions(screen.getByLabelText('Set gender for Drew BothMissing'), 'man')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    await userEvent.selectOptions(screen.getByLabelText('Set skill for Drew BothMissing'), '2')
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({ skillLevel: 2, gender: 'man' }),
+    })
   })
 })
