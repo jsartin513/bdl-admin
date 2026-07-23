@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q') ?? undefined
     const skillParam = searchParams.get('skill')
     const homeLeagueParam = searchParams.get('homeLeague')
+    const eventIdParam = searchParams.get('eventId')
     const includeMerged = searchParams.get('includeMerged') === '1'
 
     let skill: number | 'unset' | null = null
@@ -27,12 +28,21 @@ export async function GET(request: NextRequest) {
       if (isValidSkillLevel(n)) skill = n
     }
 
-    let homeLeague: string | null = null
-    if (homeLeagueParam && isValidHomeLeague(homeLeagueParam)) {
+    let homeLeague: string | 'unset' | null = null
+    if (homeLeagueParam === 'unset') homeLeague = 'unset'
+    else if (homeLeagueParam && isValidHomeLeague(homeLeagueParam)) {
       homeLeague = homeLeagueParam
     }
 
-    const players = await listPlayers({ q, skill, homeLeague, includeMerged })
+    const eventId =
+      eventIdParam &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        eventIdParam
+      )
+        ? eventIdParam
+        : null
+
+    const players = await listPlayers({ q, skill, homeLeague, eventId, includeMerged })
     return NextResponse.json({ players })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list players'

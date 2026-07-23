@@ -455,6 +455,101 @@ describe('PlayersPage home leagues', () => {
       method: 'PATCH',
       body: JSON.stringify({ addHomeLeague: 'boston_dodgeball_league' }),
     })
-    expect(await screen.findByText(/1\.\s*Boston Dodgeball League|Boston Dodgeball League/)).toBeInTheDocument()
+    expect(await screen.findByText('1.')).toBeInTheDocument()
+    expect(screen.getAllByText('Boston Dodgeball League').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('PlayersPage tournament filters and columns', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('minimal view hides full name, roster name, and email', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        players: [
+          player({
+            primaryEmail: 'alex@example.com',
+            rosterName: 'Alex Player',
+          }),
+        ],
+      })
+    )
+
+    render(<PlayersPage />)
+
+    await screen.findByText('1 player')
+    expect(screen.getByRole('columnheader', { name: /First/ })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Last/ })).toBeInTheDocument()
+    expect(screen.getByText('Alex Player')).toBeInTheDocument()
+    expect(screen.getByText('alex@example.com')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Columns' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Minimal view' }))
+
+    expect(screen.queryByRole('columnheader', { name: /First/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: /Last/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Alex Player')).not.toBeInTheDocument()
+    expect(screen.queryByText('alex@example.com')).not.toBeInTheDocument()
+    expect(screen.getByText('Alex P')).toBeInTheDocument()
+  })
+
+  it('filters by event participation and home league none set', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/events')) {
+        return Promise.resolve(
+          jsonResponse({
+            events: [
+              {
+                id: '11111111-1111-4111-8111-111111111111',
+                name: 'Throw Down',
+                eventDate: '2026-07-01',
+                eventType: 'tournament',
+                eventTypeLabel: 'Tournament',
+                notes: null,
+                registrationCount: 12,
+              },
+            ],
+          })
+        )
+      }
+      return Promise.resolve(jsonResponse({ players: [player()] }))
+    })
+
+    render(<PlayersPage />)
+    await screen.findByText('1 player')
+
+    const eventSelect = screen.getByLabelText('Filter by event')
+    await userEvent.click(eventSelect)
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Throw Down (2026-07-01)' })).toBeInTheDocument()
+    )
+    await userEvent.selectOptions(eventSelect, '11111111-1111-4111-8111-111111111111')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(
+        urls.some((url) =>
+          url.includes('eventId=11111111-1111-4111-8111-111111111111')
+        )
+      ).toBe(true)
+    })
+
+    await userEvent.selectOptions(screen.getByLabelText('Filter by home league'), 'unset')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(urls.some((url) => url.includes('homeLeague=unset'))).toBe(true)
+    })
   })
 })
