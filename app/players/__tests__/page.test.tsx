@@ -16,8 +16,8 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     jerseyName: 'Player',
     skillLevel: 2,
     skillLabel: 'Intermediate',
-    gender: 'woman',
-    genderLabel: 'Woman',
+    gender: 'female',
+    genderLabel: 'Female',
     genderGroupLabel: 'W/NB/O',
     primaryEmail: null,
     isMerged: false,
@@ -40,7 +40,7 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     jerseyName: 'Player',
     jerseyNameCustom: null,
     skillLevel: 2,
-    gender: 'woman',
+    gender: 'female',
     isMerged: false,
     mergedIntoPlayerId: null,
     hasStrongPersonality: false,
@@ -101,8 +101,8 @@ describe('PlayersPage quick fill mode', () => {
             rosterName: 'Blair NoSkill',
             skillLevel: null,
             skillLabel: 'Unset',
-            gender: 'man',
-            genderLabel: 'Man',
+            gender: 'male',
+            genderLabel: 'Male',
             genderGroupLabel: 'M',
           }),
           player({
@@ -184,7 +184,7 @@ describe('PlayersPage quick fill mode', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (1)' }))
-    await userEvent.selectOptions(screen.getByLabelText('Set gender for Alex NoGender'), 'woman')
+    await userEvent.selectOptions(screen.getByLabelText('Set gender for Alex NoGender'), 'female')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
 
@@ -192,7 +192,7 @@ describe('PlayersPage quick fill mode', () => {
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gender: 'woman' }),
+      body: JSON.stringify({ gender: 'female' }),
     })
 
     await waitFor(() =>
@@ -227,7 +227,7 @@ describe('PlayersPage quick fill mode', () => {
             lastName: 'BothMissing',
             rosterName: 'Drew BothMissing',
             skillLevel: 2,
-            gender: 'man',
+            gender: 'male',
           }),
         })
       )
@@ -237,7 +237,7 @@ describe('PlayersPage quick fill mode', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Quick fill missing info (1)' }))
-    await userEvent.selectOptions(screen.getByLabelText('Set gender for Drew BothMissing'), 'man')
+    await userEvent.selectOptions(screen.getByLabelText('Set gender for Drew BothMissing'), 'male')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
@@ -246,7 +246,7 @@ describe('PlayersPage quick fill mode', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       method: 'PATCH',
-      body: JSON.stringify({ skillLevel: 2, gender: 'man' }),
+      body: JSON.stringify({ skillLevel: 2, gender: 'male' }),
     })
   })
 })
@@ -274,22 +274,22 @@ describe('PlayersPage bulk edit mode', () => {
               firstName: 'Ada',
               lastName: 'Woman',
               rosterName: 'Ada Woman',
-              gender: 'woman',
+              gender: 'female',
             }),
             player({
               id: 'w2',
               firstName: 'Bea',
               lastName: 'Woman',
               rosterName: 'Bea Woman',
-              gender: 'woman',
+              gender: 'female',
             }),
             player({
               id: 'm1',
               firstName: 'Cal',
               lastName: 'Man',
               rosterName: 'Cal Man',
-              gender: 'man',
-              genderLabel: 'Man',
+              gender: 'male',
+              genderLabel: 'Male',
               genderGroupLabel: 'M',
             }),
           ],
@@ -306,7 +306,7 @@ describe('PlayersPage bulk edit mode', () => {
               rosterName: 'Ada Woman',
               skillLevel: 3,
               skillLabel: 'Advanced',
-              gender: 'woman',
+              gender: 'female',
             }),
             player({
               id: 'w2',
@@ -315,15 +315,15 @@ describe('PlayersPage bulk edit mode', () => {
               rosterName: 'Bea Woman',
               skillLevel: 3,
               skillLabel: 'Advanced',
-              gender: 'woman',
+              gender: 'female',
             }),
             player({
               id: 'm1',
               firstName: 'Cal',
               lastName: 'Man',
               rosterName: 'Cal Man',
-              gender: 'man',
-              genderLabel: 'Man',
+              gender: 'male',
+              genderLabel: 'Male',
               genderGroupLabel: 'M',
             }),
           ],

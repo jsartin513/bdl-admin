@@ -9,10 +9,10 @@ describe('parseBulkPlayerRequest', () => {
   it('accepts a gender-only patch and dedupes player ids', () => {
     const parsed = parseBulkPlayerRequest({
       playerIds: ['a', 'b', 'a'],
-      patch: { gender: 'woman' },
+      patch: { gender: 'female' },
     })
     expect(parsed.playerIds).toEqual(['a', 'b'])
-    expect(parsed.patch).toEqual({ gender: 'woman' })
+    expect(parsed.patch).toEqual({ gender: 'female' })
   })
 
   it('accepts clearing gender and skill to null', () => {
@@ -61,7 +61,7 @@ describe('parseBulkPlayerRequest', () => {
   })
 
   it('rejects empty playerIds, empty patch, and invalid enums', () => {
-    expect(() => parseBulkPlayerRequest({ playerIds: [], patch: { gender: 'woman' } })).toThrow(
+    expect(() => parseBulkPlayerRequest({ playerIds: [], patch: { gender: 'female' } })).toThrow(
       /playerIds must be a non-empty array/
     )
     expect(() => parseBulkPlayerRequest({ playerIds: ['p1'], patch: {} })).toThrow(
@@ -90,7 +90,7 @@ describe('parseBulkPlayerRequest', () => {
 
 describe('bulkPatchHasCoreFields', () => {
   it('detects scalar fields vs home-league-only patches', () => {
-    expect(bulkPatchHasCoreFields({ gender: 'man' })).toBe(true)
+    expect(bulkPatchHasCoreFields({ gender: 'male' })).toBe(true)
     expect(bulkPatchHasCoreFields({ addHomeLeague: 'boston_dodgeball_league' })).toBe(false)
     const empty: BulkPlayerPatch = {}
     expect(bulkPatchHasCoreFields(empty)).toBe(false)

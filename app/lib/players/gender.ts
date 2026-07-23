@@ -1,31 +1,35 @@
 export const GENDERS = {
-  man: 'Man',
-  woman: 'Woman',
+  male: 'Male',
+  female: 'Female',
   nonbinary: 'Nonbinary',
   other: 'Other',
 } as const
 
 export type Gender = keyof typeof GENDERS
 
-/** Drafting / roster balance: woman + nonbinary + other count together. */
+/** Drafting / roster balance: female + nonbinary + other count together. */
 export type GenderGroup = 'w_nb_o' | 'men' | 'unset'
 
 const GENDER_ALIASES: Record<string, Gender> = {
-  man: 'man',
-  male: 'man',
-  m: 'man',
-  'cisgender man': 'man',
-  cisgender_man: 'man',
-  'cis man': 'man',
-  cis_man: 'man',
-  woman: 'woman',
-  female: 'woman',
-  f: 'woman',
-  w: 'woman',
-  'cisgender woman': 'woman',
-  cisgender_woman: 'woman',
-  'cis woman': 'woman',
-  cis_woman: 'woman',
+  male: 'male',
+  man: 'male',
+  m: 'male',
+  'cisgender man': 'male',
+  cisgender_man: 'male',
+  'cis man': 'male',
+  cis_man: 'male',
+  'cisgender male': 'male',
+  cisgender_male: 'male',
+  female: 'female',
+  woman: 'female',
+  f: 'female',
+  w: 'female',
+  'cisgender woman': 'female',
+  cisgender_woman: 'female',
+  'cis woman': 'female',
+  cis_woman: 'female',
+  'cisgender female': 'female',
+  cisgender_female: 'female',
   nonbinary: 'nonbinary',
   'non binary': 'nonbinary',
   nb: 'nonbinary',
@@ -38,7 +42,7 @@ const GENDER_ALIASES: Record<string, Gender> = {
 }
 
 export function isValidGender(value: unknown): value is Gender {
-  return value === 'man' || value === 'woman' || value === 'nonbinary' || value === 'other'
+  return value === 'male' || value === 'female' || value === 'nonbinary' || value === 'other'
 }
 
 export function genderLabel(gender: string | null | undefined): string {
@@ -48,8 +52,8 @@ export function genderLabel(gender: string | null | undefined): string {
 }
 
 export function genderGroup(gender: string | null | undefined): GenderGroup {
-  if (gender === 'woman' || gender === 'nonbinary' || gender === 'other') return 'w_nb_o'
-  if (gender === 'man') return 'men'
+  if (gender === 'female' || gender === 'nonbinary' || gender === 'other') return 'w_nb_o'
+  if (gender === 'male') return 'men'
   return 'unset'
 }
 

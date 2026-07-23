@@ -71,6 +71,13 @@
       "when": 1753232000000,
       "tag": "0009_player_home_leagues",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1753296000000,
+      "tag": "0010_gender_male_female",
+      "breakpoints": true
     }
   ]
 }
