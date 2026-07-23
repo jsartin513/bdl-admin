@@ -21,6 +21,7 @@ import {
 } from '@/app/lib/players/home-league'
 import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
+import type { EventListItem } from '@/app/lib/events/types'
 
 type HistoryRow = {
   id: string
@@ -235,6 +236,7 @@ function SortableHeader(props: {
 type SortKey = 'first' | 'last' | 'jersey' | 'jerseyName' | 'gender' | 'skill'
 
 type ColumnKey =
+  | 'fullName'
   | 'roster'
   | 'nickname'
   | 'jerseyNumber'
@@ -245,6 +247,7 @@ type ColumnKey =
   | 'homeLeagues'
 
 const COLUMN_OPTIONS: { key: ColumnKey; label: string }[] = [
+  { key: 'fullName', label: 'Full name' },
   { key: 'roster', label: 'Roster name' },
   { key: 'nickname', label: 'Nickname' },
   { key: 'jerseyNumber', label: 'Jersey #' },
@@ -256,6 +259,7 @@ const COLUMN_OPTIONS: { key: ColumnKey; label: string }[] = [
 ]
 
 const DEFAULT_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
+  fullName: true,
   roster: true,
   nickname: true,
   jerseyNumber: false,
@@ -264,6 +268,14 @@ const DEFAULT_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
   skill: true,
   email: true,
   homeLeagues: false,
+}
+
+/** Compact roster view for drafting teams. */
+const MINIMAL_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
+  ...DEFAULT_VISIBLE_COLUMNS,
+  fullName: false,
+  roster: false,
+  email: false,
 }
 
 const COLUMNS_STORAGE_KEY = 'bdl-admin.players.visibleColumns'
@@ -336,7 +348,12 @@ export default function PlayersPage() {
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [skillFilter, setSkillFilter] = useState('')
-  const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | HomeLeague>('')
+  const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | 'unset' | HomeLeague>('')
+  const [eventFilter, setEventFilter] = useState('')
+  const [events, setEvents] = useState<EventListItem[]>([])
+  const [eventsStatus, setEventsStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
+    'idle'
+  )
   const [genderFilter, setGenderFilter] = useState<'' | GenderGroup>('')
   const [sortKey, setSortKey] = useState<SortKey>('last')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -378,13 +395,15 @@ export default function PlayersPage() {
     setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
+  const showFullNameColumns = visibleColumns.fullName
   const showGenderColumn = visibleColumns.gender || quickFillMode
   const showSkillColumn = visibleColumns.skill || quickFillMode
   const showHomeLeaguesColumn = visibleColumns.homeLeagues || bulkEditMode
 
   const visibleColumnCount =
-    2 + // first + last always shown
+    (showFullNameColumns ? 2 : 0) +
     COLUMN_OPTIONS.filter((c) => {
+      if (c.key === 'fullName') return false
       if (c.key === 'gender') return showGenderColumn
       if (c.key === 'skill') return showSkillColumn
       if (c.key === 'homeLeagues') return showHomeLeaguesColumn
@@ -392,6 +411,20 @@ export default function PlayersPage() {
     }).length +
     (bulkEditMode ? 1 : 0) + // checkbox
     1 // actions
+
+  const loadEvents = useCallback(async () => {
+    if (eventsStatus === 'loading' || eventsStatus === 'loaded') return
+    setEventsStatus('loading')
+    try {
+      const res = await fetch('/api/events')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load events')
+      setEvents(data.events ?? [])
+      setEventsStatus('loaded')
+    } catch {
+      setEventsStatus('error')
+    }
+  }, [eventsStatus])
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<PlayerSnapshot | null>(null)
@@ -425,6 +458,7 @@ export default function PlayersPage() {
       if (q.trim()) params.set('q', q.trim())
       if (skillFilter) params.set('skill', skillFilter)
       if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
+      if (eventFilter) params.set('eventId', eventFilter)
       if (includeMerged) params.set('includeMerged', '1')
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
@@ -435,7 +469,7 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, homeLeagueFilter, includeMerged])
+  }, [q, skillFilter, homeLeagueFilter, eventFilter, includeMerged])
 
   useEffect(() => {
     void loadPlayers()
@@ -933,6 +967,52 @@ export default function PlayersPage() {
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 w-64"
           />
         </label>
+        <label className="text-sm text-gray-900">
+          <span className="block text-gray-600 mb-1">Event</span>
+          <select
+            aria-label="Filter by event"
+            value={eventFilter}
+            onFocus={() => void loadEvents()}
+            onChange={(e) => setEventFilter(e.target.value)}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[16rem]"
+          >
+            <option value="">All events</option>
+            {eventsStatus === 'loading' ? (
+              <option value="" disabled>
+                Loading…
+              </option>
+            ) : null}
+            {eventsStatus === 'error' ? (
+              <option value="" disabled>
+                Failed to load events
+              </option>
+            ) : null}
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name} ({event.eventDate})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-gray-900">
+          <span className="block text-gray-600 mb-1">Home league</span>
+          <select
+            aria-label="Filter by home league"
+            value={homeLeagueFilter}
+            onChange={(e) =>
+              setHomeLeagueFilter(e.target.value as '' | 'unset' | HomeLeague)
+            }
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[14rem]"
+          >
+            <option value="">All</option>
+            <option value="unset">None set</option>
+            {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-sm text-gray-900 pb-2">
           <input
             type="checkbox"
@@ -951,7 +1031,6 @@ export default function PlayersPage() {
           </button>
           {columnsOpen ? (
             <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded border border-gray-200 bg-white p-2 shadow-lg">
-              <p className="px-1 pb-1 text-xs text-gray-500">First/last always shown</p>
               {COLUMN_OPTIONS.map((col) => (
                 <label
                   key={col.key}
@@ -968,6 +1047,13 @@ export default function PlayersPage() {
               <button
                 type="button"
                 className="mt-1 w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
+                onClick={() => setVisibleColumns({ ...MINIMAL_VISIBLE_COLUMNS })}
+              >
+                Minimal view
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
                 onClick={() => setVisibleColumns({ ...DEFAULT_VISIBLE_COLUMNS })}
               >
                 Reset defaults
@@ -1218,18 +1304,22 @@ export default function PlayersPage() {
                     />
                   </th>
                 ) : null}
-                <SortableHeader
-                  label="First"
-                  active={sortKey === 'first'}
-                  dir={sortDir}
-                  onClick={() => toggleSort('first')}
-                />
-                <SortableHeader
-                  label="Last"
-                  active={sortKey === 'last'}
-                  dir={sortDir}
-                  onClick={() => toggleSort('last')}
-                />
+                {showFullNameColumns ? (
+                  <SortableHeader
+                    label="First"
+                    active={sortKey === 'first'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('first')}
+                  />
+                ) : null}
+                {showFullNameColumns ? (
+                  <SortableHeader
+                    label="Last"
+                    active={sortKey === 'last'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('last')}
+                  />
+                ) : null}
                 {visibleColumns.roster ? <th className="px-3 py-2">Roster name</th> : null}
                 {visibleColumns.nickname ? <th className="px-3 py-2">Nickname</th> : null}
                 {visibleColumns.jerseyNumber ? (
@@ -1299,28 +1389,7 @@ export default function PlayersPage() {
                 ) : null}
                 {visibleColumns.email ? <th className="px-3 py-2">Email</th> : null}
                 {showHomeLeaguesColumn ? (
-                  <th className="px-3 py-2 align-bottom">
-                    <div className="space-y-1">
-                      <span className="block text-sm font-medium text-gray-700">
-                        Home leagues
-                      </span>
-                      <select
-                        aria-label="Filter by home league"
-                        value={homeLeagueFilter}
-                        onChange={(e) =>
-                          setHomeLeagueFilter(e.target.value as '' | HomeLeague)
-                        }
-                        className="block w-full max-w-[12rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900"
-                      >
-                        <option value="">All</option>
-                        {Object.entries(HOME_LEAGUES).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </th>
+                  <th className="px-3 py-2">Home leagues</th>
                 ) : null}
                 <th className="px-3 py-2">Actions</th>
               </tr>
@@ -1342,21 +1411,25 @@ export default function PlayersPage() {
                       />
                     </td>
                   ) : null}
-                  <td className="px-3 py-2">
-                    <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
-                    {p.hasStrongPersonality ? (
-                      <span
-                        title={p.strongPersonalityNotes || 'Strong personality'}
-                        className="ml-1 cursor-help text-amber-500"
-                        aria-label="Strong personality"
-                      >
-                        ⚡
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2">
-                    <SkillStyledText skillLevel={p.skillLevel}>{p.lastName}</SkillStyledText>
-                  </td>
+                  {showFullNameColumns ? (
+                    <td className="px-3 py-2">
+                      <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
+                      {p.hasStrongPersonality ? (
+                        <span
+                          title={p.strongPersonalityNotes || 'Strong personality'}
+                          className="ml-1 cursor-help text-amber-500"
+                          aria-label="Strong personality"
+                        >
+                          ⚡
+                        </span>
+                      ) : null}
+                    </td>
+                  ) : null}
+                  {showFullNameColumns ? (
+                    <td className="px-3 py-2">
+                      <SkillStyledText skillLevel={p.skillLevel}>{p.lastName}</SkillStyledText>
+                    </td>
+                  ) : null}
                   {visibleColumns.roster ? (
                     <td className="px-3 py-2">
                       <SkillStyledText skillLevel={p.skillLevel}>{p.rosterName}</SkillStyledText>
@@ -1365,6 +1438,15 @@ export default function PlayersPage() {
                   {visibleColumns.nickname ? (
                     <td className="px-3 py-2">
                       <SkillStyledText skillLevel={p.skillLevel}>{p.nickname}</SkillStyledText>
+                      {!showFullNameColumns && p.hasStrongPersonality ? (
+                        <span
+                          title={p.strongPersonalityNotes || 'Strong personality'}
+                          className="ml-1 cursor-help text-amber-500"
+                          aria-label="Strong personality"
+                        >
+                          ⚡
+                        </span>
+                      ) : null}
                     </td>
                   ) : null}
                   {visibleColumns.jerseyNumber ? (

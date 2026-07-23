@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import {
+  eventRegistrations,
   playerAliases,
   playerChanges,
   playerEmails,
@@ -19,7 +20,8 @@ import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 export async function listPlayers(opts: {
   q?: string
   skill?: number | 'unset' | null
-  homeLeague?: string | null
+  homeLeague?: string | 'unset' | null
+  eventId?: string | null
   includeMerged?: boolean
 }): Promise<PlayerListItem[]> {
   const db = getDb()
@@ -35,12 +37,25 @@ export async function listPlayers(opts: {
     conditions.push(eq(players.skillLevel, opts.skill))
   }
 
-  if (opts.homeLeague && isValidHomeLeague(opts.homeLeague)) {
+  if (opts.homeLeague === 'unset') {
+    const playersWithHomeLeague = db
+      .select({ playerId: playerHomeLeagues.playerId })
+      .from(playerHomeLeagues)
+    conditions.push(notInArray(players.id, playersWithHomeLeague))
+  } else if (opts.homeLeague && isValidHomeLeague(opts.homeLeague)) {
     const matchingHomeLeagueIds = db
       .select({ playerId: playerHomeLeagues.playerId })
       .from(playerHomeLeagues)
       .where(eq(playerHomeLeagues.homeLeague, opts.homeLeague))
     conditions.push(inArray(players.id, matchingHomeLeagueIds))
+  }
+
+  if (opts.eventId) {
+    const registeredIds = db
+      .select({ playerId: eventRegistrations.playerId })
+      .from(eventRegistrations)
+      .where(eq(eventRegistrations.eventId, opts.eventId))
+    conditions.push(inArray(players.id, registeredIds))
   }
 
   if (opts.q?.trim()) {
