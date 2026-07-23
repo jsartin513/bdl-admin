@@ -38,6 +38,7 @@ type EventDetail = {
   eventType: string
   eventTypeLabel: string
   notes: string | null
+  pairingEnabled: boolean
 }
 
 type ImportAction = {
@@ -108,6 +109,18 @@ function genderRowLabel(row: (typeof GENDER_ROWS)[number]): string {
   return 'Unset'
 }
 
+/** (C) for sole captain on a team; (CC) when the team has multiple captains. */
+function captainBadge(
+  registration: EventRegistrationListItem,
+  all: EventRegistrationListItem[]
+): '(C)' | '(CC)' | null {
+  if (!registration.isCaptain || registration.draftGroup == null) return null
+  const captainsOnTeam = all.filter(
+    (r) => r.draftGroup === registration.draftGroup && r.isCaptain
+  )
+  return captainsOnTeam.length > 1 ? '(CC)' : '(C)'
+}
+
 export default function EventTrackerPage() {
   return (
     <Suspense
@@ -139,7 +152,7 @@ function EventTrackerPageContent() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [importCsv, setImportCsv] = useState('')
-  const [importFilename, setImportFilename] = useState('teamlinkt.csv')
+  const [importFilename, setImportFilename] = useState('pasted.csv')
   const [importProfileFields, setImportProfileFields] = useState<
     'skip' | 'fill_blank' | 'overwrite'
   >('skip')
@@ -290,7 +303,16 @@ function EventTrackerPageContent() {
       setRegistrations((prev) =>
         prev.map((r) =>
           r.id === registrationId
-            ? { ...r, draftGroup: data.registration.draftGroup }
+            ? {
+                ...r,
+                draftGroup: data.registration.draftGroup,
+                isCaptain:
+                  typeof data.registration.isCaptain === 'boolean'
+                    ? data.registration.isCaptain
+                    : draftGroup == null
+                      ? false
+                      : r.isCaptain,
+              }
             : r
         )
       )
@@ -301,6 +323,33 @@ function EventTrackerPageContent() {
       setFormError(err instanceof Error ? err.message : 'Failed to update draft group')
     } finally {
       setSavingId(null)
+    }
+  }
+
+  async function togglePairingEnabled(pairingEnabled: boolean) {
+    if (!event) return
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairingEnabled }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update pairing')
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              pairingEnabled: Boolean(data.event.pairingEnabled),
+            }
+          : prev
+      )
+      setMessage(
+        pairingEnabled ? 'Pairing enabled for this event' : 'Pairing disabled for this event'
+      )
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update pairing')
     }
   }
 
@@ -379,11 +428,12 @@ function EventTrackerPageContent() {
   }
 
   function seedPlayersFromRegistrations() {
+    const pairingOn = event?.pairingEnabled !== false
     return registrations.map((r) => ({
       id: r.id,
       skillLevel: r.skillLevel,
       gender: r.gender,
-      pairId: r.pairId,
+      pairId: pairingOn ? r.pairId : null,
       draftGroup: r.draftGroup,
     }))
   }
@@ -449,10 +499,14 @@ function EventTrackerPageContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to apply draft')
       setRegistrations((prev) =>
-        prev.map((r) => ({
-          ...r,
-          draftGroup: draftAssignments.get(r.id) ?? null,
-        }))
+        prev.map((r) => {
+          const draftGroup = draftAssignments.get(r.id) ?? null
+          return {
+            ...r,
+            draftGroup,
+            isCaptain: draftGroup == null ? false : r.isCaptain,
+          }
+        })
       )
       const maxAssigned = Math.max(
         0,
@@ -634,7 +688,7 @@ function EventTrackerPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csv: importCsv,
-          filename: importFilename,
+          filename: importFilename.trim() || 'pasted.csv',
           dryRun: true,
           profileFields: importProfileFields,
           eventId,
@@ -654,6 +708,15 @@ function EventTrackerPageContent() {
   }
 
   async function commitImport() {
+    if (!importPreview) {
+      if (
+        !window.confirm(
+          'Import without a dry run? This will create/update players and register them for this event.'
+        )
+      ) {
+        return
+      }
+    }
     setImportBusy(true)
     setFormError(null)
     try {
@@ -662,7 +725,7 @@ function EventTrackerPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           csv: importCsv,
-          filename: importFilename,
+          filename: importFilename.trim() || 'pasted.csv',
           dryRun: false,
           profileFields: importProfileFields,
           eventId,
@@ -673,6 +736,7 @@ function EventTrackerPageContent() {
       const summary = data.summary as Record<string, number>
       setImportOpen(false)
       setImportCsv('')
+      setImportFilename('pasted.csv')
       setImportPreview(null)
       setImportProfileFields('skip')
       setMessage(
@@ -723,6 +787,14 @@ function EventTrackerPageContent() {
           {event.notes ? (
             <p className="text-sm text-gray-600 mt-1">{event.notes}</p>
           ) : null}
+          <label className="mt-3 flex items-center gap-2 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              checked={event.pairingEnabled !== false}
+              onChange={(e) => void togglePairingEnabled(e.target.checked)}
+            />
+            Allow pairing
+          </label>
         </div>
         <div className="flex flex-wrap gap-2">
           {draftPhase === 'off' ? (
@@ -873,6 +945,7 @@ function EventTrackerPageContent() {
           onDiscard={discardDraft}
           applying={draftApplying}
           error={draftError}
+          pairingEnabled={event.pairingEnabled !== false}
           snapshots={snapshots}
           snapshotsBusy={snapshotsBusy}
           onSaveSnapshot={saveSnapshot}
@@ -1010,14 +1083,19 @@ function EventTrackerPageContent() {
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Draft group</th>
                   <th className="px-3 py-2 font-medium">Captain</th>
-                  <th className="px-3 py-2 font-medium">Pair</th>
+                  {event.pairingEnabled !== false ? (
+                    <th className="px-3 py-2 font-medium">Pair</th>
+                  ) : null}
                   <th className="px-3 py-2 font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
+                    <td
+                      colSpan={event.pairingEnabled !== false ? 8 : 7}
+                      className="px-3 py-6 text-center text-gray-500"
+                    >
                       {registrations.length === 0
                         ? 'No registrations yet. Import a TeamLinkt CSV for this event.'
                         : 'No players match this filter.'}
@@ -1027,6 +1105,8 @@ function EventTrackerPageContent() {
                   filtered.map((r) => {
                     const label =
                       r.nickname || `${r.firstName} ${r.lastName}`
+                    const badge = captainBadge(r, registrations)
+                    const onTeam = r.draftGroup != null
                     const unpairedOptions = registrations.filter(
                       (other) =>
                         other.id !== r.id &&
@@ -1042,10 +1122,15 @@ function EventTrackerPageContent() {
                           <SkillStyledText skillLevel={r.skillLevel}>
                             {label}
                           </SkillStyledText>
-                          {r.isCaptain ? (
-                            <span className="ml-1 text-xs font-medium text-blue-700">(C)</span>
+                          {badge ? (
+                            <span
+                              className="ml-1 text-xs font-medium text-blue-700"
+                              title={badge === '(CC)' ? 'Co-captain' : 'Captain'}
+                            >
+                              {badge}
+                            </span>
                           ) : null}
-                          {r.partnerNickname ? (
+                          {event.pairingEnabled !== false && r.partnerNickname ? (
                             <div className="text-xs text-violet-700">
                               Paired with {r.partnerNickname}
                             </div>
@@ -1081,50 +1166,69 @@ function EventTrackerPageContent() {
                           </select>
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            className={`text-xs disabled:opacity-40 ${r.isCaptain ? 'font-medium text-blue-700 hover:text-blue-900' : 'text-gray-500 hover:text-gray-700'}`}
-                            disabled={savingId === r.id}
-                            onClick={() => void toggleCaptain(r.id, !r.isCaptain)}
-                            title={r.isCaptain ? 'Remove captain' : 'Set as captain'}
-                          >
-                            {r.isCaptain ? '(C) Remove' : 'Set (C)'}
-                          </button>
-                        </td>
-                        <td className="px-3 py-2">
-                          {r.pairId ? (
+                          {onTeam ? (
                             <button
                               type="button"
-                              className="text-xs text-violet-700 hover:underline disabled:opacity-40"
+                              className={`text-xs disabled:opacity-40 ${r.isCaptain ? 'font-medium text-blue-700 hover:text-blue-900' : 'text-gray-500 hover:text-gray-700'}`}
                               disabled={savingId === r.id}
-                              onClick={() => void unpair(r.id)}
+                              onClick={() => void toggleCaptain(r.id, !r.isCaptain)}
+                              title={
+                                r.isCaptain
+                                  ? badge === '(CC)'
+                                    ? 'Remove co-captain'
+                                    : 'Remove captain'
+                                  : 'Set as captain'
+                              }
                             >
-                              Unpair
+                              {r.isCaptain
+                                ? `${badge ?? '(C)'} Remove`
+                                : 'Set (C)'}
                             </button>
-                          ) : unpairedOptions.length > 0 ? (
-                            <select
-                              className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
-                              disabled={savingId === r.id}
-                              defaultValue=""
-                              onChange={(e) => {
-                                const partnerId = e.target.value
-                                e.target.value = ''
-                                if (!partnerId) return
-                                void pairWith(r.id, partnerId)
-                              }}
-                            >
-                              <option value="">Pair with…</option>
-                              {unpairedOptions.map((other) => (
-                                <option key={other.id} value={other.id}>
-                                  {other.nickname ||
-                                    `${other.firstName} ${other.lastName}`}
-                                </option>
-                              ))}
-                            </select>
                           ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                            <span
+                              className="text-xs text-gray-400"
+                              title="Assign to a team first"
+                            >
+                              —
+                            </span>
                           )}
                         </td>
+                        {event.pairingEnabled !== false ? (
+                          <td className="px-3 py-2">
+                            {r.pairId ? (
+                              <button
+                                type="button"
+                                className="text-xs text-violet-700 hover:underline disabled:opacity-40"
+                                disabled={savingId === r.id}
+                                onClick={() => void unpair(r.id)}
+                              >
+                                Unpair
+                              </button>
+                            ) : unpairedOptions.length > 0 ? (
+                              <select
+                                className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+                                disabled={savingId === r.id}
+                                defaultValue=""
+                                onChange={(e) => {
+                                  const partnerId = e.target.value
+                                  e.target.value = ''
+                                  if (!partnerId) return
+                                  void pairWith(r.id, partnerId)
+                                }}
+                              >
+                                <option value="">Pair with…</option>
+                                {unpairedOptions.map((other) => (
+                                  <option key={other.id} value={other.id}>
+                                    {other.nickname ||
+                                      `${other.firstName} ${other.lastName}`}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        ) : null}
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -1173,14 +1277,6 @@ function EventTrackerPageContent() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="text-gray-600">Filename</span>
-              <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={importFilename}
-                onChange={(e) => setImportFilename(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
               <span className="text-gray-600">CSV file</span>
               <input
                 type="file"
@@ -1196,6 +1292,11 @@ function EventTrackerPageContent() {
                   })
                 }}
               />
+              {importFilename && importFilename !== 'pasted.csv' ? (
+                <span className="mt-1 block text-xs text-gray-500">
+                  Using file: {importFilename}
+                </span>
+              ) : null}
             </label>
             <textarea
               className="w-full h-40 rounded border border-gray-300 px-3 py-2 font-mono text-xs"
@@ -1266,11 +1367,11 @@ function EventTrackerPageContent() {
               </button>
               <button
                 type="button"
-                disabled={importBusy || !importPreview}
+                disabled={importBusy || !importCsv.trim()}
                 className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
                 onClick={() => void commitImport()}
               >
-                Commit import
+                {importPreview ? 'Commit import' : 'Import now'}
               </button>
             </div>
           </div>

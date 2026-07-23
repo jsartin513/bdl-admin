@@ -36,11 +36,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     if (body.unpair === true) {
+      if (!event.pairingEnabled) {
+        return NextResponse.json(
+          { error: 'Pairing is disabled for this event' },
+          { status: 400 }
+        )
+      }
       const result = await unpairRegistration(id, registrationId)
       return NextResponse.json({ result })
     }
 
     if ('pairWithRegistrationId' in body) {
+      if (!event.pairingEnabled) {
+        return NextResponse.json(
+          { error: 'Pairing is disabled for this event' },
+          { status: 400 }
+        )
+      }
       if (
         typeof body.pairWithRegistrationId !== 'string' ||
         !body.pairWithRegistrationId
@@ -87,8 +99,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ? 404
         : message.includes('draftGroup') ||
             message.includes('pair') ||
+            message.includes('Pairing') ||
             message.includes('Cannot pair') ||
-            message.includes('already paired')
+            message.includes('already paired') ||
+            message.includes('captain')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

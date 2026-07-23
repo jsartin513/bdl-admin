@@ -97,6 +97,8 @@ export const events = pgTable(
     /** Canonical: tournament | open_gym | other */
     eventType: text('event_type').notNull().default('tournament'),
     notes: text('notes'),
+    /** When false, pair UI/behavior is disabled for the event */
+    pairingEnabled: boolean('pairing_enabled').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

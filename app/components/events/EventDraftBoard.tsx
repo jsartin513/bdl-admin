@@ -44,6 +44,7 @@ type Props = {
   onDiscard: () => void
   applying: boolean
   error: string | null
+  pairingEnabled?: boolean
   snapshots: EventDraftSnapshotListItem[]
   snapshotsBusy: boolean
   onSaveSnapshot: (name: string) => Promise<void>
@@ -66,6 +67,27 @@ function parseColumnId(id: string): number | null {
 
 function displayName(player: EventRegistrationListItem): string {
   return player.nickname || `${player.firstName} ${player.lastName}`
+}
+
+function captainBadgeForAssignment(
+  player: EventRegistrationListItem,
+  team: number | null,
+  registrations: EventRegistrationListItem[],
+  assignments: DraftAssignment
+): '(C)' | '(CC)' | null {
+  if (!player.isCaptain || team == null) return null
+  const captainsOnTeam = registrations.filter((r) => {
+    if (!r.isCaptain) return false
+    const assigned = assignments.get(r.id)
+    const effective = assigned !== undefined ? assigned : r.draftGroup
+    return effective === team
+  })
+  return captainsOnTeam.length > 1 ? '(CC)' : '(C)'
+}
+
+function homeLeagueText(player: EventRegistrationListItem): string | null {
+  if (!player.homeLeagues || player.homeLeagues.length === 0) return null
+  return player.homeLeagues.map((h) => h.label).join(', ')
 }
 
 function sortPlayers(
@@ -97,8 +119,12 @@ function playerCardClass(gender: string | null): string {
 function DraftPlayerCard(props: {
   player: EventRegistrationListItem
   dragging?: boolean
+  pairingEnabled?: boolean
+  showHomeLeague?: boolean
+  captainBadge?: '(C)' | '(CC)' | null
 }) {
-  const { player, dragging } = props
+  const { player, dragging, pairingEnabled, showHomeLeague, captainBadge } = props
+  const league = homeLeagueText(player)
   return (
     <div
       className={`rounded border px-2 py-1.5 text-xs shadow-sm ${playerCardClass(player.gender)} ${
@@ -107,6 +133,14 @@ function DraftPlayerCard(props: {
     >
       <div className="font-medium text-gray-900">
         {player.nickname || `${player.firstName} ${player.lastName}`}
+        {captainBadge ? (
+          <span
+            className="ml-1 text-[10px] font-semibold text-blue-700"
+            title={captainBadge === '(CC)' ? 'Co-captain' : 'Captain'}
+          >
+            {captainBadge}
+          </span>
+        ) : null}
         {player.hasStrongPersonality ? (
           <span
             title={player.strongPersonalityNotes || 'Strong personality'}
@@ -116,7 +150,7 @@ function DraftPlayerCard(props: {
             ⚡
           </span>
         ) : null}
-        {player.pairId ? (
+        {pairingEnabled !== false && player.pairId ? (
           <span
             className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
             title={
@@ -135,11 +169,19 @@ function DraftPlayerCard(props: {
         {player.genderGroupLabel}
         {player.skillLevel != null ? ` · ${player.skillLevel}` : ''}
       </div>
+      {showHomeLeague && league ? (
+        <div className="mt-0.5 text-[10px] text-gray-500">{league}</div>
+      ) : null}
     </div>
   )
 }
 
-function DraggablePlayer(props: { player: EventRegistrationListItem }) {
+function DraggablePlayer(props: {
+  player: EventRegistrationListItem
+  pairingEnabled?: boolean
+  showHomeLeague?: boolean
+  captainBadge?: '(C)' | '(CC)' | null
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: props.player.id })
   const style = transform
@@ -150,11 +192,16 @@ function DraggablePlayer(props: { player: EventRegistrationListItem }) {
     <div
       ref={setNodeRef}
       style={style}
-      className={`cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}
+      className={`cursor-grab touch-none ${isDragging ? 'opacity-40' : ''}`}
       {...listeners}
       {...attributes}
     >
-      <DraftPlayerCard player={props.player} />
+      <DraftPlayerCard
+        player={props.player}
+        pairingEnabled={props.pairingEnabled}
+        showHomeLeague={props.showHomeLeague}
+        captainBadge={props.captainBadge}
+      />
     </div>
   )
 }
@@ -188,6 +235,9 @@ function TeamColumn(props: {
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
   emphasizeUnassigned?: boolean
+  pairingEnabled?: boolean
+  showHomeLeague?: boolean
+  captainBadgeFor?: (player: EventRegistrationListItem) => '(C)' | '(CC)' | null
   onCopy?: () => Promise<void>
 }) {
   const id = columnId(props.team)
@@ -315,7 +365,13 @@ function TeamColumn(props: {
       </div>
       <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2">
         {sortedPlayers.map((p) => (
-          <DraggablePlayer key={p.id} player={p} />
+          <DraggablePlayer
+            key={p.id}
+            player={p}
+            pairingEnabled={props.pairingEnabled}
+            showHomeLeague={props.showHomeLeague}
+            captainBadge={props.captainBadgeFor?.(p) ?? null}
+          />
         ))}
       </div>
     </div>
@@ -333,6 +389,7 @@ export function EventDraftBoard(props: Props) {
     onDiscard,
     applying,
     error,
+    pairingEnabled = true,
     snapshots,
     snapshotsBusy,
     onSaveSnapshot,
@@ -346,6 +403,7 @@ export function EventDraftBoard(props: Props) {
   const [playerSort, setPlayerSort] = useState<PlayerSort>('name')
   const [copyIncludeJersey, setCopyIncludeJersey] = useState(false)
   const [copyUseRosterName, setCopyUseRosterName] = useState(false)
+  const [showHomeLeague, setShowHomeLeague] = useState(false)
   const [snapshotName, setSnapshotName] = useState('')
   const [compareA, setCompareA] = useState<'workspace' | string>('workspace')
   const [compareB, setCompareB] = useState<string>('')
@@ -448,10 +506,13 @@ export function EventDraftBoard(props: Props) {
     const sorted = sortPlayers(teamPlayers, playerSort)
     const lines = sorted.map((p) => {
       const name = copyUseRosterName ? (p.rosterName || displayName(p)) : displayName(p)
-      if (copyIncludeJersey && p.jerseyNumber != null) {
-        return `#${p.jerseyNumber} ${name}`
+      let line =
+        copyIncludeJersey && p.jerseyNumber != null ? `#${p.jerseyNumber} ${name}` : name
+      if (showHomeLeague) {
+        const league = homeLeagueText(p)
+        if (league) line = `${line} — ${league}`
       }
-      return name
+      return line
     })
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
@@ -486,7 +547,7 @@ export function EventDraftBoard(props: Props) {
     const next = new Map(assignments)
     next.set(playerId, targetTeam)
     const dragged = registrations.find((r) => r.id === playerId)
-    if (dragged?.partnerRegistrationId) {
+    if (pairingEnabled && dragged?.partnerRegistrationId) {
       next.set(dragged.partnerRegistrationId, targetTeam)
     }
     onAssignmentsChange(next)
@@ -506,7 +567,7 @@ export function EventDraftBoard(props: Props) {
           <h2 className="text-lg font-semibold text-gray-900">Draft mode</h2>
           <p className="text-sm text-gray-600">
             Working copy only — permanent draft groups are unchanged until you Apply.
-            Paired players move together.
+            {pairingEnabled ? ' Paired players move together.' : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -754,6 +815,14 @@ export function EventDraftBoard(props: Props) {
           />
           Use roster name
         </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showHomeLeague}
+            onChange={(e) => setShowHomeLeague(e.target.checked)}
+          />
+          Show home league
+        </label>
       </div>
 
       <DndContext
@@ -769,6 +838,11 @@ export function EventDraftBoard(props: Props) {
             players={unassignedPlayers}
             sort={playerSort}
             emphasizeUnassigned
+            pairingEnabled={pairingEnabled}
+            showHomeLeague={showHomeLeague}
+            captainBadgeFor={(p) =>
+              captainBadgeForAssignment(p, null, registrations, assignments)
+            }
           />
           {Array.from({ length: teamCount }, (_, i) => i + 1).map((t) => {
             const teamPlayers = byColumn.get(columnId(t)) ?? []
@@ -796,13 +870,31 @@ export function EventDraftBoard(props: Props) {
                   teamStats.genderDeltas[t - 1] >
                     Math.max(1, teamStats.avgGenderDelta + 1)
                 }
+                pairingEnabled={pairingEnabled}
+                showHomeLeague={showHomeLeague}
+                captainBadgeFor={(p) =>
+                  captainBadgeForAssignment(p, t, registrations, assignments)
+                }
                 onCopy={() => copyTeam(teamPlayers)}
               />
             )
           })}
         </div>
         <DragOverlay>
-          {activePlayer ? <DraftPlayerCard player={activePlayer} dragging /> : null}
+          {activePlayer ? (
+            <DraftPlayerCard
+              player={activePlayer}
+              dragging
+              pairingEnabled={pairingEnabled}
+              showHomeLeague={showHomeLeague}
+              captainBadge={captainBadgeForAssignment(
+                activePlayer,
+                assignments.get(activePlayer.id) ?? null,
+                registrations,
+                assignments
+              )}
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
     </div>

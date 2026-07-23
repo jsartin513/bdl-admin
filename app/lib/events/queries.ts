@@ -4,6 +4,7 @@ import {
   eventRegistrations,
   events,
   playerEmails,
+  playerHomeLeagues,
   players,
 } from '@/app/db/schema'
 import {
@@ -17,6 +18,10 @@ import {
   skillLevelLabel,
 } from '@/app/lib/players/skill'
 import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
+import {
+  homeLeagueLabel,
+  homeLeagueLogoUrl,
+} from '@/app/lib/players/home-league'
 
 export async function listEvents(): Promise<EventListItem[]> {
   const db = getDb()
@@ -96,6 +101,12 @@ export async function listEventRegistrations(
     .from(playerEmails)
     .where(inArray(playerEmails.playerId, playerIds))
 
+  const homeLeagueRows = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(inArray(playerHomeLeagues.playerId, playerIds))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
   const primaryByPlayer = new Map<string, string>()
   for (const e of emails) {
     if (e.isPrimary && !primaryByPlayer.has(e.playerId)) {
@@ -106,6 +117,20 @@ export async function listEventRegistrations(
     if (!primaryByPlayer.has(e.playerId)) {
       primaryByPlayer.set(e.playerId, e.email)
     }
+  }
+
+  const homeLeaguesByPlayer = new Map<
+    string,
+    { homeLeague: string; label: string; logoUrl: string | null }[]
+  >()
+  for (const row of homeLeagueRows) {
+    const list = homeLeaguesByPlayer.get(row.playerId) ?? []
+    list.push({
+      homeLeague: row.homeLeague,
+      label: homeLeagueLabel(row.homeLeague),
+      logoUrl: homeLeagueLogoUrl(row.homeLeague),
+    })
+    homeLeaguesByPlayer.set(row.playerId, list)
   }
 
   const nicknameById = new Map(
@@ -157,6 +182,7 @@ export async function listEventRegistrations(
       primaryEmail: primaryByPlayer.get(r.playerId) ?? null,
       hasStrongPersonality: r.hasStrongPersonality,
       strongPersonalityNotes: r.strongPersonalityNotes,
+      homeLeagues: homeLeaguesByPlayer.get(r.playerId) ?? [],
     }
   })
 }
