@@ -648,7 +648,10 @@ export default function PlayersPage() {
     }
   }
 
-  async function saveEdit(patch: Record<string, unknown>) {
+  async function saveEdit(
+    patch: Record<string, unknown>,
+    options?: { closeOnSuccess?: boolean }
+  ) {
     if (!editing) return
     setSaving(true)
     setFormError(null)
@@ -660,8 +663,13 @@ export default function PlayersPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
-      setEditing(data.player)
-      await loadPlayers()
+      if (options?.closeOnSuccess) {
+        await loadPlayers()
+        setEditing(null)
+      } else {
+        setEditing(data.player)
+        await loadPlayers()
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -1633,7 +1641,7 @@ export default function PlayersPage() {
           saving={saving}
           formError={formError}
           onClose={() => setEditing(null)}
-          onSaveCore={(fields) => void saveEdit(fields)}
+          onSaveCore={(fields) => void saveEdit(fields, { closeOnSuccess: true })}
           onAddEmail={(email) => void saveEdit({ addEmail: email })}
           onRemoveEmail={(id) => void saveEdit({ removeEmailId: id })}
           onSetPrimary={(id) => void saveEdit({ setPrimaryEmailId: id })}
@@ -1949,108 +1957,120 @@ function EditPanel(props: {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm col-span-1">
-            First name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={firstName}
-              disabled={p.isMerged}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Last name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={lastName}
-              disabled={p.isMerged}
-              onChange={(e) => setLastName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm col-span-2">
-            Roster name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={rosterName}
-              disabled={p.isMerged}
-              onChange={(e) => setRosterName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm col-span-2">
-            Nickname
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={nickname}
-              disabled={p.isMerged}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder={nicknameDefault}
-            />
-            <span className="mt-1 block text-xs text-gray-500">
-              Defaults to first name + last initial ({nicknameDefault}
-              {p.nicknameCustom ? '' : ' — currently using default'}
-              ). Clear or match the default to keep it automatic.
-            </span>
-          </label>
-          <label className="text-sm">
-            Jersey #
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={jerseyNumber}
-              disabled={p.isMerged}
-              onChange={(e) => setJerseyNumber(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Jersey name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={jerseyName}
-              disabled={p.isMerged}
-              onChange={(e) => setJerseyName(e.target.value)}
-              placeholder={jerseyNameDefault}
-            />
-            <span className="mt-1 block text-xs text-gray-500">
-              Defaults to last name ({jerseyNameDefault}
-              {p.jerseyNameCustom ? '' : ' — currently using default'}
-              ).
-            </span>
-          </label>
-          <label className="text-sm">
-            Skill
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={skillLevel}
-              disabled={p.isMerged}
-              onChange={(e) => setSkillLevel(e.target.value)}
-            >
-              <option value="">Unset</option>
-              {Object.entries(SKILL_LEVELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {value}: {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            Gender
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={gender}
-              disabled={p.isMerged}
-              onChange={(e) => setGender(e.target.value)}
-            >
-              <option value="">Unset</option>
-              {Object.entries(GENDERS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="col-span-2 rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
-            <p className="text-sm font-medium text-amber-900">Player flags</p>
-            <label className="mt-2 text-sm flex items-start gap-2">
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm">Roster</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              Skill
+              <select
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={skillLevel}
+                disabled={p.isMerged}
+                onChange={(e) => setSkillLevel(e.target.value)}
+              >
+                <option value="">Unset</option>
+                {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {value}: {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Gender
+              <select
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={gender}
+                disabled={p.isMerged}
+                onChange={(e) => setGender(e.target.value)}
+              >
+                <option value="">Unset</option>
+                {Object.entries(GENDERS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Jersey #
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={jerseyNumber}
+                disabled={p.isMerged}
+                onChange={(e) => setJerseyNumber(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Jersey name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={jerseyName}
+                disabled={p.isMerged}
+                onChange={(e) => setJerseyName(e.target.value)}
+                placeholder={jerseyNameDefault}
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Defaults to last name ({jerseyNameDefault}
+                {p.jerseyNameCustom ? '' : ' — currently using default'}
+                ).
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Name</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm col-span-1">
+              First name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={firstName}
+                disabled={p.isMerged}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Last name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={lastName}
+                disabled={p.isMerged}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm col-span-2">
+              Roster name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={rosterName}
+                disabled={p.isMerged}
+                onChange={(e) => setRosterName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm col-span-2">
+              Nickname
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={nickname}
+                disabled={p.isMerged}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder={nicknameDefault}
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Defaults to first name + last initial ({nicknameDefault}
+                {p.nicknameCustom ? '' : ' — currently using default'}
+                ). Clear or match the default to keep it automatic.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Flags</h3>
+          <div className="rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
+            <label className="text-sm flex items-start gap-2">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -2070,7 +2090,7 @@ function EditPanel(props: {
             ) : null}
           </div>
           {hasStrongPersonality ? (
-            <label className="text-sm col-span-2">
+            <label className="text-sm block">
               Strong personality notes
               <textarea
                 className="mt-1 w-full rounded border px-3 py-2 text-sm"

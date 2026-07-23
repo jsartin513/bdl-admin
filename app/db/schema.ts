@@ -24,7 +24,7 @@ export const players = pgTable(
     /** Null = default to last name until manually set. */
     jerseyName: text('jersey_name'),
     skillLevel: integer('skill_level'),
-    /** Canonical: man | woman | nonbinary | other */
+    /** Canonical: male | female | nonbinary | other */
     gender: text('gender'),
     isMerged: boolean('is_merged').notNull().default(false),
     mergedIntoPlayerId: uuid('merged_into_player_id'),

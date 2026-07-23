@@ -73,19 +73,19 @@ describe('jersey name defaults', () => {
 
 describe('parseGender', () => {
   it('maps TeamLinkt gender labels', () => {
-    expect(parseGender('Female')).toBe('woman')
-    expect(parseGender('Male')).toBe('man')
+    expect(parseGender('Female')).toBe('female')
+    expect(parseGender('Male')).toBe('male')
     expect(parseGender('Other')).toBe('other')
-    expect(parseGender('Cisgender Woman')).toBe('woman')
+    expect(parseGender('Cisgender Woman')).toBe('female')
     expect(parseGender('Non-binary')).toBe('nonbinary')
     expect(parseGender('')).toBeNull()
   })
 
-  it('groups woman/nonbinary/other together', () => {
-    expect(genderGroup('woman')).toBe('w_nb_o')
+  it('groups female/nonbinary/other together', () => {
+    expect(genderGroup('female')).toBe('w_nb_o')
     expect(genderGroup('nonbinary')).toBe('w_nb_o')
     expect(genderGroup('other')).toBe('w_nb_o')
-    expect(genderGroup('man')).toBe('men')
+    expect(genderGroup('male')).toBe('men')
     expect(genderGroup(null)).toBe('unset')
   })
 })
@@ -176,7 +176,7 @@ describe('teamlinkt csv parse', () => {
       firstName: 'Abby',
       lastName: 'Lee',
       email: 'lee@example.com',
-      gender: 'woman',
+      gender: 'female',
     })
     // Birthdate is in raw CSV but not mapped onto the player row
     expect(parsed.rows[0]).not.toHaveProperty('birthdate')

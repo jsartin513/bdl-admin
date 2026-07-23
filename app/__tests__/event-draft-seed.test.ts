@@ -60,12 +60,12 @@ describe('defaultTeamCount', () => {
 describe('autoSeedDraftGroups', () => {
   it('assigns every player to a team 1..N', () => {
     const players = [
-      player('a', 4, 'woman'),
-      player('b', 3, 'man'),
-      player('c', 2, 'woman'),
-      player('d', 1, 'man'),
+      player('a', 4, 'female'),
+      player('b', 3, 'male'),
+      player('c', 2, 'female'),
+      player('d', 1, 'male'),
       player('e', 3, 'nonbinary'),
-      player('f', 2, 'man'),
+      player('f', 2, 'male'),
     ]
     const result = autoSeedDraftGroups(players, 2)
     expect(result.size).toBe(6)
@@ -80,7 +80,7 @@ describe('autoSeedDraftGroups', () => {
       player(
         `p${i}`,
         (i % 4) + 1,
-        i % 2 === 0 ? 'woman' : 'man'
+        i % 2 === 0 ? 'female' : 'male'
       )
     )
     const teamCount = 3
@@ -94,8 +94,8 @@ describe('autoSeedDraftGroups', () => {
 
   it('spreads gender groups across teams', () => {
     const players = [
-      ...Array.from({ length: 6 }, (_, i) => player(`w${i}`, 3, 'woman')),
-      ...Array.from({ length: 6 }, (_, i) => player(`m${i}`, 3, 'man')),
+      ...Array.from({ length: 6 }, (_, i) => player(`w${i}`, 3, 'female')),
+      ...Array.from({ length: 6 }, (_, i) => player(`m${i}`, 3, 'male')),
     ]
     const result = autoSeedDraftGroups(players, 3)
     const byTeam = Array.from({ length: 3 }, () =>
@@ -113,14 +113,14 @@ describe('autoSeedDraftGroups', () => {
 
   it('balances skill totals across teams', () => {
     const players = [
-      player('a', 4, 'woman'),
-      player('b', 4, 'man'),
-      player('c', 1, 'woman'),
-      player('d', 1, 'man'),
-      player('e', 3, 'woman'),
-      player('f', 3, 'man'),
-      player('g', 2, 'woman'),
-      player('h', 2, 'man'),
+      player('a', 4, 'female'),
+      player('b', 4, 'male'),
+      player('c', 1, 'female'),
+      player('d', 1, 'male'),
+      player('e', 3, 'female'),
+      player('f', 3, 'male'),
+      player('g', 2, 'female'),
+      player('h', 2, 'male'),
     ]
     const result = autoSeedDraftGroups(players, 2)
     const teams = [[], []] as DraftSeedPlayer[][]
@@ -134,8 +134,8 @@ describe('autoSeedDraftGroups', () => {
   it('places unset gender into teams without crashing', () => {
     const players = [
       player('a', 3, null),
-      player('b', 2, 'man'),
-      player('c', 4, 'woman'),
+      player('b', 2, 'male'),
+      player('c', 4, 'female'),
     ]
     const result = autoSeedDraftGroups(players, 2)
     expect(result.size).toBe(3)
@@ -146,7 +146,7 @@ describe('autoSeedDraftGroups', () => {
       player(
         `p${i}`,
         (i % 4) + 1,
-        i % 2 === 0 ? 'woman' : 'man'
+        i % 2 === 0 ? 'female' : 'male'
       )
     )
     const a = autoSeedDraftGroups(players, 2, {
@@ -163,7 +163,7 @@ describe('autoSeedDraftGroups', () => {
 
   it('is deterministic when shuffle is off', () => {
     const players = Array.from({ length: 12 }, (_, i) =>
-      player(`p${i}`, (i % 3) + 1, i % 2 === 0 ? 'woman' : 'man')
+      player(`p${i}`, (i % 3) + 1, i % 2 === 0 ? 'female' : 'male')
     )
     const a = autoSeedDraftGroups(players, 3)
     const b = autoSeedDraftGroups(players, 3)
@@ -172,12 +172,12 @@ describe('autoSeedDraftGroups', () => {
 
   it('keeps paired players on the same team', () => {
     const players: DraftSeedPlayer[] = [
-      { id: 'a', skillLevel: 4, gender: 'woman', pairId: 'pair-1' },
-      { id: 'b', skillLevel: 3, gender: 'man', pairId: 'pair-1' },
-      { id: 'c', skillLevel: 2, gender: 'woman' },
-      { id: 'd', skillLevel: 2, gender: 'man' },
-      { id: 'e', skillLevel: 1, gender: 'woman' },
-      { id: 'f', skillLevel: 1, gender: 'man' },
+      { id: 'a', skillLevel: 4, gender: 'female', pairId: 'pair-1' },
+      { id: 'b', skillLevel: 3, gender: 'male', pairId: 'pair-1' },
+      { id: 'c', skillLevel: 2, gender: 'female' },
+      { id: 'd', skillLevel: 2, gender: 'male' },
+      { id: 'e', skillLevel: 1, gender: 'female' },
+      { id: 'f', skillLevel: 1, gender: 'male' },
     ]
     const result = autoSeedDraftGroups(players, 2)
     expect(result.get('a')).toBe(result.get('b'))
@@ -186,12 +186,12 @@ describe('autoSeedDraftGroups', () => {
 
   it('still assigns all players when pairs are present', () => {
     const players: DraftSeedPlayer[] = [
-      { id: 'a', skillLevel: 4, gender: 'woman', pairId: 'p1' },
-      { id: 'b', skillLevel: 4, gender: 'man', pairId: 'p1' },
-      { id: 'c', skillLevel: 3, gender: 'woman', pairId: 'p2' },
-      { id: 'd', skillLevel: 3, gender: 'man', pairId: 'p2' },
-      { id: 'e', skillLevel: 2, gender: 'woman' },
-      { id: 'f', skillLevel: 2, gender: 'man' },
+      { id: 'a', skillLevel: 4, gender: 'female', pairId: 'p1' },
+      { id: 'b', skillLevel: 4, gender: 'male', pairId: 'p1' },
+      { id: 'c', skillLevel: 3, gender: 'female', pairId: 'p2' },
+      { id: 'd', skillLevel: 3, gender: 'male', pairId: 'p2' },
+      { id: 'e', skillLevel: 2, gender: 'female' },
+      { id: 'f', skillLevel: 2, gender: 'male' },
     ]
     const result = autoSeedDraftGroups(players, 3)
     expect(result.size).toBe(6)
@@ -203,9 +203,9 @@ describe('autoSeedDraftGroups', () => {
 describe('summarizeDraftAssignments', () => {
   it('summarizes unassigned and per-team stats', () => {
     const registrations = [
-      { id: 'a', skillLevel: 4, gender: 'woman' },
-      { id: 'b', skillLevel: 2, gender: 'man' },
-      { id: 'c', skillLevel: 3, gender: 'woman' },
+      { id: 'a', skillLevel: 4, gender: 'female' },
+      { id: 'b', skillLevel: 2, gender: 'male' },
+      { id: 'c', skillLevel: 3, gender: 'female' },
     ]
     const summary = summarizeDraftAssignments(
       registrations,
@@ -223,7 +223,7 @@ describe('summarizeDraftAssignments', () => {
 
 describe('emptySeedDraftGroups', () => {
   it('marks everyone unassigned', () => {
-    const players = [player('a', 1, 'man'), player('b', 2, 'woman')]
+    const players = [player('a', 1, 'male'), player('b', 2, 'female')]
     const result = emptySeedDraftGroups(players)
     expect(result.get('a')).toBeNull()
     expect(result.get('b')).toBeNull()
@@ -233,8 +233,8 @@ describe('emptySeedDraftGroups', () => {
 describe('copyExistingDraftGroups', () => {
   it('copies permanent draft groups into the workspace map', () => {
     const result = copyExistingDraftGroups([
-      { id: 'a', skillLevel: 1, gender: 'man', draftGroup: 2 },
-      { id: 'b', skillLevel: 2, gender: 'woman', draftGroup: null },
+      { id: 'a', skillLevel: 1, gender: 'male', draftGroup: 2 },
+      { id: 'b', skillLevel: 2, gender: 'female', draftGroup: null },
     ])
     expect(result.get('a')).toBe(2)
     expect(result.get('b')).toBeNull()
