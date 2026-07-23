@@ -436,7 +436,9 @@ export default function PlayersPage() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [importCsv, setImportCsv] = useState('')
-  const [importFilename, setImportFilename] = useState('teamlinkt.csv')
+  const [importFilename, setImportFilename] = useState('pasted.csv')
+  const [importScope, setImportScope] = useState<'generic' | 'event'>('generic')
+  const [importEventId, setImportEventId] = useState('')
   const [importProfileFields, setImportProfileFields] = useState<
     'skip' | 'fill_blank' | 'overwrite'
   >('skip')
@@ -811,19 +813,39 @@ export default function PlayersPage() {
     }
   }
 
+  function importRequestBody(dryRun: boolean) {
+    const body: Record<string, unknown> = {
+      csv: importCsv,
+      filename: importFilename.trim() || 'pasted.csv',
+      dryRun,
+      profileFields: importProfileFields,
+    }
+    if (importScope === 'event' && importEventId) {
+      body.eventId = importEventId
+    }
+    return body
+  }
+
+  function validateImportScope(): string | null {
+    if (importScope === 'event' && !importEventId) {
+      return 'Select an event for this import'
+    }
+    return null
+  }
+
   async function previewImport() {
+    const scopeError = validateImportScope()
+    if (scopeError) {
+      setFormError(scopeError)
+      return
+    }
     setImportBusy(true)
     setFormError(null)
     try {
       const res = await fetch('/api/players/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csv: importCsv,
-          filename: importFilename,
-          dryRun: true,
-          profileFields: importProfileFields,
-        }),
+        body: JSON.stringify(importRequestBody(true)),
       })
       const data = await readApiJson(res)
       if (!res.ok) throw new Error(String(data.error || 'Preview failed'))
@@ -838,19 +860,32 @@ export default function PlayersPage() {
     }
   }
 
-  async function commitImport() {
+  async function commitImport(opts?: { skipDryRunConfirm?: boolean }) {
+    const scopeError = validateImportScope()
+    if (scopeError) {
+      setFormError(scopeError)
+      return
+    }
+    if (!importPreview && opts?.skipDryRunConfirm !== false) {
+      const scopeLabel =
+        importScope === 'event'
+          ? `and register them for the selected event`
+          : 'without attaching an event'
+      if (
+        !window.confirm(
+          `Import without a dry run? This will create/update players ${scopeLabel}.`
+        )
+      ) {
+        return
+      }
+    }
     setImportBusy(true)
     setFormError(null)
     try {
       const res = await fetch('/api/players/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csv: importCsv,
-          filename: importFilename,
-          dryRun: false,
-          profileFields: importProfileFields,
-        }),
+        body: JSON.stringify(importRequestBody(false)),
       })
       const data = await readApiJson(res)
       if (!res.ok) throw new Error(String(data.error || 'Import failed'))
@@ -859,14 +894,23 @@ export default function PlayersPage() {
         updated: number
         skipped: number
         ambiguous: number
+        register?: number
+        alreadyRegistered?: number
       }
       setImportOpen(false)
       setImportCsv('')
+      setImportFilename('pasted.csv')
       setImportPreview(null)
       setImportProfileFields('skip')
+      setImportScope('generic')
+      setImportEventId('')
       await loadPlayers()
+      const eventPart =
+        typeof summary.register === 'number'
+          ? `, ${summary.register} registered, ${summary.alreadyRegistered ?? 0} already registered`
+          : ''
       alert(
-        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
+        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous${eventPart}`
       )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Import failed')
@@ -942,7 +986,12 @@ export default function PlayersPage() {
               setImportOpen(true)
               setImportPreview(null)
               setImportProfileFields('skip')
+              setImportScope('generic')
+              setImportEventId('')
+              setImportFilename('pasted.csv')
+              setImportCsv('')
               setFormError(null)
+              void loadEvents()
             }}
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
           >
@@ -1724,9 +1773,67 @@ export default function PlayersPage() {
             <p className="text-sm text-gray-600">
               New players always get skill, gender, and jersey from the CSV. For existing
               players, those fields are left alone by default so manual edits are preserved.
-              To attach registrations to a tournament or other event, import from the Events
-              page instead.
+              Choose an event below to also register matched players for that event.
             </p>
+            <fieldset className="space-y-2 text-sm">
+              <legend className="text-gray-600">Import type</legend>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="importScope"
+                  checked={importScope === 'generic'}
+                  onChange={() => {
+                    setImportScope('generic')
+                    setImportEventId('')
+                    setImportPreview(null)
+                  }}
+                />
+                Generic import (players only)
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="importScope"
+                  checked={importScope === 'event'}
+                  onChange={() => {
+                    setImportScope('event')
+                    setImportPreview(null)
+                    void loadEvents()
+                  }}
+                />
+                For an event (also register players)
+              </label>
+              {importScope === 'event' ? (
+                <label className="block text-sm pl-6">
+                  <span className="text-gray-600">Event</span>
+                  <select
+                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                    value={importEventId}
+                    onChange={(e) => {
+                      setImportEventId(e.target.value)
+                      setImportPreview(null)
+                    }}
+                  >
+                    <option value="">Select an event…</option>
+                    {eventsStatus === 'loading' ? (
+                      <option value="" disabled>
+                        Loading…
+                      </option>
+                    ) : null}
+                    {eventsStatus === 'error' ? (
+                      <option value="" disabled>
+                        Failed to load events
+                      </option>
+                    ) : null}
+                    {events.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name} ({event.eventDate})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </fieldset>
             <label className="block text-sm">
               <span className="text-gray-600">Existing players: skill / gender / jersey</span>
               <select
@@ -1745,14 +1852,6 @@ export default function PlayersPage() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="text-gray-600">Filename</span>
-              <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={importFilename}
-                onChange={(e) => setImportFilename(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
               <span className="text-gray-600">CSV file</span>
               <input
                 type="file"
@@ -1768,12 +1867,25 @@ export default function PlayersPage() {
                   })
                 }}
               />
+              {importFilename && importFilename !== 'pasted.csv' ? (
+                <span className="mt-1 block text-xs text-gray-500">
+                  Using file: {importFilename}
+                </span>
+              ) : null}
             </label>
             <textarea
               className="w-full h-40 rounded border border-gray-300 px-3 py-2 font-mono text-xs"
               value={importCsv}
               onChange={(e) => {
                 setImportCsv(e.target.value)
+                if (importFilename !== 'pasted.csv' && !e.target.value) {
+                  setImportFilename('pasted.csv')
+                } else if (
+                  importFilename === 'pasted.csv' ||
+                  importFilename === 'teamlinkt.csv'
+                ) {
+                  setImportFilename('pasted.csv')
+                }
                 setImportPreview(null)
               }}
               placeholder="Or paste CSV contents here…"
@@ -1785,6 +1897,12 @@ export default function PlayersPage() {
                   Preview: {importPreview.summary.create} create,{' '}
                   {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
                   {importPreview.summary.ambiguous} ambiguous
+                  {typeof importPreview.summary.register === 'number' ? (
+                    <>
+                      ; {importPreview.summary.register} will register,{' '}
+                      {importPreview.summary.alreadyRegistered ?? 0} already registered
+                    </>
+                  ) : null}
                 </p>
                 <div className="max-h-48 overflow-y-auto border rounded">
                   <table className="min-w-full text-xs">
@@ -1832,11 +1950,15 @@ export default function PlayersPage() {
               </button>
               <button
                 type="button"
-                disabled={importBusy || !importPreview}
+                disabled={
+                  importBusy ||
+                  !importCsv.trim() ||
+                  (importScope === 'event' && !importEventId)
+                }
                 className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
                 onClick={() => void commitImport()}
               >
-                Commit import
+                {importPreview ? 'Commit import' : 'Import now'}
               </button>
             </div>
           </div>

@@ -42,6 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       eventDate?: string
       eventType?: string | null
       notes?: string | null
+      pairingEnabled?: boolean
     }
 
     if (
@@ -50,6 +51,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       !isValidEventType(body.eventType)
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
+    }
+
+    if (
+      body.pairingEnabled !== undefined &&
+      typeof body.pairingEnabled !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { error: 'pairingEnabled must be a boolean' },
+        { status: 400 }
+      )
     }
 
     const event = await updateEvent(id, body)

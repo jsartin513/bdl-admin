@@ -18,6 +18,7 @@ export type EventRecord = {
   eventDate: string
   eventType: string
   notes: string | null
+  pairingEnabled: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -30,6 +31,12 @@ export type EventListItem = {
   eventTypeLabel: string
   notes: string | null
   registrationCount: number
+}
+
+export type EventRegistrationHomeLeague = {
+  homeLeague: string
+  label: string
+  logoUrl: string | null
 }
 
 export type EventRegistrationListItem = {
@@ -57,6 +64,7 @@ export type EventRegistrationListItem = {
   primaryEmail: string | null
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null
+  homeLeagues: EventRegistrationHomeLeague[]
 }
 
 export type EventDraftSnapshotListItem = {

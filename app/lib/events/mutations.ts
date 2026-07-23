@@ -35,6 +35,7 @@ export async function createEvent(input: {
   eventDate: string
   eventType?: string | null
   notes?: string | null
+  pairingEnabled?: boolean
 }): Promise<EventRecord> {
   const db = getDb()
   const name = input.name.trim()
@@ -48,10 +49,11 @@ export async function createEvent(input: {
   }
 
   const notes = input.notes?.trim() ? input.notes.trim() : null
+  const pairingEnabled = input.pairingEnabled !== false
 
   const [created] = await db
     .insert(events)
-    .values({ name, eventDate, eventType, notes })
+    .values({ name, eventDate, eventType, notes, pairingEnabled })
     .returning()
 
   return created
@@ -64,6 +66,7 @@ export async function updateEvent(
     eventDate?: string
     eventType?: string | null
     notes?: string | null
+    pairingEnabled?: boolean
   }
 ): Promise<EventRecord> {
   const db = getDb()
@@ -72,6 +75,7 @@ export async function updateEvent(
     eventDate?: string
     eventType?: string
     notes?: string | null
+    pairingEnabled?: boolean
     updatedAt: Date
   } = { updatedAt: new Date() }
 
@@ -94,6 +98,9 @@ export async function updateEvent(
   }
   if (patch.notes !== undefined) {
     updates.notes = patch.notes?.trim() ? patch.notes.trim() : null
+  }
+  if (patch.pairingEnabled !== undefined) {
+    updates.pairingEnabled = Boolean(patch.pairingEnabled)
   }
 
   const [updated] = await db
@@ -165,7 +172,7 @@ export async function updateRegistrationDraftGroup(
   eventId: string,
   registrationId: string,
   draftGroupInput: unknown
-): Promise<{ id: string; draftGroup: number | null }> {
+): Promise<{ id: string; draftGroup: number | null; isCaptain: boolean }> {
   const draftGroup = parseDraftGroup(draftGroupInput)
   if (draftGroup === undefined) {
     throw new Error('draftGroup is required')
@@ -174,7 +181,12 @@ export async function updateRegistrationDraftGroup(
   const db = getDb()
   const [updated] = await db
     .update(eventRegistrations)
-    .set({ draftGroup, updatedAt: new Date() })
+    .set({
+      draftGroup,
+      // Captains only apply to players on a team
+      ...(draftGroup == null ? { isCaptain: false } : {}),
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(eventRegistrations.id, registrationId),
@@ -184,6 +196,7 @@ export async function updateRegistrationDraftGroup(
     .returning({
       id: eventRegistrations.id,
       draftGroup: eventRegistrations.draftGroup,
+      isCaptain: eventRegistrations.isCaptain,
     })
 
   if (!updated) throw new Error('Registration not found')
@@ -194,8 +207,27 @@ export async function updateRegistrationCaptain(
   eventId: string,
   registrationId: string,
   isCaptain: boolean
-): Promise<{ id: string; isCaptain: boolean }> {
+): Promise<{ id: string; isCaptain: boolean; draftGroup: number | null }> {
   const db = getDb()
+  const [existing] = await db
+    .select({
+      id: eventRegistrations.id,
+      draftGroup: eventRegistrations.draftGroup,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .limit(1)
+
+  if (!existing) throw new Error('Registration not found')
+  if (isCaptain && existing.draftGroup == null) {
+    throw new Error('Only players on a team can be captains')
+  }
+
   const [updated] = await db
     .update(eventRegistrations)
     .set({ isCaptain, updatedAt: new Date() })
@@ -208,10 +240,24 @@ export async function updateRegistrationCaptain(
     .returning({
       id: eventRegistrations.id,
       isCaptain: eventRegistrations.isCaptain,
+      draftGroup: eventRegistrations.draftGroup,
     })
 
   if (!updated) throw new Error('Registration not found')
   return updated
+}
+
+async function assertPairingEnabled(eventId: string): Promise<void> {
+  const db = getDb()
+  const [event] = await db
+    .select({ pairingEnabled: events.pairingEnabled })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1)
+  if (!event) throw new Error('Event not found')
+  if (!event.pairingEnabled) {
+    throw new Error('Pairing is disabled for this event')
+  }
 }
 
 export async function pairRegistrations(
@@ -222,6 +268,8 @@ export async function pairRegistrations(
   if (registrationIdA === registrationIdB) {
     throw new Error('Cannot pair a registration with itself')
   }
+
+  await assertPairingEnabled(eventId)
 
   const db = getDb()
   const rows = await db
@@ -263,6 +311,8 @@ export async function unpairRegistration(
   eventId: string,
   registrationId: string
 ): Promise<{ clearedPairId: string | null; registrationIds: string[] }> {
+  await assertPairingEnabled(eventId)
+
   const db = getDb()
   const [row] = await db
     .select({
@@ -525,7 +575,11 @@ export async function bulkUpdateRegistrationDraftGroups(
   for (const { registrationId, draftGroup } of parsed) {
     const [updated] = await db
       .update(eventRegistrations)
-      .set({ draftGroup, updatedAt: now })
+      .set({
+        draftGroup,
+        ...(draftGroup == null ? { isCaptain: false } : {}),
+        updatedAt: now,
+      })
       .where(
         and(
           eq(eventRegistrations.id, registrationId),
