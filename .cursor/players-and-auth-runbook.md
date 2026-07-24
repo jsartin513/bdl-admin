@@ -44,10 +44,16 @@ Auth env for the stable preview host is scoped to the **`preview`** Git branch i
 2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). Deploys apply
    them automatically: `npm run build` runs `db:migrate:deploy` before
    `next build` whenever `DATABASE_URL` is set.
-3. Locally (or if you need to migrate without a full build):
+3. **Every** SQL file must be listed in [`drizzle/meta/_journal.json`](../drizzle/meta/_journal.json)
+   or deploy will never apply it (prod can then 500 on missing columns). Use
+   `npm run db:generate` when possible; see
+   [drizzle-migrations-runbook.md](./drizzle-migrations-runbook.md) for the
+   checklist and debugging `column does not exist` after a schema PR.
+4. Locally (or if you need to migrate without a full build):
 
 ```bash
 npm run db:migrate
+npm run db:check-migrations   # SQL files ↔ journal tags
 ```
 
 `db:migrate:deploy` skips cleanly when `DATABASE_URL` is unset (CI builds).
