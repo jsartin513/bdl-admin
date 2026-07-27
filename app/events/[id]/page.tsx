@@ -37,6 +37,10 @@ type EventDetail = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  ballType: string
+  ballTypeLabel: string
+  gender: string
+  genderLabel: string
   notes: string | null
   pairingEnabled: boolean
 }
@@ -782,7 +786,8 @@ function EventTrackerPageContent() {
           </Link>
           <h1 className="text-2xl font-semibold mt-1">{event.name}</h1>
           <p className="text-sm text-gray-600">
-            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel}
+            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel} ·{' '}
+            {event.ballTypeLabel} · {event.genderLabel}
           </p>
           {event.notes ? (
             <p className="text-sm text-gray-600 mt-1">{event.notes}</p>

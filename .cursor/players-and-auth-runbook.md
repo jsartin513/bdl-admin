@@ -28,6 +28,16 @@ On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `
 
 Auth env for the stable preview host is scoped to the **`preview`** Git branch in Vercel.
 
+## Deploy flow
+
+1. Open feature PRs against **`preview`** (not `main`).
+2. Merge to `preview` → Vercel deploys `admin-preview.bostondodgeballleague.com`.
+3. CI **Preview smoke** waits for that deploy and checks `/login`, `/players`, and `/events` respond (auth redirect or 200). You can also run `npm run smoke:preview` locally.
+4. After preview looks good, open **`preview` → `main`**. The **Main merge gate** requires the head branch to be `preview` and re-checks that stable preview is healthy.
+5. Merge to `main` → production at `admin.bostondodgeballleague.com`.
+
+If `preview` has fallen behind `main`, fast-forward or merge `main` into `preview` before landing new work there.
+
 ## Google Cloud OAuth
 
 1. Create or reuse a **Web** OAuth client.

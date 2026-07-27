@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:deploy": "node scripts/migrate-on-deploy.mjs",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "smoke:preview": "node scripts/smoke-preview.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

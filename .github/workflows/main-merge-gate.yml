@@ -1,0 +1,36 @@
+name: Main merge gate
+
+# Production merges must come from the preview branch after preview is healthy.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  from-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require head branch is preview
+        run: |
+          if [ "${{ github.head_ref }}" != "preview" ]; then
+            echo "::error::PRs into main must come from the preview branch (got '${{ github.head_ref }}'). Open feature PRs against preview, verify the preview deploy, then open preview → main."
+            exit 1
+          fi
+          echo "Head branch is preview."
+
+  preview-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Confirm stable preview is healthy
+        env:
+          PREVIEW_BASE_URL: https://admin-preview.bostondodgeballleague.com
+        run: node scripts/smoke-preview.mjs
