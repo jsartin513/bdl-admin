@@ -63,6 +63,13 @@ export async function POST(request: NextRequest) {
       jerseyNumber?: number | null
       jerseyName?: string | null
       skillLevel?: number | null
+      skillLevelFib?: number | null
+      skillAreas?: {
+        offense?: number | null
+        defense?: number | null
+        stayingAlive?: number | null
+        courtPresence?: number | null
+      } | null
       gender?: string | null
       email?: string | null
     }
@@ -86,6 +93,8 @@ export async function POST(request: NextRequest) {
       jerseyNumber: body.jerseyNumber ?? null,
       jerseyName: body.jerseyName,
       skillLevel: body.skillLevel ?? null,
+      skillLevelFib: body.skillLevelFib ?? null,
+      skillAreas: body.skillAreas ?? null,
       gender: body.gender || null,
       email: body.email,
       actor: session.email,

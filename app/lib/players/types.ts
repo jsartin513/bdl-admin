@@ -16,6 +16,13 @@ export type PlayerSnapshot = {
   /** Stored custom jersey name; null means still using last name. */
   jerseyNameCustom: string | null
   skillLevel: number | null
+  skillLevelFib: number | null
+  skillAreas: {
+    offense: number | null
+    defense: number | null
+    stayingAlive: number | null
+    courtPresence: number | null
+  } | null
   gender: string | null
   isMerged: boolean
   mergedIntoPlayerId: string | null
@@ -41,6 +48,13 @@ export type PlayerListItem = {
   jerseyNumber: number | null
   jerseyName: string
   skillLevel: number | null
+  skillLevelFib: number | null
+  skillAreas: {
+    offense: number | null
+    defense: number | null
+    stayingAlive: number | null
+    courtPresence: number | null
+  } | null
   skillLabel: string
   gender: string | null
   genderLabel: string

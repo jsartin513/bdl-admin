@@ -24,6 +24,19 @@ export const players = pgTable(
     /** Null = default to last name until manually set. */
     jerseyName: text('jersey_name'),
     skillLevel: integer('skill_level'),
+    /** Independent Fibonacci skill scale. */
+    skillLevelFib: integer('skill_level_fib'),
+    /**
+     * Per-area skill scores on the linear scale.
+     * Shape: { offense, defense, stayingAlive, courtPresence } each number | null.
+     * Null fields fall back to skillLevel at read/score time.
+     */
+    skillAreas: jsonb('skill_areas').$type<{
+      offense: number | null
+      defense: number | null
+      stayingAlive: number | null
+      courtPresence: number | null
+    } | null>(),
     /** Canonical: male | female | nonbinary | other */
     gender: text('gender'),
     isMerged: boolean('is_merged').notNull().default(false),

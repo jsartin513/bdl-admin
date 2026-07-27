@@ -57,6 +57,13 @@ export type EventRegistrationListItem = {
   nickname: string
   jerseyNumber: number | null
   skillLevel: number | null
+  skillLevelFib: number | null
+  skillAreas: {
+    offense: number | null
+    defense: number | null
+    stayingAlive: number | null
+    courtPresence: number | null
+  } | null
   skillLabel: string
   gender: string | null
   genderLabel: string

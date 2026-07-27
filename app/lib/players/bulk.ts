@@ -1,11 +1,18 @@
 import { isValidGender } from '@/app/lib/players/gender'
 import { isValidHomeLeague } from '@/app/lib/players/home-league'
-import { isValidSkillLevel } from '@/app/lib/players/skill'
+import {
+  isValidFibSkillLevel,
+  isValidSkillLevel,
+  parseSkillAreas,
+  type SkillAreas,
+} from '@/app/lib/players/skill'
 import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 
 export type BulkPlayerPatch = {
   gender?: string | null
   skillLevel?: number | null
+  skillLevelFib?: number | null
+  skillAreas?: SkillAreas | null
   hasStrongPersonality?: boolean
   strongPersonalityNotes?: string | null
   addHomeLeague?: string
@@ -69,6 +76,28 @@ export function parseBulkPlayerRequest(body: unknown): ParsedBulkPlayerRequest {
     }
   }
 
+  if ('skillLevelFib' in raw) {
+    if (raw.skillLevelFib === null) {
+      patch.skillLevelFib = null
+    } else if (isValidFibSkillLevel(raw.skillLevelFib)) {
+      patch.skillLevelFib = raw.skillLevelFib
+    } else {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+  }
+
+  if ('skillAreas' in raw) {
+    if (raw.skillAreas === null) {
+      patch.skillAreas = null
+    } else {
+      try {
+        patch.skillAreas = parseSkillAreas(raw.skillAreas)
+      } catch {
+        throw new Error('Invalid skill areas')
+      }
+    }
+  }
+
   if ('hasStrongPersonality' in raw) {
     if (typeof raw.hasStrongPersonality !== 'boolean') {
       throw new Error('hasStrongPersonality must be a boolean')
@@ -103,6 +132,8 @@ export function parseBulkPlayerRequest(body: unknown): ParsedBulkPlayerRequest {
   if (
     patch.gender === undefined &&
     patch.skillLevel === undefined &&
+    patch.skillLevelFib === undefined &&
+    patch.skillAreas === undefined &&
     patch.hasStrongPersonality === undefined &&
     patch.strongPersonalityNotes === undefined &&
     patch.addHomeLeague === undefined &&
@@ -125,6 +156,8 @@ export function bulkPatchHasCoreFields(patch: BulkPlayerPatch): boolean {
   return (
     patch.gender !== undefined ||
     patch.skillLevel !== undefined ||
+    patch.skillLevelFib !== undefined ||
+    patch.skillAreas !== undefined ||
     patch.hasStrongPersonality !== undefined ||
     patch.strongPersonalityNotes !== undefined
   )

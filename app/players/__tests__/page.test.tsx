@@ -14,7 +14,9 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     nickname: 'Alex P',
     jerseyNumber: null,
     jerseyName: 'Player',
-    skillLevel: 2,
+    skillLevel: 40,
+    skillLevelFib: null,
+    skillAreas: null,
     skillLabel: 'Intermediate',
     gender: 'female',
     genderLabel: 'Female',
@@ -39,7 +41,9 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     jerseyNumber: null,
     jerseyName: 'Player',
     jerseyNameCustom: null,
-    skillLevel: 2,
+    skillLevel: 40,
+    skillLevelFib: null,
+    skillAreas: null,
     gender: 'female',
     isMerged: false,
     mergedIntoPlayerId: null,
@@ -226,7 +230,7 @@ describe('PlayersPage quick fill mode', () => {
             firstName: 'Drew',
             lastName: 'BothMissing',
             rosterName: 'Drew BothMissing',
-            skillLevel: 2,
+            skillLevel: 40,
             gender: 'male',
           }),
         })
@@ -241,12 +245,12 @@ describe('PlayersPage quick fill mode', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    await userEvent.selectOptions(screen.getByLabelText('Set skill for Drew BothMissing'), '2')
+    await userEvent.selectOptions(screen.getByLabelText('Set skill for Drew BothMissing'), '40')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       method: 'PATCH',
-      body: JSON.stringify({ skillLevel: 2, gender: 'male' }),
+      body: JSON.stringify({ skillLevel: 40, gender: 'male' }),
     })
   })
 })
@@ -304,7 +308,7 @@ describe('PlayersPage bulk edit mode', () => {
               firstName: 'Ada',
               lastName: 'Woman',
               rosterName: 'Ada Woman',
-              skillLevel: 3,
+              skillLevel: 60,
               skillLabel: 'Advanced',
               gender: 'female',
             }),
@@ -313,7 +317,7 @@ describe('PlayersPage bulk edit mode', () => {
               firstName: 'Bea',
               lastName: 'Woman',
               rosterName: 'Bea Woman',
-              skillLevel: 3,
+              skillLevel: 60,
               skillLabel: 'Advanced',
               gender: 'female',
             }),
@@ -346,7 +350,7 @@ describe('PlayersPage bulk edit mode', () => {
     expect(screen.getByLabelText('Select Ada Woman')).toBeChecked()
     expect(screen.getByLabelText('Select Bea Woman')).toBeChecked()
 
-    await userEvent.selectOptions(screen.getByLabelText('Bulk set skill'), '3')
+    await userEvent.selectOptions(screen.getByLabelText('Bulk set skill'), '60')
     await userEvent.click(screen.getByRole('button', { name: 'Apply to 2 players' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
@@ -355,7 +359,7 @@ describe('PlayersPage bulk edit mode', () => {
       method: 'PATCH',
       body: JSON.stringify({
         playerIds: ['w1', 'w2'],
-        patch: { skillLevel: 3 },
+        patch: { skillLevel: 60 },
       }),
     })
     expect(await screen.findByText('Updated 2 players')).toBeInTheDocument()
