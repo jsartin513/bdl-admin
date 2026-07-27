@@ -7,9 +7,13 @@ import {
   events,
 } from '@/app/db/schema'
 import {
+  isValidBallType,
+  isValidEventGender,
   isValidEventType,
   parseDraftGroup,
+  type BallType,
   type EventDraftSnapshotListItem,
+  type EventGender,
   type EventRecord,
   type EventType,
 } from '@/app/lib/events/types'
@@ -34,6 +38,8 @@ export async function createEvent(input: {
   name: string
   eventDate: string
   eventType?: string | null
+  ballType?: string | null
+  gender?: string | null
   notes?: string | null
   pairingEnabled?: boolean
 }): Promise<EventRecord> {
@@ -48,12 +54,24 @@ export async function createEvent(input: {
     eventType = input.eventType
   }
 
+  let ballType: BallType = 'foam'
+  if (input.ballType != null && input.ballType !== '') {
+    if (!isValidBallType(input.ballType)) throw new Error('Invalid ballType')
+    ballType = input.ballType
+  }
+
+  let gender: EventGender = 'mixed'
+  if (input.gender != null && input.gender !== '') {
+    if (!isValidEventGender(input.gender)) throw new Error('Invalid gender')
+    gender = input.gender
+  }
+
   const notes = input.notes?.trim() ? input.notes.trim() : null
   const pairingEnabled = input.pairingEnabled !== false
 
   const [created] = await db
     .insert(events)
-    .values({ name, eventDate, eventType, notes, pairingEnabled })
+    .values({ name, eventDate, eventType, ballType, gender, notes, pairingEnabled })
     .returning()
 
   return created
@@ -65,6 +83,8 @@ export async function updateEvent(
     name?: string
     eventDate?: string
     eventType?: string | null
+    ballType?: string | null
+    gender?: string | null
     notes?: string | null
     pairingEnabled?: boolean
   }
@@ -74,6 +94,8 @@ export async function updateEvent(
     name?: string
     eventDate?: string
     eventType?: string
+    ballType?: string
+    gender?: string
     notes?: string | null
     pairingEnabled?: boolean
     updatedAt: Date
@@ -94,6 +116,24 @@ export async function updateEvent(
       throw new Error('Invalid eventType')
     } else {
       updates.eventType = patch.eventType
+    }
+  }
+  if (patch.ballType !== undefined) {
+    if (patch.ballType == null || patch.ballType === '') {
+      updates.ballType = 'foam'
+    } else if (!isValidBallType(patch.ballType)) {
+      throw new Error('Invalid ballType')
+    } else {
+      updates.ballType = patch.ballType
+    }
+  }
+  if (patch.gender !== undefined) {
+    if (patch.gender == null || patch.gender === '') {
+      updates.gender = 'mixed'
+    } else if (!isValidEventGender(patch.gender)) {
+      throw new Error('Invalid gender')
+    } else {
+      updates.gender = patch.gender
     }
   }
   if (patch.notes !== undefined) {

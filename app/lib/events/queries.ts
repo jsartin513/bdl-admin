@@ -8,6 +8,8 @@ import {
   players,
 } from '@/app/db/schema'
 import {
+  ballTypeLabel,
+  eventGenderLabel,
   eventTypeLabel,
   type EventListItem,
   type EventRecord,
@@ -31,6 +33,8 @@ export async function listEvents(): Promise<EventListItem[]> {
       name: events.name,
       eventDate: events.eventDate,
       eventType: events.eventType,
+      ballType: events.ballType,
+      gender: events.gender,
       notes: events.notes,
       registrationCount: count(eventRegistrations.id),
     })
@@ -45,6 +49,10 @@ export async function listEvents(): Promise<EventListItem[]> {
     eventDate: r.eventDate,
     eventType: r.eventType,
     eventTypeLabel: eventTypeLabel(r.eventType),
+    ballType: r.ballType,
+    ballTypeLabel: ballTypeLabel(r.ballType),
+    gender: r.gender,
+    genderLabel: eventGenderLabel(r.gender),
     notes: r.notes,
     registrationCount: Number(r.registrationCount),
   }))

@@ -5,7 +5,11 @@ import {
 } from '@/app/lib/admin-auth'
 import { createEvent } from '@/app/lib/events/mutations'
 import { listEvents } from '@/app/lib/events/queries'
-import { isValidEventType } from '@/app/lib/events/types'
+import {
+  isValidBallType,
+  isValidEventGender,
+  isValidEventType,
+} from '@/app/lib/events/types'
 
 export async function GET(request: NextRequest) {
   const session = getAdminSessionFromRequest(request)
@@ -29,6 +33,8 @@ export async function POST(request: NextRequest) {
       name?: string
       eventDate?: string
       eventType?: string | null
+      ballType?: string | null
+      gender?: string | null
       notes?: string | null
     }
 
@@ -45,11 +51,27 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
     }
+    if (
+      body.ballType != null &&
+      body.ballType !== '' &&
+      !isValidBallType(body.ballType)
+    ) {
+      return NextResponse.json({ error: 'Invalid ballType' }, { status: 400 })
+    }
+    if (
+      body.gender != null &&
+      body.gender !== '' &&
+      !isValidEventGender(body.gender)
+    ) {
+      return NextResponse.json({ error: 'Invalid gender' }, { status: 400 })
+    }
 
     const event = await createEvent({
       name: body.name,
       eventDate: body.eventDate,
       eventType: body.eventType,
+      ballType: body.ballType,
+      gender: body.gender,
       notes: body.notes,
     })
 

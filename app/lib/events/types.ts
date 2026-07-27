@@ -6,6 +6,21 @@ export const EVENT_TYPES = {
 
 export type EventType = keyof typeof EVENT_TYPES
 
+export const BALL_TYPES = {
+  foam: 'Foam',
+  cloth: 'Cloth',
+} as const
+
+export type BallType = keyof typeof BALL_TYPES
+
+export const EVENT_GENDERS = {
+  mixed: 'Mixed',
+  open: 'Open',
+  she_they: 'She/they',
+} as const
+
+export type EventGender = keyof typeof EVENT_GENDERS
+
 export const REGISTRATION_STATUS = {
   registered: 'Registered',
 } as const
@@ -17,6 +32,8 @@ export type EventRecord = {
   name: string
   eventDate: string
   eventType: string
+  ballType: string
+  gender: string
   notes: string | null
   pairingEnabled: boolean
   createdAt: Date
@@ -29,6 +46,10 @@ export type EventListItem = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  ballType: string
+  ballTypeLabel: string
+  gender: string
+  genderLabel: string
   notes: string | null
   registrationCount: number
 }
@@ -83,6 +104,24 @@ export function isValidEventType(value: unknown): value is EventType {
 export function eventTypeLabel(type: string | null | undefined): string {
   if (type && isValidEventType(type)) return EVENT_TYPES[type]
   return EVENT_TYPES.other
+}
+
+export function isValidBallType(value: unknown): value is BallType {
+  return value === 'foam' || value === 'cloth'
+}
+
+export function ballTypeLabel(type: string | null | undefined): string {
+  if (type && isValidBallType(type)) return BALL_TYPES[type]
+  return BALL_TYPES.foam
+}
+
+export function isValidEventGender(value: unknown): value is EventGender {
+  return value === 'mixed' || value === 'open' || value === 'she_they'
+}
+
+export function eventGenderLabel(gender: string | null | undefined): string {
+  if (gender && isValidEventGender(gender)) return EVENT_GENDERS[gender]
+  return EVENT_GENDERS.mixed
 }
 
 /** Positive integer draft bucket, or null to clear / unassigned. */

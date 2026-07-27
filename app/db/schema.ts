@@ -96,6 +96,10 @@ export const events = pgTable(
     eventDate: date('event_date').notNull(),
     /** Canonical: tournament | open_gym | other */
     eventType: text('event_type').notNull().default('tournament'),
+    /** Canonical: foam | cloth */
+    ballType: text('ball_type').notNull().default('foam'),
+    /** Canonical: mixed | open | she_they */
+    gender: text('gender').notNull().default('mixed'),
     notes: text('notes'),
     /** When false, pair UI/behavior is disabled for the event */
     pairingEnabled: boolean('pairing_enabled').notNull().default(true),
