@@ -188,3 +188,176 @@ export const eventDraftSnapshots = pgTable(
   },
   (table) => [index('event_draft_snapshots_event_id_idx').on(table.eventId)]
 )
+
+/** External / travel events (not BDL-hosted). */
+export const nonBdlEvents = pgTable(
+  'non_bdl_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    name: text('name').notNull(),
+    eventDate: date('event_date').notNull(),
+    /** Canonical: foam | cloth */
+    ballType: text('ball_type').notNull().default('foam'),
+    division: text('division'),
+    city: text('city'),
+    /** Optional HOME_LEAGUES code for known host orgs */
+    hostOrgHomeLeague: text('host_org_home_league'),
+    /** Free-text host org (required when no home-league code) */
+    hostOrgName: text('host_org_name'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('non_bdl_events_event_date_idx').on(table.eventDate)]
+)
+
+export const nonBdlEventTeams = pgTable(
+  'non_bdl_event_teams',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => nonBdlEvents.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Free-text “how they did” */
+    resultText: text('result_text'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('non_bdl_event_teams_event_id_idx').on(table.eventId)]
+)
+
+export const nonBdlEventAttendees = pgTable(
+  'non_bdl_event_attendees',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => nonBdlEvents.id, { onDelete: 'cascade' }),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => nonBdlEventTeams.id, {
+      onDelete: 'set null',
+    }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('non_bdl_event_attendees_event_player_uidx').on(
+      table.eventId,
+      table.playerId
+    ),
+    index('non_bdl_event_attendees_event_id_idx').on(table.eventId),
+    index('non_bdl_event_attendees_player_id_idx').on(table.playerId),
+    index('non_bdl_event_attendees_team_id_idx').on(table.teamId),
+  ]
+)
+
+export const nonBdlEventStories = pgTable(
+  'non_bdl_event_stories',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => nonBdlEvents.id, { onDelete: 'cascade' }),
+    title: text('title'),
+    body: text('body').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('non_bdl_event_stories_event_id_idx').on(table.eventId)]
+)
+
+export const nonBdlEventStoryTeamTags = pgTable(
+  'non_bdl_event_story_team_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => nonBdlEventStories.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => nonBdlEventTeams.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('non_bdl_event_story_team_tags_uidx').on(table.storyId, table.teamId),
+    index('non_bdl_event_story_team_tags_story_id_idx').on(table.storyId),
+  ]
+)
+
+export const nonBdlEventStoryPlayerTags = pgTable(
+  'non_bdl_event_story_player_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    storyId: uuid('story_id')
+      .notNull()
+      .references(() => nonBdlEventStories.id, { onDelete: 'cascade' }),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('non_bdl_event_story_player_tags_uidx').on(
+      table.storyId,
+      table.playerId
+    ),
+    index('non_bdl_event_story_player_tags_story_id_idx').on(table.storyId),
+  ]
+)
+
+export const nonBdlEventPhotos = pgTable(
+  'non_bdl_event_photos',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => nonBdlEvents.id, { onDelete: 'cascade' }),
+    blobUrl: text('blob_url').notNull(),
+    pathname: text('pathname').notNull(),
+    caption: text('caption'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('non_bdl_event_photos_event_id_idx').on(table.eventId)]
+)
+
+export const nonBdlEventPhotoTeamTags = pgTable(
+  'non_bdl_event_photo_team_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => nonBdlEventPhotos.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => nonBdlEventTeams.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('non_bdl_event_photo_team_tags_uidx').on(table.photoId, table.teamId),
+    index('non_bdl_event_photo_team_tags_photo_id_idx').on(table.photoId),
+  ]
+)
+
+export const nonBdlEventPhotoPlayerTags = pgTable(
+  'non_bdl_event_photo_player_tags',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => nonBdlEventPhotos.id, { onDelete: 'cascade' }),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('non_bdl_event_photo_player_tags_uidx').on(
+      table.photoId,
+      table.playerId
+    ),
+    index('non_bdl_event_photo_player_tags_photo_id_idx').on(table.photoId),
+  ]
+)
