@@ -39,6 +39,10 @@ export const players = pgTable(
     } | null>(),
     /** Canonical: male | female | nonbinary | other */
     gender: text('gender'),
+    /** Public Vercel Blob URL for profile headshot. */
+    photoUrl: text('photo_url'),
+    /** Blob pathname for delete/replace (e.g. player-photos/{id}/…). */
+    photoPathname: text('photo_pathname'),
     isMerged: boolean('is_merged').notNull().default(false),
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
