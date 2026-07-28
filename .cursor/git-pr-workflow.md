@@ -33,6 +33,10 @@ update_pr: base_branch = "preview"  # when retargeting a mis-aimed PR
 
 Only set `base_branch: "main"` when opening the production promotion PR (`preview` → `main`).
 
+## Cloud Agents dashboard
+
+Set **Base branch** to `preview` in [Cloud Agents → Default settings](https://cursor.com/dashboard/cloud-agents) for this repo. When blank, Cursor uses the GitHub repository default branch.
+
 ## Related files
 
 - [.github/pull_request_template.md](../.github/pull_request_template.md) — PR checklist
