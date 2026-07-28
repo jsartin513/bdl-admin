@@ -1,4 +1,5 @@
 import { and, asc, eq, max } from 'drizzle-orm'
+import { del, put } from '@vercel/blob'
 import { getDb } from '@/app/lib/db'
 import { playerAliases, playerEmails, playerHomeLeagues, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
@@ -24,6 +25,74 @@ import {
 } from '@/app/lib/players/queries'
 import { normalizeAlias, normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
 import type { ChangeSource, PlayerSnapshot } from '@/app/lib/players/types'
+
+export const PLAYER_PHOTO_BLOB_PREFIX = 'player-photos/'
+
+const ALLOWED_BLOB_HOST_SUFFIXES = ['.blob.vercel-storage.com']
+
+function isVercelBlobHost(hostname: string): boolean {
+  return ALLOWED_BLOB_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
+  )
+}
+
+function normalizeBlobPathname(pathname: string): string {
+  return pathname.startsWith('/') ? pathname.slice(1) : pathname
+}
+
+function isUnderPlayerPhotoPrefix(pathname: string): boolean {
+  return normalizeBlobPathname(pathname).startsWith(PLAYER_PHOTO_BLOB_PREFIX)
+}
+
+function isImageFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  const type = file.type.toLowerCase()
+  return (
+    type.startsWith('image/') ||
+    name.endsWith('.jpg') ||
+    name.endsWith('.jpeg') ||
+    name.endsWith('.png') ||
+    name.endsWith('.webp') ||
+    name.endsWith('.gif')
+  )
+}
+
+function imageContentType(file: File): string {
+  if (file.type && file.type.startsWith('image/')) return file.type
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.webp')) return 'image/webp'
+  if (name.endsWith('.gif')) return 'image/gif'
+  return 'image/jpeg'
+}
+
+function extensionForFile(file: File): string {
+  const name = file.name.toLowerCase()
+  const match = name.match(/\.(jpe?g|png|webp|gif)$/)
+  if (match) return match[1] === 'jpeg' ? 'jpg' : match[1]
+  const type = file.type.toLowerCase()
+  if (type.includes('png')) return 'png'
+  if (type.includes('webp')) return 'webp'
+  if (type.includes('gif')) return 'gif'
+  return 'jpg'
+}
+
+async function deletePlayerBlob(photoUrl: string | null, photoPathname: string | null) {
+  try {
+    if (photoPathname && isUnderPlayerPhotoPrefix(photoPathname)) {
+      await del(normalizeBlobPathname(photoPathname))
+      return
+    }
+    if (photoUrl) {
+      const parsed = new URL(photoUrl)
+      if (isVercelBlobHost(parsed.hostname)) {
+        await del(photoUrl)
+      }
+    }
+  } catch {
+    // Best-effort cleanup; DB update should still proceed.
+  }
+}
 
 export async function createPlayer(input: {
   firstName: string
@@ -660,4 +729,121 @@ export async function bulkUpdatePlayers(
   }
 
   return { updated: results.length, players: results }
+}
+
+export async function uploadPlayerPhoto(
+  playerId: string,
+  file: File,
+  opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+  if (!isImageFile(file)) {
+    throw new Error('Only image files are supported (jpg, png, webp, gif)')
+  }
+
+  const ext = extensionForFile(file)
+  const pathname = `${PLAYER_PHOTO_BLOB_PREFIX}${playerId}/${crypto.randomUUID()}.${ext}`
+  const blob = await put(pathname, file, {
+    access: 'public',
+    addRandomSuffix: false,
+    contentType: imageContentType(file),
+  })
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: blob.url,
+      photoPathname: blob.pathname,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  await deletePlayerBlob(before.photoUrl, before.photoPathname)
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: opts.source === 'import' ? 'import' : 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+    importBatchId: opts.importBatchId,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
+}
+
+export async function clearPlayerPhoto(
+  playerId: string,
+  opts: { actor: string; source?: ChangeSource }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: null,
+      photoPathname: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  await deletePlayerBlob(before.photoUrl, before.photoPathname)
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
+}
+
+/** Set photo URL/pathname directly (e.g. after an external Blob upload). */
+export async function setPlayerPhotoFields(
+  playerId: string,
+  photo: { photoUrl: string; photoPathname: string },
+  opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: photo.photoUrl,
+      photoPathname: photo.photoPathname,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  if (before.photoUrl !== photo.photoUrl || before.photoPathname !== photo.photoPathname) {
+    await deletePlayerBlob(before.photoUrl, before.photoPathname)
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: opts.source === 'import' ? 'import' : 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+    importBatchId: opts.importBatchId,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
 }

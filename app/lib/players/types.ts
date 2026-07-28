@@ -24,6 +24,8 @@ export type PlayerSnapshot = {
     courtPresence: number | null
   } | null
   gender: string | null
+  photoUrl: string | null
+  photoPathname: string | null
   isMerged: boolean
   mergedIntoPlayerId: string | null
   hasStrongPersonality: boolean
@@ -59,6 +61,7 @@ export type PlayerListItem = {
   gender: string | null
   genderLabel: string
   genderGroupLabel: string
+  photoUrl: string | null
   primaryEmail: string | null
   isMerged: boolean
   hasStrongPersonality: boolean
