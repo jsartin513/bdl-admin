@@ -1,0 +1,28 @@
+name: Preview smoke
+
+# After merges land on preview, wait for the Vercel stable preview deploy
+# and confirm /login, /players, and /events respond (auth redirect or 200).
+on:
+  push:
+    branches: [preview]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Smoke check stable preview
+        env:
+          PREVIEW_BASE_URL: https://admin-preview.bostondodgeballleague.com
+        run: node scripts/smoke-preview.mjs --wait

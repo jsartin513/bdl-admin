@@ -14,7 +14,6 @@ import {
   defaultRosterName,
   parseSkillLevel,
   skillLevelLabel,
-  type SkillLevel,
 } from '@/app/lib/players/skill'
 import { genderLabel, parseGender, type Gender } from '@/app/lib/players/gender'
 import { normalizeEmail, normalizeNamePart, nameKey } from '@/app/lib/players/normalize'
@@ -25,7 +24,7 @@ export type TeamlinktRow = {
   lastName: string
   email: string | null
   jerseyNumber: number | null
-  skillLevel: SkillLevel | null
+  skillLevel: number | null
   gender: Gender | null
   raw: Record<string, string>
 }
@@ -283,7 +282,7 @@ export function parseTeamlinktCsv(csvText: string): {
       }
     }
 
-    let skillLevel: SkillLevel | null = null
+    let skillLevel: number | null = null
     if (mapping.skillLevel !== undefined) {
       skillLevel = parseSkillLevel(cells[mapping.skillLevel] ?? '')
     }

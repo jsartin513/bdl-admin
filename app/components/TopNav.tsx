@@ -100,6 +100,9 @@ export default function TopNav() {
         <Link href={withDevMode('/events', devMode)} className="hover:underline">
           Events
         </Link>
+        <Link href={withDevMode('/non-bdl-events', devMode)} className="hover:underline">
+          Non-BDL Events
+        </Link>
         {devMode && (
           <NavDropdown label="Developer">
             <Link

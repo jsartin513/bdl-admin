@@ -28,6 +28,16 @@ On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `
 
 Auth env for the stable preview host is scoped to the **`preview`** Git branch in Vercel.
 
+## Deploy flow
+
+1. Open feature PRs against **`preview`** (not `main`).
+2. Merge to `preview` → Vercel deploys `admin-preview.bostondodgeballleague.com`.
+3. CI **Preview smoke** waits for that deploy and checks `/login`, `/players`, and `/events` respond (auth redirect or 200). You can also run `npm run smoke:preview` locally.
+4. After preview looks good, open **`preview` → `main`**. The **Main merge gate** requires the head branch to be `preview` and re-checks that stable preview is healthy.
+5. Merge to `main` → production at `admin.bostondodgeballleague.com`.
+
+If `preview` has fallen behind `main`, fast-forward or merge `main` into `preview` before landing new work there.
+
 ## Google Cloud OAuth
 
 1. Create or reuse a **Web** OAuth client.
@@ -71,7 +81,11 @@ Sign in at `/login`. TopNav shows the signed-in email and Log out.
 
 - UI: `/players`
 - Import TeamLinkt CSV (dry run → commit). Matching: email, then first+last name.
-- Skill levels: 1 Beginner, 2 Intermediate, 3 Advanced, 4 Worlds level (`null` = Unset).
+- Skill systems (independent per player):
+  - **Linear** (`skill_level`): 1–100 with anchors at 20 Beginner, 40 Intermediate, 60 Advanced, 80 Worlds level (`null` = Unset). Midpoints (e.g. 30, 50) are allowed. Legacy 1–4 values were migrated ×20.
+  - **Fibonacci** (`skill_level_fib`): one of `1, 2, 3, 5, 8, 13, 21, 34, 55, 89` (or unset).
+  - **Skill areas** (`skill_areas` jsonb): offense, defense, staying alive, court presence/play calling — each on the linear scale; blank fields fall back to the main linear skill. Effective score = average of the four resolved values.
+- Players and event pages share a **Skill view** toggle (`localStorage` key `bdl-admin.skillViewMode`) so display, matrix, sorting, and draft balancing follow Linear / Fibonacci / Skill areas.
 - Gender: male / female / nonbinary / other (imported from TeamLinkt Gender column). List sorts female/nonbinary/other together for drafting. Birthdate from TeamLinkt is not stored or shown.
-- Import fills skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate`, `3`/`Advanced`, etc.). Creates get the value; updates only set skill when the existing player is unset.
+- Import fills **linear** skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate` → 40, `3`/`Advanced` → 60, etc.). Creates get the value; updates only set skill when the existing player is unset. Fibonacci and skill areas are not invented by import.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.

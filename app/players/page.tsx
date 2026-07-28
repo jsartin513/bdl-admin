@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   SKILL_LEVELS,
   defaultJerseyName,
   defaultNickname,
-  skillLevelLabel,
+  effectiveSkillLabel,
+  effectiveSkillScore,
+  type SkillViewMode,
 } from '@/app/lib/players/skill'
 import {
   GENDERS,
@@ -22,6 +24,18 @@ import {
 import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 import type { EventListItem } from '@/app/lib/events/types'
+import { SkillStyledText } from '@/app/components/SkillStyledText'
+import {
+  SkillFieldsEditor,
+  emptySkillFieldsValue,
+  skillFieldsFromPlayer,
+  skillFieldsToPatch,
+  type SkillFieldsValue,
+} from '@/app/components/players/SkillFieldsEditor'
+import {
+  SkillViewModeToggle,
+  useSkillViewMode,
+} from '@/app/hooks/useSkillViewMode'
 
 type HistoryRow = {
   id: string
@@ -168,23 +182,6 @@ function HomeLeagueMark(props: {
   )
 }
 
-function SkillStyledText(props: {
-  skillLevel: number | null
-  children: ReactNode
-}) {
-  const { skillLevel, children } = props
-  if (skillLevel === 1) {
-    return <span className="italic">({children})</span>
-  }
-  if (skillLevel === 3) {
-    return <span className="font-bold">{children}</span>
-  }
-  if (skillLevel === 4) {
-    return <span className="font-bold underline">{children}</span>
-  }
-  return <span>{children}</span>
-}
-
 function genderRowClass(gender: string | null, isMerged: boolean): string {
   if (isMerged) return 'bg-gray-50 text-gray-500'
   const group = genderGroup(gender)
@@ -320,14 +317,25 @@ function compareJerseyName(a: PlayerListItem, b: PlayerListItem): number {
   return compareByLastName(a, b)
 }
 
-function compareSkill(a: PlayerListItem, b: PlayerListItem): number {
-  if (a.skillLevel == null && b.skillLevel == null) return 0
-  if (a.skillLevel == null) return 1
-  if (b.skillLevel == null) return -1
-  return a.skillLevel - b.skillLevel
+function compareSkill(
+  a: PlayerListItem,
+  b: PlayerListItem,
+  mode: SkillViewMode
+): number {
+  const sa = effectiveSkillScore(a, mode)
+  const sb = effectiveSkillScore(b, mode)
+  if (sa == null && sb == null) return 0
+  if (sa == null) return 1
+  if (sb == null) return -1
+  return sa - sb
 }
 
-function comparePlayers(a: PlayerListItem, b: PlayerListItem, key: SortKey): number {
+function comparePlayers(
+  a: PlayerListItem,
+  b: PlayerListItem,
+  key: SortKey,
+  mode: SkillViewMode
+): number {
   if (key === 'first') return compareByFirstName(a, b)
   if (key === 'last') return compareByLastName(a, b)
   if (key === 'jersey') return compareJersey(a, b)
@@ -337,12 +345,13 @@ function comparePlayers(a: PlayerListItem, b: PlayerListItem, key: SortKey): num
     if (g !== 0) return g
     return compareByLastName(a, b)
   }
-  const s = compareSkill(a, b)
+  const s = compareSkill(a, b, mode)
   if (s !== 0) return s
   return compareByLastName(a, b)
 }
 
 export default function PlayersPage() {
+  const [skillViewMode, setSkillViewMode] = useSkillViewMode()
   const [players, setPlayers] = useState<PlayerListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -495,11 +504,11 @@ export default function PlayersPage() {
         const missingCmp = countMissingFields(b) - countMissingFields(a)
         if (missingCmp !== 0) return missingCmp
       }
-      const cmp = comparePlayers(a, b, sortKey)
+      const cmp = comparePlayers(a, b, sortKey, skillViewMode)
       return sortDir === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [players, genderFilter, sortKey, sortDir, quickFillMode])
+  }, [players, genderFilter, sortKey, sortDir, quickFillMode, skillViewMode])
 
   // One player at a time in quick fill; queue length stays on displayedPlayers.
   const quickFillRows = useMemo(
@@ -730,6 +739,13 @@ export default function PlayersPage() {
     jerseyNumber?: number | null
     jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: {
+      offense: number | null
+      defense: number | null
+      stayingAlive: number | null
+      courtPresence: number | null
+    } | null
     gender?: string | null
     email?: string
   }) {
@@ -1078,6 +1094,7 @@ export default function PlayersPage() {
           />
           Show merged
         </label>
+        <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} className="pb-2" />
         <div className="relative pb-0.5">
           <button
             type="button"
@@ -1470,7 +1487,12 @@ export default function PlayersPage() {
                   ) : null}
                   {showFullNameColumns ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.firstName}</SkillStyledText>
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.firstName}
+                      </SkillStyledText>
                       {p.hasStrongPersonality ? (
                         <span
                           title={p.strongPersonalityNotes || 'Strong personality'}
@@ -1484,17 +1506,32 @@ export default function PlayersPage() {
                   ) : null}
                   {showFullNameColumns ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.lastName}</SkillStyledText>
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.lastName}
+                      </SkillStyledText>
                     </td>
                   ) : null}
                   {visibleColumns.roster ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.rosterName}</SkillStyledText>
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.rosterName}
+                      </SkillStyledText>
                     </td>
                   ) : null}
                   {visibleColumns.nickname ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.nickname}</SkillStyledText>
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.nickname}
+                      </SkillStyledText>
                       {!showFullNameColumns && p.hasStrongPersonality ? (
                         <span
                           title={p.strongPersonalityNotes || 'Strong personality'}
@@ -1511,7 +1548,12 @@ export default function PlayersPage() {
                   ) : null}
                   {visibleColumns.jerseyName ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText skillLevel={p.skillLevel}>{p.jerseyName}</SkillStyledText>
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.jerseyName}
+                      </SkillStyledText>
                     </td>
                   ) : null}
                   {showGenderColumn ? (
@@ -1603,7 +1645,12 @@ export default function PlayersPage() {
                           </select>
                         </>
                       ) : (
-                        <SkillStyledText skillLevel={p.skillLevel}>{p.skillLabel}</SkillStyledText>
+                        <SkillStyledText
+                          score={effectiveSkillScore(p, skillViewMode)}
+                          mode={skillViewMode}
+                        >
+                          {effectiveSkillLabel(p, skillViewMode)}
+                        </SkillStyledText>
                       )}
                     </td>
                   ) : null}
@@ -1993,8 +2040,8 @@ function EditPanel(props: {
     p.jerseyNumber != null ? String(p.jerseyNumber) : ''
   )
   const [jerseyName, setJerseyName] = useState(p.jerseyName)
-  const [skillLevel, setSkillLevel] = useState(
-    p.skillLevel != null ? String(p.skillLevel) : ''
+  const [skillFields, setSkillFields] = useState<SkillFieldsValue>(() =>
+    skillFieldsFromPlayer(p)
   )
   const [gender, setGender] = useState(p.gender ?? '')
   const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
@@ -2014,7 +2061,7 @@ function EditPanel(props: {
     setNickname(p.nickname)
     setJerseyNumber(p.jerseyNumber != null ? String(p.jerseyNumber) : '')
     setJerseyName(p.jerseyName)
-    setSkillLevel(p.skillLevel != null ? String(p.skillLevel) : '')
+    setSkillFields(skillFieldsFromPlayer(p))
     setGender(p.gender ?? '')
     setHasStrongPersonality(p.hasStrongPersonality)
     setStrongPersonalityNotes(p.strongPersonalityNotes ?? '')
@@ -2080,24 +2127,18 @@ function EditPanel(props: {
         ) : null}
 
         <div className="space-y-2">
+          <h3 className="font-medium text-sm">Skill systems</h3>
+          <SkillFieldsEditor
+            value={skillFields}
+            onChange={setSkillFields}
+            disabled={p.isMerged}
+            idPrefix="edit-skill"
+          />
+        </div>
+
+        <div className="space-y-2">
           <h3 className="font-medium text-sm">Roster</h3>
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-sm">
-              Skill
-              <select
-                className="mt-1 w-full rounded border px-3 py-2"
-                value={skillLevel}
-                disabled={p.isMerged}
-                onChange={(e) => setSkillLevel(e.target.value)}
-              >
-                <option value="">Unset</option>
-                {Object.entries(SKILL_LEVELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {value}: {label}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="text-sm">
               Gender
               <select
@@ -2231,7 +2272,8 @@ function EditPanel(props: {
             type="button"
             disabled={props.saving}
             className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-            onClick={() =>
+            onClick={() => {
+              const skillPatch = skillFieldsToPatch(skillFields)
               props.onSaveCore({
                 firstName,
                 lastName,
@@ -2239,12 +2281,14 @@ function EditPanel(props: {
                 nickname,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
                 jerseyName,
-                skillLevel: skillLevel ? Number(skillLevel) : null,
+                skillLevel: skillPatch.skillLevel,
+                skillLevelFib: skillPatch.skillLevelFib,
+                skillAreas: skillPatch.skillAreas,
                 gender: gender || null,
                 hasStrongPersonality,
                 strongPersonalityNotes: strongPersonalityNotes.trim() || null,
               })
-            }
+            }}
           >
             Save details
           </button>
@@ -2435,7 +2479,9 @@ function EditPanel(props: {
         </div>
 
         <p className="text-xs text-gray-500">
-          Current skill label: {skillLevelLabel(p.skillLevel)}
+          Linear: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
+          {effectiveSkillLabel(p, 'fibonacci')} · Areas:{' '}
+          {effectiveSkillLabel(p, 'areas')}
         </p>
         {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
       </div>
@@ -2455,6 +2501,13 @@ function CreatePanel(props: {
     jerseyNumber?: number | null
     jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: {
+      offense: number | null
+      defense: number | null
+      stayingAlive: number | null
+      courtPresence: number | null
+    } | null
     gender?: string | null
     email?: string
   }) => void
@@ -2465,7 +2518,9 @@ function CreatePanel(props: {
   const [nickname, setNickname] = useState('')
   const [jerseyNumber, setJerseyNumber] = useState('')
   const [jerseyName, setJerseyName] = useState('')
-  const [skillLevel, setSkillLevel] = useState('')
+  const [skillFields, setSkillFields] = useState<SkillFieldsValue>(() =>
+    emptySkillFieldsValue()
+  )
   const [gender, setGender] = useState('')
   const [email, setEmail] = useState('')
   const nicknameDefault = defaultNickname(firstName, lastName)
@@ -2473,7 +2528,7 @@ function CreatePanel(props: {
 
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4 text-gray-900">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
         <h2 className="text-lg font-semibold text-gray-900">Add player</h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
@@ -2533,21 +2588,6 @@ function CreatePanel(props: {
             </span>
           </label>
           <label className="text-sm">
-            Skill
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={skillLevel}
-              onChange={(e) => setSkillLevel(e.target.value)}
-            >
-              <option value="">Unset</option>
-              {Object.entries(SKILL_LEVELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {value}: {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
             Gender
             <select
               className="mt-1 w-full rounded border px-3 py-2"
@@ -2571,6 +2611,11 @@ function CreatePanel(props: {
             />
           </label>
         </div>
+        <SkillFieldsEditor
+          value={skillFields}
+          onChange={setSkillFields}
+          idPrefix="create-skill"
+        />
         {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
         <div className="flex justify-end gap-2">
           <button type="button" className="rounded border px-3 py-2 text-sm" onClick={props.onClose}>
@@ -2580,7 +2625,8 @@ function CreatePanel(props: {
             type="button"
             disabled={props.saving || !firstName.trim() || !lastName.trim()}
             className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-            onClick={() =>
+            onClick={() => {
+              const skillPatch = skillFieldsToPatch(skillFields)
               props.onCreate({
                 firstName,
                 lastName,
@@ -2588,11 +2634,13 @@ function CreatePanel(props: {
                 nickname: nickname.trim() || null,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
                 jerseyName: jerseyName.trim() || null,
-                skillLevel: skillLevel ? Number(skillLevel) : null,
+                skillLevel: skillPatch.skillLevel,
+                skillLevelFib: skillPatch.skillLevelFib,
+                skillAreas: skillPatch.skillAreas,
                 gender: gender || null,
                 email: email.trim() || undefined,
               })
-            }
+            }}
           >
             Create
           </button>

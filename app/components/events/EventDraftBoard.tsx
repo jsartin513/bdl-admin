@@ -26,7 +26,11 @@ import type {
   EventRegistrationListItem,
 } from '@/app/lib/events/types'
 import { genderGroup, genderGroupSortKey } from '@/app/lib/players/gender'
-import { skillLevelLabel } from '@/app/lib/players/skill'
+import {
+  effectiveSkillLabel,
+  effectiveSkillScore,
+  type SkillViewMode,
+} from '@/app/lib/players/skill'
 
 type DraftAssignment = Map<string, number | null>
 
@@ -45,6 +49,7 @@ type Props = {
   applying: boolean
   error: string | null
   pairingEnabled?: boolean
+  skillViewMode?: SkillViewMode
   snapshots: EventDraftSnapshotListItem[]
   snapshotsBusy: boolean
   onSaveSnapshot: (name: string) => Promise<void>
@@ -92,15 +97,16 @@ function homeLeagueText(player: EventRegistrationListItem): string | null {
 
 function sortPlayers(
   players: EventRegistrationListItem[],
-  sort: PlayerSort
+  sort: PlayerSort,
+  mode: SkillViewMode
 ): EventRegistrationListItem[] {
   return [...players].sort((a, b) => {
     if (sort === 'gender') {
       const g = genderGroupSortKey(a.gender) - genderGroupSortKey(b.gender)
       if (g !== 0) return g
     } else if (sort === 'skill') {
-      const sa = a.skillLevel ?? -1
-      const sb = b.skillLevel ?? -1
+      const sa = effectiveSkillScore(a, mode) ?? -1
+      const sb = effectiveSkillScore(b, mode) ?? -1
       if (sb !== sa) return sb - sa
     }
     return displayName(a).localeCompare(displayName(b), undefined, {
@@ -118,13 +124,17 @@ function playerCardClass(gender: string | null): string {
 
 function DraftPlayerCard(props: {
   player: EventRegistrationListItem
+  skillViewMode: SkillViewMode
   dragging?: boolean
   pairingEnabled?: boolean
   showHomeLeague?: boolean
   captainBadge?: '(C)' | '(CC)' | null
 }) {
-  const { player, dragging, pairingEnabled, showHomeLeague, captainBadge } = props
+  const { player, skillViewMode, dragging, pairingEnabled, showHomeLeague, captainBadge } =
+    props
   const league = homeLeagueText(player)
+  const score = effectiveSkillScore(player, skillViewMode)
+  const label = effectiveSkillLabel(player, skillViewMode)
   return (
     <div
       className={`rounded border px-2 py-1.5 text-xs shadow-sm ${playerCardClass(player.gender)} ${
@@ -165,9 +175,8 @@ function DraftPlayerCard(props: {
         ) : null}
       </div>
       <div className="text-gray-600">
-        {player.skillLevel != null ? skillLevelLabel(player.skillLevel) : '—'} ·{' '}
-        {player.genderGroupLabel}
-        {player.skillLevel != null ? ` · ${player.skillLevel}` : ''}
+        {score != null ? label : '—'} · {player.genderGroupLabel}
+        {score != null ? ` · ${score}` : ''}
       </div>
       {showHomeLeague && league ? (
         <div className="mt-0.5 text-[10px] text-gray-500">{league}</div>
@@ -176,8 +185,19 @@ function DraftPlayerCard(props: {
   )
 }
 
+function withEffectiveSkill(
+  players: EventRegistrationListItem[],
+  mode: SkillViewMode
+): Array<{ skillLevel: number | null; gender: string | null }> {
+  return players.map((p) => ({
+    skillLevel: effectiveSkillScore(p, mode),
+    gender: p.gender,
+  }))
+}
+
 function DraggablePlayer(props: {
   player: EventRegistrationListItem
+  skillViewMode: SkillViewMode
   pairingEnabled?: boolean
   showHomeLeague?: boolean
   captainBadge?: '(C)' | '(CC)' | null
@@ -198,6 +218,7 @@ function DraggablePlayer(props: {
     >
       <DraftPlayerCard
         player={props.player}
+        skillViewMode={props.skillViewMode}
         pairingEnabled={props.pairingEnabled}
         showHomeLeague={props.showHomeLeague}
         captainBadge={props.captainBadge}
@@ -231,6 +252,7 @@ function TeamColumn(props: {
   label: string
   players: EventRegistrationListItem[]
   sort: PlayerSort
+  skillViewMode: SkillViewMode
   showAverage?: boolean
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
@@ -242,13 +264,13 @@ function TeamColumn(props: {
 }) {
   const id = columnId(props.team)
   const { setNodeRef, isOver } = useDroppable({ id })
-  const score = teamSkillTotal(props.players)
+  const score = teamSkillTotal(withEffectiveSkill(props.players, props.skillViewMode))
   const gender = teamGenderCounts(props.players)
   const count = props.players.length
   const average = count > 0 ? score / count : 0
   const sortedPlayers = useMemo(
-    () => sortPlayers(props.players, props.sort),
-    [props.players, props.sort]
+    () => sortPlayers(props.players, props.sort, props.skillViewMode),
+    [props.players, props.sort, props.skillViewMode]
   )
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState(false)
@@ -368,6 +390,7 @@ function TeamColumn(props: {
           <DraggablePlayer
             key={p.id}
             player={p}
+            skillViewMode={props.skillViewMode}
             pairingEnabled={props.pairingEnabled}
             showHomeLeague={props.showHomeLeague}
             captainBadge={props.captainBadgeFor?.(p) ?? null}
@@ -390,6 +413,7 @@ export function EventDraftBoard(props: Props) {
     applying,
     error,
     pairingEnabled = true,
+    skillViewMode = 'linear',
     snapshots,
     snapshotsBusy,
     onSaveSnapshot,
@@ -438,7 +462,7 @@ export function EventDraftBoard(props: Props) {
     const genderDeltas: number[] = []
     for (let t = 1; t <= teamCount; t++) {
       const players = byColumn.get(columnId(t)) ?? []
-      const total = teamSkillTotal(players)
+      const total = teamSkillTotal(withEffectiveSkill(players, skillViewMode))
       const size = players.length
       scores.push(total)
       sizes.push(size)
@@ -475,7 +499,7 @@ export function EventDraftBoard(props: Props) {
       genderDeltas,
       avgGenderDelta,
     }
-  }, [byColumn, teamCount])
+  }, [byColumn, teamCount, skillViewMode])
 
   const activePlayer = activeId
     ? registrations.find((r) => r.id === activeId) ?? null
@@ -491,19 +515,31 @@ export function EventDraftBoard(props: Props) {
       const snap = snapshots.find((s) => s.id === key)
       return snap?.assignments ?? {}
     }
+    const scored = registrations.map((r) => ({
+      ...r,
+      skillLevel: effectiveSkillScore(r, skillViewMode),
+    }))
     return {
-      a: summarizeDraftAssignments(registrations, resolve(compareA), teamCount),
-      b: summarizeDraftAssignments(registrations, resolve(compareB), teamCount),
+      a: summarizeDraftAssignments(scored, resolve(compareA), teamCount),
+      b: summarizeDraftAssignments(scored, resolve(compareB), teamCount),
       aLabel:
         compareA === 'workspace'
           ? 'Current workspace'
           : (snapshots.find((s) => s.id === compareA)?.name ?? 'A'),
       bLabel: snapshots.find((s) => s.id === compareB)?.name ?? 'B',
     }
-  }, [assignments, compareA, compareB, registrations, snapshots, teamCount])
+  }, [
+    assignments,
+    compareA,
+    compareB,
+    registrations,
+    snapshots,
+    teamCount,
+    skillViewMode,
+  ])
 
   async function copyTeam(teamPlayers: EventRegistrationListItem[]): Promise<void> {
-    const sorted = sortPlayers(teamPlayers, playerSort)
+    const sorted = sortPlayers(teamPlayers, playerSort, skillViewMode)
     const lines = sorted.map((p) => {
       const name = copyUseRosterName ? (p.rosterName || displayName(p)) : displayName(p)
       let line =
@@ -837,6 +873,7 @@ export function EventDraftBoard(props: Props) {
             label="Unassigned"
             players={unassignedPlayers}
             sort={playerSort}
+            skillViewMode={skillViewMode}
             emphasizeUnassigned
             pairingEnabled={pairingEnabled}
             showHomeLeague={showHomeLeague}
@@ -860,6 +897,7 @@ export function EventDraftBoard(props: Props) {
                 label={`Team ${t}`}
                 players={teamPlayers}
                 sort={playerSort}
+                skillViewMode={skillViewMode}
                 showAverage={teamStats.sizesUneven}
                 scoreImbalanced={
                   teamPlayers.length > 0 &&
@@ -884,6 +922,7 @@ export function EventDraftBoard(props: Props) {
           {activePlayer ? (
             <DraftPlayerCard
               player={activePlayer}
+              skillViewMode={skillViewMode}
               dragging
               pairingEnabled={pairingEnabled}
               showHomeLeague={showHomeLeague}

@@ -8,7 +8,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from 'react'
 import { EventDraftBoard } from '@/app/components/events/EventDraftBoard'
 import { withDevMode } from '@/app/lib/devMode'
@@ -26,10 +25,17 @@ import type {
 } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
 import {
-  SKILL_LEVELS,
-  isValidSkillLevel,
-  skillLevelLabel,
+  effectiveSkillLabel,
+  effectiveSkillScore,
+  skillMatrixBucketKey,
+  skillMatrixColLabel,
+  skillMatrixColumns,
 } from '@/app/lib/players/skill'
+import { SkillStyledText } from '@/app/components/SkillStyledText'
+import {
+  SkillViewModeToggle,
+  useSkillViewMode,
+} from '@/app/hooks/useSkillViewMode'
 
 type EventDetail = {
   id: string
@@ -37,6 +43,10 @@ type EventDetail = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  ballType: string
+  ballTypeLabel: string
+  gender: string
+  genderLabel: string
   notes: string | null
   pairingEnabled: boolean
 }
@@ -60,7 +70,6 @@ type DraftPhase = 'off' | 'setup' | 'board'
 
 type SeedMode = 'auto' | 'empty' | 'existing'
 
-const SKILL_COLS = [...Object.keys(SKILL_LEVELS).map(Number), null] as const
 const GENDER_ROWS = ['w_nb_o', 'men', 'unset'] as const
 
 function formatDisplayDate(isoDate: string): string {
@@ -74,33 +83,11 @@ function formatDisplayDate(isoDate: string): string {
   })
 }
 
-function SkillStyledText(props: {
-  skillLevel: number | null
-  children: ReactNode
-}) {
-  const { skillLevel, children } = props
-  if (skillLevel === 1) {
-    return <span className="italic">({children})</span>
-  }
-  if (skillLevel === 3) {
-    return <span className="font-bold">{children}</span>
-  }
-  if (skillLevel === 4) {
-    return <span className="font-bold underline">{children}</span>
-  }
-  return <span>{children}</span>
-}
-
 function genderRowClass(gender: string | null): string {
   const group = genderGroup(gender)
   if (group === 'w_nb_o') return 'bg-rose-50/70 text-gray-900'
   if (group === 'men') return 'bg-sky-50/70 text-gray-900'
   return 'text-gray-900'
-}
-
-function skillColLabel(level: number | null): string {
-  if (level == null) return 'Unset'
-  return SKILL_LEVELS[level as keyof typeof SKILL_LEVELS] ?? 'Unset'
 }
 
 function genderRowLabel(row: (typeof GENDER_ROWS)[number]): string {
@@ -138,6 +125,7 @@ function EventTrackerPageContent() {
   const router = useRouter()
   const eventId = String(params.id ?? '')
   const { devMode } = useDevMode()
+  const [skillViewMode, setSkillViewMode] = useSkillViewMode()
 
   const [event, setEvent] = useState<EventDetail | null>(null)
   const [registrations, setRegistrations] = useState<EventRegistrationListItem[]>([])
@@ -220,20 +208,21 @@ function EventTrackerPageContent() {
     let unassigned = 0
     let assigned = 0
     const byGroup = new Map<number, number>()
+    const skillCols = skillMatrixColumns(skillViewMode)
 
     const matrix: Record<string, Record<string, number>> = {}
     for (const row of GENDER_ROWS) {
       matrix[row] = { unset: 0 }
-      for (const level of Object.keys(SKILL_LEVELS)) {
-        matrix[row][level] = 0
+      for (const level of skillCols) {
+        if (level == null) continue
+        matrix[row][String(level)] = 0
       }
     }
 
     for (const r of registrations) {
       const g = genderGroup(r.gender)
-      const skillKey = isValidSkillLevel(r.skillLevel)
-        ? String(r.skillLevel)
-        : 'unset'
+      const score = effectiveSkillScore(r, skillViewMode)
+      const skillKey = skillMatrixBucketKey(score, skillViewMode)
       matrix[g][skillKey] = (matrix[g][skillKey] ?? 0) + 1
 
       if (r.draftGroup == null) unassigned++
@@ -244,8 +233,9 @@ function EventTrackerPageContent() {
     }
 
     const colTotals: Record<string, number> = { unset: 0 }
-    for (const level of Object.keys(SKILL_LEVELS)) {
-      colTotals[level] = 0
+    for (const level of skillCols) {
+      if (level == null) continue
+      colTotals[String(level)] = 0
     }
     const rowTotals: Record<string, number> = {
       w_nb_o: 0,
@@ -261,14 +251,15 @@ function EventTrackerPageContent() {
 
     return {
       total: registrations.length,
-      matrix,
-      rowTotals,
-      colTotals,
       unassigned,
       assigned,
       byGroup,
+      matrix,
+      colTotals,
+      rowTotals,
+      skillCols,
     }
-  }, [registrations])
+  }, [registrations, skillViewMode])
 
   const groupOptions = useMemo(() => {
     const fromData = registrations
@@ -431,7 +422,7 @@ function EventTrackerPageContent() {
     const pairingOn = event?.pairingEnabled !== false
     return registrations.map((r) => ({
       id: r.id,
-      skillLevel: r.skillLevel,
+      skillLevel: effectiveSkillScore(r, skillViewMode),
       gender: r.gender,
       pairId: pairingOn ? r.pairId : null,
       draftGroup: r.draftGroup,
@@ -782,11 +773,15 @@ function EventTrackerPageContent() {
           </Link>
           <h1 className="text-2xl font-semibold mt-1">{event.name}</h1>
           <p className="text-sm text-gray-600">
-            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel}
+            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel} ·{' '}
+            {event.ballTypeLabel} · {event.genderLabel}
           </p>
           {event.notes ? (
             <p className="text-sm text-gray-600 mt-1">{event.notes}</p>
           ) : null}
+          <div className="mt-3">
+            <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} />
+          </div>
           <label className="mt-3 flex items-center gap-2 text-sm text-gray-800">
             <input
               type="checkbox"
@@ -946,6 +941,7 @@ function EventTrackerPageContent() {
           applying={draftApplying}
           error={draftError}
           pairingEnabled={event.pairingEnabled !== false}
+          skillViewMode={skillViewMode}
           snapshots={snapshots}
           snapshotsBusy={snapshotsBusy}
           onSaveSnapshot={saveSnapshot}
@@ -996,9 +992,9 @@ function EventTrackerPageContent() {
           <thead className="bg-gray-50 text-left">
             <tr>
               <th className="px-3 py-2 font-medium">Gender \\ Skill</th>
-              {SKILL_COLS.map((level) => (
+              {counts.skillCols.map((level) => (
                 <th key={String(level)} className="px-3 py-2 font-medium whitespace-nowrap">
-                  {skillColLabel(level)}
+                  {skillMatrixColLabel(level, skillViewMode)}
                 </th>
               ))}
               <th className="px-3 py-2 font-medium">Total</th>
@@ -1008,7 +1004,7 @@ function EventTrackerPageContent() {
             {GENDER_ROWS.map((row) => (
               <tr key={row} className="border-t border-gray-100">
                 <td className="px-3 py-2 font-medium">{genderRowLabel(row)}</td>
-                {SKILL_COLS.map((level) => {
+                {counts.skillCols.map((level) => {
                   const key = level == null ? 'unset' : String(level)
                   return (
                     <td key={key} className="px-3 py-2 tabular-nums">
@@ -1023,7 +1019,7 @@ function EventTrackerPageContent() {
             ))}
             <tr className="border-t border-gray-200 bg-gray-50">
               <td className="px-3 py-2 font-medium">Total</td>
-              {SKILL_COLS.map((level) => {
+              {counts.skillCols.map((level) => {
                 const key = level == null ? 'unset' : String(level)
                 return (
                   <td key={key} className="px-3 py-2 font-medium tabular-nums">
@@ -1119,7 +1115,10 @@ function EventTrackerPageContent() {
                         className={`border-t border-gray-100 ${genderRowClass(r.gender)}`}
                       >
                         <td className="px-3 py-2">
-                          <SkillStyledText skillLevel={r.skillLevel}>
+                          <SkillStyledText
+                            score={effectiveSkillScore(r, skillViewMode)}
+                            mode={skillViewMode}
+                          >
                             {label}
                           </SkillStyledText>
                           {badge ? (
@@ -1140,7 +1139,9 @@ function EventTrackerPageContent() {
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          {r.skillLevel != null ? skillLevelLabel(r.skillLevel) : '—'}
+                          {effectiveSkillScore(r, skillViewMode) != null
+                            ? effectiveSkillLabel(r, skillViewMode)
+                            : '—'}
                         </td>
                         <td className="px-3 py-2">{r.genderGroupLabel}</td>
                         <td className="px-3 py-2 text-xs">{r.primaryEmail ?? '—'}</td>

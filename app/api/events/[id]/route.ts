@@ -5,7 +5,14 @@ import {
 } from '@/app/lib/admin-auth'
 import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
-import { eventTypeLabel, isValidEventType } from '@/app/lib/events/types'
+import {
+  ballTypeLabel,
+  eventGenderLabel,
+  eventTypeLabel,
+  isValidBallType,
+  isValidEventGender,
+  isValidEventType,
+} from '@/app/lib/events/types'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -23,6 +30,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        ballTypeLabel: ballTypeLabel(event.ballType),
+        genderLabel: eventGenderLabel(event.gender),
       },
     })
   } catch (err) {
@@ -41,6 +50,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       name?: string
       eventDate?: string
       eventType?: string | null
+      ballType?: string | null
+      gender?: string | null
       notes?: string | null
       pairingEnabled?: boolean
     }
@@ -51,6 +62,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       !isValidEventType(body.eventType)
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
+    }
+    if (
+      body.ballType != null &&
+      body.ballType !== '' &&
+      !isValidBallType(body.ballType)
+    ) {
+      return NextResponse.json({ error: 'Invalid ballType' }, { status: 400 })
+    }
+    if (
+      body.gender != null &&
+      body.gender !== '' &&
+      !isValidEventGender(body.gender)
+    ) {
+      return NextResponse.json({ error: 'Invalid gender' }, { status: 400 })
     }
 
     if (
@@ -68,6 +93,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        ballTypeLabel: ballTypeLabel(event.ballType),
+        genderLabel: eventGenderLabel(event.gender),
       },
     })
   } catch (err) {

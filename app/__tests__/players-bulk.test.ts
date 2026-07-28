@@ -71,7 +71,7 @@ describe('parseBulkPlayerRequest', () => {
       parseBulkPlayerRequest({ playerIds: ['p1'], patch: { gender: 'alien' } })
     ).toThrow(/Invalid gender/)
     expect(() =>
-      parseBulkPlayerRequest({ playerIds: ['p1'], patch: { skillLevel: 9 } })
+      parseBulkPlayerRequest({ playerIds: ['p1'], patch: { skillLevel: 101 } })
     ).toThrow(/Invalid skill level/)
     expect(() =>
       parseBulkPlayerRequest({

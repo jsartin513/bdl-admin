@@ -8,9 +8,13 @@ import {
 } from '@/app/lib/players/bulk'
 import {
   defaultRosterName,
+  isValidFibSkillLevel,
   isValidSkillLevel,
+  mergeSkillAreasPatch,
   normalizeStoredJerseyName,
   normalizeStoredNickname,
+  parseSkillAreas,
+  type SkillAreas,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
 import { isValidHomeLeague } from '@/app/lib/players/home-league'
@@ -29,6 +33,8 @@ export async function createPlayer(input: {
   jerseyNumber?: number | null
   jerseyName?: string | null
   skillLevel?: number | null
+  skillLevelFib?: number | null
+  skillAreas?: SkillAreas | Partial<SkillAreas> | null
   gender?: string | null
   email?: string | null
   actor: string
@@ -60,6 +66,19 @@ export async function createPlayer(input: {
     skillLevel = input.skillLevel
   }
 
+  let skillLevelFib: number | null = null
+  if (input.skillLevelFib != null) {
+    if (!isValidFibSkillLevel(input.skillLevelFib)) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    skillLevelFib = input.skillLevelFib
+  }
+
+  let skillAreas: SkillAreas | null = null
+  if (input.skillAreas !== undefined && input.skillAreas !== null) {
+    skillAreas = parseSkillAreas(input.skillAreas)
+  }
+
   let gender: string | null = null
   if (input.gender != null) {
     if (!isValidGender(input.gender)) throw new Error('Invalid gender')
@@ -76,6 +95,8 @@ export async function createPlayer(input: {
       jerseyNumber: input.jerseyNumber ?? null,
       jerseyName,
       skillLevel,
+      skillLevelFib,
+      skillAreas,
       gender,
     })
     .returning()
@@ -113,6 +134,8 @@ export async function updatePlayer(
     jerseyNumber?: number | null
     jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: SkillAreas | Partial<SkillAreas> | null
     gender?: string | null
     hasStrongPersonality?: boolean
     strongPersonalityNotes?: string | null
@@ -151,6 +174,19 @@ export async function updatePlayer(
       throw new Error('Invalid skill level')
     }
     updates.skillLevel = patch.skillLevel
+  }
+  if (patch.skillLevelFib !== undefined) {
+    if (patch.skillLevelFib !== null && !isValidFibSkillLevel(patch.skillLevelFib)) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    updates.skillLevelFib = patch.skillLevelFib
+  }
+  if (patch.skillAreas !== undefined) {
+    if (patch.skillAreas === null) {
+      updates.skillAreas = null
+    } else {
+      updates.skillAreas = mergeSkillAreasPatch(before.skillAreas, patch.skillAreas)
+    }
   }
   if (patch.gender !== undefined) {
     if (patch.gender !== null && !isValidGender(patch.gender)) {
@@ -587,6 +623,8 @@ export async function bulkUpdatePlayers(
         {
           gender: patch.gender,
           skillLevel: patch.skillLevel,
+          skillLevelFib: patch.skillLevelFib,
+          skillAreas: patch.skillAreas,
           hasStrongPersonality: patch.hasStrongPersonality,
           strongPersonalityNotes: patch.strongPersonalityNotes,
         },

@@ -34,13 +34,15 @@ function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
 }
 
 describe('parseSkillLevel', () => {
-  it('maps intermediate/advanced and numeric levels', () => {
-    expect(parseSkillLevel('2')).toBe(2)
-    expect(parseSkillLevel('Intermediate')).toBe(2)
-    expect(parseSkillLevel('3')).toBe(3)
-    expect(parseSkillLevel('advanced')).toBe(3)
-    expect(parseSkillLevel('Beginner')).toBe(1)
-    expect(parseSkillLevel('Worlds level')).toBe(4)
+  it('maps intermediate/advanced and numeric levels onto the ×20 scale', () => {
+    expect(parseSkillLevel('2')).toBe(40)
+    expect(parseSkillLevel('Intermediate')).toBe(40)
+    expect(parseSkillLevel('3')).toBe(60)
+    expect(parseSkillLevel('advanced')).toBe(60)
+    expect(parseSkillLevel('Beginner')).toBe(20)
+    expect(parseSkillLevel('Worlds level')).toBe(80)
+    expect(parseSkillLevel('40')).toBe(40)
+    expect(parseSkillLevel('30')).toBe(30)
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
   })
@@ -151,9 +153,9 @@ describe('teamlinkt csv parse', () => {
     const parsed = parseTeamlinktCsv(csv)
     expect(parsed.error).toBeUndefined()
     expect(parsed.rows).toHaveLength(3)
-    expect(parsed.rows[0].skillLevel).toBe(2)
-    expect(parsed.rows[1].skillLevel).toBe(3)
-    expect(parsed.rows[2].skillLevel).toBe(2)
+    expect(parsed.rows[0].skillLevel).toBe(40)
+    expect(parsed.rows[1].skillLevel).toBe(60)
+    expect(parsed.rows[2].skillLevel).toBe(40)
   })
 
   it('errors when name columns are missing', () => {

@@ -4,7 +4,12 @@ import Link from 'next/link'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
-import { EVENT_TYPES, type EventListItem } from '@/app/lib/events/types'
+import {
+  BALL_TYPES,
+  EVENT_GENDERS,
+  EVENT_TYPES,
+  type EventListItem,
+} from '@/app/lib/events/types'
 
 function formatDisplayDate(isoDate: string): string {
   const d = new Date(`${isoDate}T12:00:00`)
@@ -40,6 +45,8 @@ function EventsPageContent() {
   const [name, setName] = useState('')
   const [eventDate, setEventDate] = useState('')
   const [eventType, setEventType] = useState<string>('tournament')
+  const [ballType, setBallType] = useState<string>('foam')
+  const [gender, setGender] = useState<string>('mixed')
   const [notes, setNotes] = useState('')
 
   const loadEvents = useCallback(async () => {
@@ -72,6 +79,8 @@ function EventsPageContent() {
           name,
           eventDate,
           eventType,
+          ballType,
+          gender,
           notes: notes.trim() || null,
         }),
       })
@@ -81,6 +90,8 @@ function EventsPageContent() {
       setName('')
       setEventDate('')
       setEventType('tournament')
+      setBallType('foam')
+      setGender('mixed')
       setNotes('')
       await loadEvents()
     } catch (err) {
@@ -128,6 +139,8 @@ function EventsPageContent() {
                 <th className="px-3 py-2 font-medium">Date</th>
                 <th className="px-3 py-2 font-medium">Name</th>
                 <th className="px-3 py-2 font-medium">Type</th>
+                <th className="px-3 py-2 font-medium">Ball</th>
+                <th className="px-3 py-2 font-medium">Gender</th>
                 <th className="px-3 py-2 font-medium">Registrations</th>
               </tr>
             </thead>
@@ -146,6 +159,8 @@ function EventsPageContent() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{event.eventTypeLabel}</td>
+                  <td className="px-3 py-2">{event.ballTypeLabel}</td>
+                  <td className="px-3 py-2">{event.genderLabel}</td>
                   <td className="px-3 py-2">{event.registrationCount}</td>
                 </tr>
               ))}
@@ -184,6 +199,34 @@ function EventsPageContent() {
                 onChange={(e) => setEventType(e.target.value)}
               >
                 {Object.entries(EVENT_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-600">Ball</span>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                value={ballType}
+                onChange={(e) => setBallType(e.target.value)}
+              >
+                {Object.entries(BALL_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-600">Gender</span>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+              >
+                {Object.entries(EVENT_GENDERS).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>

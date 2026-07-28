@@ -85,6 +85,27 @@
       "when": 1753300000000,
       "tag": "0011_event_pairing_enabled",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1753301000000,
+      "tag": "0012_event_ball_type_gender",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1753302000000,
+      "tag": "0013_non_bdl_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1753303000000,
+      "tag": "0014_skill_level_alternatives",
+      "breakpoints": true
     }
   ]
 }
