@@ -82,10 +82,10 @@ Sign in at `/login`. TopNav shows the signed-in email and Log out.
 - UI: `/players`
 - Import TeamLinkt CSV (dry run → commit). Matching: email, then first+last name.
 - Skill systems (independent per player):
-  - **Linear** (`skill_level`): 1–100 with anchors at 20 Beginner, 40 Intermediate, 60 Advanced, 80 Worlds level (`null` = Unset). Midpoints (e.g. 30, 50) are allowed. Legacy 1–4 values were migrated ×20.
+  - **Normal** (`skill_level`): 1–100 with anchors at 20 Beginner, 40 Intermediate, 60 Advanced, 80 Worlds level (`null` = Unset). Midpoints (e.g. 30, 50) are allowed. Legacy 1–4 values were migrated ×20.
   - **Fibonacci** (`skill_level_fib`): one of `1, 2, 3, 5, 8, 13, 21, 34, 55, 89` (or unset).
-  - **Skill areas** (`skill_areas` jsonb): offense, defense, staying alive, court presence/play calling — each on the linear scale; blank fields fall back to the main linear skill. Effective score = average of the four resolved values.
-- Players and event pages share a **Skill view** toggle (`localStorage` key `bdl-admin.skillViewMode`) so display, matrix, sorting, and draft balancing follow Linear / Fibonacci / Skill areas.
+  - **Skill areas** (`skill_areas` jsonb): offense, defense, staying alive, court presence/play calling — each on the normal scale; blank fields fall back to the main normal skill. Effective score = average of the four resolved values.
+- Players and event pages share a **Skill view** toggle (`localStorage` key `bdl-admin.skillViewMode`) so display, matrix, sorting, and draft balancing follow Normal / Fibonacci / Skill areas.
 - Gender: male / female / nonbinary / other (imported from TeamLinkt Gender column). List sorts female/nonbinary/other together for drafting. Birthdate from TeamLinkt is not stored or shown.
 - Import fills **linear** skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate` → 40, `3`/`Advanced` → 60, etc.). Creates get the value; updates only set skill when the existing player is unset. Fibonacci and skill areas are not invented by import.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.

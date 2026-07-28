@@ -445,7 +445,9 @@ describe('PlayersPage home leagues', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByText('Home leagues')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Fields' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home leagues' }))
+    expect(screen.getByRole('heading', { name: 'Home leagues' })).toBeInTheDocument()
 
     await userEvent.selectOptions(
       screen.getByDisplayValue('Select home league'),
