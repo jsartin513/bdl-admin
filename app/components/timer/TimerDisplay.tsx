@@ -1,8 +1,12 @@
 'use client'
 
 import React from 'react';
+import { FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui';
 import { TimerPhase, GameInfo } from './types';
 import DodgeballTimer from './DodgeballTimer';
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600';
 
 interface TimerDisplayProps {
   timer: ReturnType<typeof DodgeballTimer>;
@@ -86,7 +90,7 @@ export default function TimerDisplay({
         <button
           onClick={onPreviousGame}
           disabled={!canGoPrevious}
-          className="px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2"
+          className={`px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2 ${FOCUS_RING}`}
         >
           ⬅️ Previous Game
         </button>
@@ -100,7 +104,7 @@ export default function TimerDisplay({
         <button
           onClick={onNextGame}
           disabled={!canGoNext}
-          className="px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2"
+          className={`px-4 py-2 bg-gray-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors flex items-center gap-2 ${FOCUS_RING}`}
         >
           Next Game ➡️
         </button>
@@ -157,7 +161,12 @@ export default function TimerDisplay({
 
       {/* Game Starting Overlay */}
       {isPlayingStartAnnouncement && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-pulse">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-pulse"
+          role="status"
+          aria-live="polite"
+          aria-label="Game starting announcement"
+        >
           <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-12 rounded-2xl shadow-2xl transform scale-110">
             <div className="text-center">
               <div className="text-6xl font-bold mb-4 animate-bounce">🏁</div>
@@ -348,8 +357,12 @@ export default function TimerDisplay({
           {/* Volume Controls */}
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
                 Master Volume
+                <Tooltip
+                  label="About master volume"
+                  content="Overall loudness for all timer sounds and announcements."
+                />
               </label>
               <input
                 type="range"
@@ -358,16 +371,19 @@ export default function TimerDisplay({
                 step="0.1"
                 value={audioConfig.masterVolume}
                 onChange={(e) => updateAudioConfig({ masterVolume: parseFloat(e.target.value) })}
-                className="w-full"
+                className={`w-full ${FOCUS_RING}`}
+                aria-valuetext={`${Math.round(audioConfig.masterVolume * 100)} percent`}
               />
-              <div className="text-xs text-gray-500 mt-1">
-                {Math.round(audioConfig.masterVolume * 100)}%
-              </div>
+              <FieldHelp>{Math.round(audioConfig.masterVolume * 100)}%</FieldHelp>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
                 Announcements
+                <Tooltip
+                  label="About announcement volume"
+                  content="Volume for spoken court calls and countdown clips."
+                />
               </label>
               <input
                 type="range"
@@ -376,11 +392,10 @@ export default function TimerDisplay({
                 step="0.1"
                 value={audioConfig.announcementVolume}
                 onChange={(e) => updateAudioConfig({ announcementVolume: parseFloat(e.target.value) })}
-                className="w-full"
+                className={`w-full ${FOCUS_RING}`}
+                aria-valuetext={`${Math.round(audioConfig.announcementVolume * 100)} percent`}
               />
-              <div className="text-xs text-gray-500 mt-1">
-                {Math.round(audioConfig.announcementVolume * 100)}%
-              </div>
+              <FieldHelp>{Math.round(audioConfig.announcementVolume * 100)}%</FieldHelp>
             </div>
           </div>
 
@@ -399,9 +414,7 @@ export default function TimerDisplay({
                 onChange={(e) => updateAudioConfig({ speechRate: parseFloat(e.target.value) })}
                 className="w-full"
               />
-              <div className="text-xs text-gray-500 mt-1">
-                {audioConfig.speechRate.toFixed(1)}x
-              </div>
+              <FieldHelp>{audioConfig.speechRate.toFixed(1)}x</FieldHelp>
             </div>
 
             <div>
@@ -417,9 +430,7 @@ export default function TimerDisplay({
                 onChange={(e) => updateAudioConfig({ speechPitch: parseFloat(e.target.value) })}
                 className="w-full"
               />
-              <div className="text-xs text-gray-500 mt-1">
-                {audioConfig.speechPitch.toFixed(1)}
-              </div>
+              <FieldHelp>{audioConfig.speechPitch.toFixed(1)}</FieldHelp>
             </div>
           </div>
 
@@ -427,29 +438,37 @@ export default function TimerDisplay({
           <div className="space-y-4">
             <h4 className="font-semibold text-gray-800">System Audio Control</h4>
             
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="requestAudioFocus"
                 checked={audioConfig.requestAudioFocus}
                 onChange={(e) => updateAudioConfig({ requestAudioFocus: e.target.checked })}
-                className="mr-2"
+                className={FOCUS_RING}
               />
-              <label htmlFor="requestAudioFocus" className="text-sm text-gray-700">
+              <label htmlFor="requestAudioFocus" className="inline-flex items-center gap-1.5 text-sm text-gray-700">
                 Request audio focus during announcements
+                <Tooltip
+                  label="About audio focus"
+                  content="Asks the browser to prioritize timer audio when announcements play. Helpful when music is running in another tab."
+                />
               </label>
             </div>
 
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
               <input
                 type="checkbox"
                 id="quietOtherApps"
                 checked={audioConfig.quietOtherApps}
                 onChange={(e) => updateAudioConfig({ quietOtherApps: e.target.checked })}
-                className="mr-2"
+                className={FOCUS_RING}
               />
-              <label htmlFor="quietOtherApps" className="text-sm text-gray-700">
+              <label htmlFor="quietOtherApps" className="inline-flex items-center gap-1.5 text-sm text-gray-700">
                 Try to quiet other applications during announcements
+                <Tooltip
+                  label="About quieting other apps"
+                  content="Best-effort — browser support varies. You may still need to lower music volume manually."
+                />
               </label>
             </div>
 
@@ -488,13 +507,16 @@ export default function TimerDisplay({
           <div className="text-sm space-y-1">
             <div>
               <span className="font-medium">Audio Status: </span>
-              <span className={isAudioInitialized ? 'text-green-600' : 'text-yellow-600'}>
+              <LiveMessage
+                variant="status"
+                className={`inline-block ${isAudioInitialized ? 'text-green-600' : 'text-yellow-600'}`}
+              >
                 {isAudioInitialized ? 'Ready' : 'Click Start to initialize audio'}
-              </span>
+              </LiveMessage>
             </div>
-            <div className="text-xs text-gray-600">
+            <FieldHelp>
               Audio focus and system integration will be attempted when starting the timer
-            </div>
+            </FieldHelp>
           </div>
         </div>
       </div>

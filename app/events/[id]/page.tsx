@@ -36,6 +36,10 @@ import {
   SkillViewModeToggle,
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
+import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 type EventDetail = {
   id: string
@@ -750,7 +754,9 @@ function EventTrackerPageContent() {
   if (!event) {
     return (
       <div className="mx-auto max-w-6xl p-6 space-y-3">
-        <p className="text-sm text-red-600">{error || 'Event not found'}</p>
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error || 'Event not found'}
+        </LiveMessage>
         <Link
           href={withDevMode('/events', devMode)}
           className="text-sm text-blue-700 hover:underline"
@@ -782,20 +788,32 @@ function EventTrackerPageContent() {
           <div className="mt-3">
             <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} />
           </div>
-          <label className="mt-3 flex items-center gap-2 text-sm text-gray-800">
+          <label className="mt-3 flex items-start gap-2 text-sm text-gray-800">
             <input
               type="checkbox"
+              className="mt-0.5"
               checked={event.pairingEnabled !== false}
               onChange={(e) => void togglePairingEnabled(e.target.checked)}
             />
-            Allow pairing
+            <span>
+              <span className="inline-flex items-center gap-1.5">
+                Allow pairing
+                <Tooltip
+                  label="About pairing"
+                  content="When enabled, you can pair registrants. Paired players stay on the same team during draft."
+                />
+              </span>
+              <FieldHelp>
+                Paired players are kept together when you assign or draft teams.
+              </FieldHelp>
+            </span>
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
           {draftPhase === 'off' ? (
             <button
               type="button"
-              className="rounded border border-blue-600 px-3 py-2 text-sm text-blue-700"
+              className={`rounded border border-blue-600 px-3 py-2 text-sm text-blue-700 ${FOCUS_RING}`}
               disabled={registrations.length === 0}
               onClick={openDraftSetup}
             >
@@ -804,7 +822,7 @@ function EventTrackerPageContent() {
           ) : null}
           <button
             type="button"
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
+            className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
             onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
@@ -816,7 +834,7 @@ function EventTrackerPageContent() {
           </button>
           <button
             type="button"
-            className="rounded border border-red-300 px-3 py-2 text-sm text-red-700 disabled:opacity-40"
+            className={`rounded border border-red-300 px-3 py-2 text-sm text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
             disabled={deletingEvent}
             onClick={() => void deleteEvent()}
           >
@@ -825,10 +843,20 @@ function EventTrackerPageContent() {
         </div>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {message ? <p className="text-sm text-green-700">{message}</p> : null}
+      {error ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error}
+        </LiveMessage>
+      ) : null}
+      {message ? (
+        <LiveMessage variant="status" className="text-sm text-green-700">
+          {message}
+        </LiveMessage>
+      ) : null}
       {formError && !importOpen ? (
-        <p className="text-sm text-red-600">{formError}</p>
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {formError}
+        </LiveMessage>
       ) : null}
 
       {draftPhase !== 'board' && counts.unassigned > 0 ? (
@@ -843,7 +871,7 @@ function EventTrackerPageContent() {
           {draftPhase === 'off' ? (
             <button
               type="button"
-              className="rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              className={`rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 ${FOCUS_RING}`}
               onClick={() => setDraftFilter('unassigned')}
             >
               Show unassigned
@@ -856,10 +884,10 @@ function EventTrackerPageContent() {
         <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-4 space-y-4">
           <div>
             <h2 className="text-lg font-semibold">Draft setup</h2>
-            <p className="text-sm text-gray-600">
+            <FieldHelp className="text-sm">
               Local workspace only until you Apply. Default team size targets ~7–8
               players.
-            </p>
+            </FieldHelp>
           </div>
           <label className="block text-sm max-w-xs">
             <span className="text-gray-600">Number of teams</span>
@@ -873,10 +901,10 @@ function EventTrackerPageContent() {
                 setDraftTeamCount(Number.parseInt(e.target.value, 10) || 1)
               }
             />
-            <span className="mt-1 block text-xs text-gray-500">
+            <FieldHelp>
               ~{playersPerTeamLabel(registrations.length, draftTeamCount)}{' '}
               players per team
-            </span>
+            </FieldHelp>
           </label>
           <fieldset className="space-y-2 text-sm">
             <legend className="text-gray-600 mb-1">Start with</legend>
@@ -887,7 +915,13 @@ function EventTrackerPageContent() {
                 checked={draftSeedMode === 'auto'}
                 onChange={() => setDraftSeedMode('auto')}
               />
-              Auto-seed (gender-balanced, skill-aware)
+              <span className="inline-flex items-center gap-1.5">
+                Auto-seed (gender-balanced, skill-aware)
+                <Tooltip
+                  label="Auto-seed"
+                  content="Distributes players across teams balancing gender mix and skill levels."
+                />
+              </span>
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -896,7 +930,13 @@ function EventTrackerPageContent() {
                 checked={draftSeedMode === 'empty'}
                 onChange={() => setDraftSeedMode('empty')}
               />
-              Empty teams (all players unassigned)
+              <span className="inline-flex items-center gap-1.5">
+                Empty teams (all players unassigned)
+                <Tooltip
+                  label="Empty teams"
+                  content="Creates the requested number of teams with every player left unassigned."
+                />
+              </span>
             </label>
             {hasExistingGroups ? (
               <label className="flex items-center gap-2">
@@ -906,21 +946,27 @@ function EventTrackerPageContent() {
                   checked={draftSeedMode === 'existing'}
                   onChange={() => setDraftSeedMode('existing')}
                 />
-                Copy current draft groups
+                <span className="inline-flex items-center gap-1.5">
+                  Copy current draft groups
+                  <Tooltip
+                    label="Copy current draft groups"
+                    content="Keeps each player on their current draft group as the starting point."
+                  />
+                </span>
               </label>
             ) : null}
           </fieldset>
           <div className="flex gap-2">
             <button
               type="button"
-              className="rounded border px-3 py-2 text-sm"
+              className={`rounded border px-3 py-2 text-sm ${FOCUS_RING}`}
               onClick={discardDraft}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
+              className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
               onClick={startDraftBoard}
             >
               Start drafting
@@ -991,13 +1037,17 @@ function EventTrackerPageContent() {
           <caption className="sr-only">Gender by skill matrix</caption>
           <thead className="bg-gray-50 text-left">
             <tr>
-              <th className="px-3 py-2 font-medium">Gender \\ Skill</th>
+              <th scope="col" className="px-3 py-2 font-medium">Gender \\ Skill</th>
               {counts.skillCols.map((level) => (
-                <th key={String(level)} className="px-3 py-2 font-medium whitespace-nowrap">
+                <th
+                  key={String(level)}
+                  scope="col"
+                  className="px-3 py-2 font-medium whitespace-nowrap"
+                >
                   {skillMatrixColLabel(level, skillViewMode)}
                 </th>
               ))}
-              <th className="px-3 py-2 font-medium">Total</th>
+              <th scope="col" className="px-3 py-2 font-medium">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -1062,7 +1112,7 @@ function EventTrackerPageContent() {
             </label>
             <button
               type="button"
-              className="rounded border px-2 py-1 text-sm"
+              className={`rounded border px-2 py-1 text-sm ${FOCUS_RING}`}
               onClick={() => setMaxGroup((n) => n + 1)}
             >
               Add group {maxGroup + 1}
@@ -1071,18 +1121,21 @@ function EventTrackerPageContent() {
 
           <div className="overflow-x-auto rounded border border-gray-200">
             <table className="min-w-full text-sm">
+              <caption className="sr-only">Event registrations</caption>
               <thead className="bg-gray-50 text-left">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Skill</th>
-                  <th className="px-3 py-2 font-medium">Gender</th>
-                  <th className="px-3 py-2 font-medium">Email</th>
-                  <th className="px-3 py-2 font-medium">Draft group</th>
-                  <th className="px-3 py-2 font-medium">Captain</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Name</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Skill</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Gender</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Email</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Draft group</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Captain</th>
                   {event.pairingEnabled !== false ? (
-                    <th className="px-3 py-2 font-medium">Pair</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Pair</th>
                   ) : null}
-                  <th className="px-3 py-2 font-medium"> </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1121,13 +1174,30 @@ function EventTrackerPageContent() {
                           >
                             {label}
                           </SkillStyledText>
-                          {badge ? (
-                            <span
-                              className="ml-1 text-xs font-medium text-blue-700"
-                              title={badge === '(CC)' ? 'Co-captain' : 'Captain'}
+                          {r.hasStrongPersonality ? (
+                            <Tooltip
+                              label="Strong personality"
+                              content={
+                                r.strongPersonalityNotes ||
+                                'Flagged as strong personality'
+                              }
                             >
-                              {badge}
-                            </span>
+                              <span className="ml-1 text-amber-500">⚡</span>
+                            </Tooltip>
+                          ) : null}
+                          {badge ? (
+                            <Tooltip
+                              label={badge === '(CC)' ? 'Co-captain' : 'Captain'}
+                              content={
+                                badge === '(CC)'
+                                  ? 'Co-captain on this team (more than one captain assigned).'
+                                  : 'Team captain.'
+                              }
+                            >
+                              <span className="ml-1 text-xs font-medium text-blue-700">
+                                {badge}
+                              </span>
+                            </Tooltip>
                           ) : null}
                           {event.pairingEnabled !== false && r.partnerNickname ? (
                             <div className="text-xs text-violet-700">
@@ -1172,26 +1242,26 @@ function EventTrackerPageContent() {
                               type="button"
                               className={`text-xs disabled:opacity-40 ${r.isCaptain ? 'font-medium text-blue-700 hover:text-blue-900' : 'text-gray-500 hover:text-gray-700'}`}
                               disabled={savingId === r.id}
-                              onClick={() => void toggleCaptain(r.id, !r.isCaptain)}
-                              title={
+                              aria-label={
                                 r.isCaptain
                                   ? badge === '(CC)'
                                     ? 'Remove co-captain'
                                     : 'Remove captain'
                                   : 'Set as captain'
                               }
+                              onClick={() => void toggleCaptain(r.id, !r.isCaptain)}
                             >
                               {r.isCaptain
                                 ? `${badge ?? '(C)'} Remove`
                                 : 'Set (C)'}
                             </button>
                           ) : (
-                            <span
-                              className="text-xs text-gray-400"
-                              title="Assign to a team first"
+                            <Tooltip
+                              label="Captain assignment"
+                              content="Assign to a team first"
                             >
-                              —
-                            </span>
+                              <span className="text-xs text-gray-400">—</span>
+                            </Tooltip>
                           )}
                         </td>
                         {event.pairingEnabled !== false ? (
@@ -1250,57 +1320,77 @@ function EventTrackerPageContent() {
         </>
       ) : null}
 
-      {importOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Import TeamLinkt CSV for {event.name}
-            </h2>
-            <p className="text-sm text-gray-600">
-              Players are upserted as usual, and each matched/created player is
-              registered for this event. Re-imports keep draft group assignments.
-            </p>
-            <label className="block text-sm">
-              <span className="text-gray-600">Existing players: skill / gender / jersey</span>
-              <select
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={importProfileFields}
-                onChange={(e) => {
-                  setImportProfileFields(
-                    e.target.value as 'skip' | 'fill_blank' | 'overwrite'
-                  )
-                  setImportPreview(null)
-                }}
-              >
-                <option value="skip">Skip (keep current values)</option>
-                <option value="fill_blank">Fill blanks only</option>
-                <option value="overwrite">Overwrite from CSV</option>
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-600">CSV file</span>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="mt-1 block w-full text-sm"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  setImportFilename(file.name)
-                  void file.text().then((text) => {
-                    setImportCsv(text)
-                    setImportPreview(null)
-                  })
-                }}
+      <Dialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title={`Import TeamLinkt CSV for ${event.name}`}
+        className="max-w-3xl"
+      >
+        <div className="space-y-4 text-gray-900">
+          <FieldHelp className="text-sm">
+            Players are upserted as usual, and each matched/created player is
+            registered for this event. Re-imports keep draft group assignments.
+          </FieldHelp>
+          <label className="block text-sm">
+            <span className="inline-flex items-center gap-1.5 text-gray-600">
+              Existing players: skill / gender / jersey
+              <Tooltip
+                label="Profile field updates"
+                content="Choose whether CSV values replace existing player skill, gender, and jersey fields."
               />
-              {importFilename && importFilename !== 'pasted.csv' ? (
-                <span className="mt-1 block text-xs text-gray-500">
-                  Using file: {importFilename}
-                </span>
-              ) : null}
+            </span>
+            <select
+              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+              value={importProfileFields}
+              onChange={(e) => {
+                setImportProfileFields(
+                  e.target.value as 'skip' | 'fill_blank' | 'overwrite'
+                )
+                setImportPreview(null)
+              }}
+            >
+              <option value="skip">Skip (keep current values)</option>
+              <option value="fill_blank">Fill blanks only</option>
+              <option value="overwrite">Overwrite from CSV</option>
+            </select>
+            <FieldHelp>
+              Skip leaves current values; fill blanks only updates empty fields;
+              overwrite replaces from the CSV.
+            </FieldHelp>
+          </label>
+          <label className="block text-sm">
+            <span className="inline-flex items-center gap-1.5 text-gray-600">
+              CSV file
+              <Tooltip
+                label="CSV file"
+                content="Upload a TeamLinkt export, or paste CSV contents in the box below."
+              />
+            </span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="mt-1 block w-full text-sm"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setImportFilename(file.name)
+                void file.text().then((text) => {
+                  setImportCsv(text)
+                  setImportPreview(null)
+                })
+              }}
+            />
+            {importFilename && importFilename !== 'pasted.csv' ? (
+              <FieldHelp>Using file: {importFilename}</FieldHelp>
+            ) : null}
+          </label>
+          <div>
+            <label htmlFor="import-csv-paste" className="text-sm text-gray-600">
+              CSV contents
             </label>
             <textarea
-              className="w-full h-40 rounded border border-gray-300 px-3 py-2 font-mono text-xs"
+              id="import-csv-paste"
+              className="mt-1 w-full h-40 rounded border border-gray-300 px-3 py-2 font-mono text-xs"
               value={importCsv}
               onChange={(e) => {
                 setImportCsv(e.target.value)
@@ -1308,76 +1398,85 @@ function EventTrackerPageContent() {
               }}
               placeholder="Or paste CSV contents here…"
             />
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-            {importPreview ? (
-              <div className="space-y-2 text-sm">
-                <p>
-                  Preview: {importPreview.summary.create} create,{' '}
-                  {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
-                  {importPreview.summary.ambiguous} ambiguous
-                  {typeof importPreview.summary.register === 'number' ? (
-                    <>
-                      ; {importPreview.summary.register} will register,{' '}
-                      {importPreview.summary.alreadyRegistered ?? 0} already registered
-                    </>
-                  ) : null}
-                </p>
-                <div className="max-h-48 overflow-y-auto border rounded">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-2 py-1 text-left">Row</th>
-                        <th className="px-2 py-1 text-left">Action</th>
-                        <th className="px-2 py-1 text-left">Name</th>
-                        <th className="px-2 py-1 text-left">Detail</th>
+            <FieldHelp>
+              Paste here if you do not have a file handy. Dry run previews changes
+              before commit.
+            </FieldHelp>
+          </div>
+          {formError ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {formError}
+            </LiveMessage>
+          ) : null}
+          {importPreview ? (
+            <div className="space-y-2 text-sm">
+              <LiveMessage variant="status">
+                Preview: {importPreview.summary.create} create,{' '}
+                {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
+                {importPreview.summary.ambiguous} ambiguous
+                {typeof importPreview.summary.register === 'number' ? (
+                  <>
+                    ; {importPreview.summary.register} will register,{' '}
+                    {importPreview.summary.alreadyRegistered ?? 0} already registered
+                  </>
+                ) : null}
+              </LiveMessage>
+              <div className="max-h-48 overflow-y-auto border rounded">
+                <table className="min-w-full text-xs">
+                  <caption className="sr-only">Import preview</caption>
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-2 py-1 text-left">Row</th>
+                      <th scope="col" className="px-2 py-1 text-left">Action</th>
+                      <th scope="col" className="px-2 py-1 text-left">Name</th>
+                      <th scope="col" className="px-2 py-1 text-left">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.actions.map((a, idx) => (
+                      <tr key={idx} className="border-t">
+                        <td className="px-2 py-1">{a.row.rowNumber}</td>
+                        <td className="px-2 py-1">{a.action}</td>
+                        <td className="px-2 py-1">
+                          {a.row.firstName} {a.row.lastName}
+                        </td>
+                        <td className="px-2 py-1">
+                          {a.notes?.join('; ') || a.reason || '—'}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {importPreview.actions.map((a, idx) => (
-                        <tr key={idx} className="border-t">
-                          <td className="px-2 py-1">{a.row.rowNumber}</td>
-                          <td className="px-2 py-1">{a.action}</td>
-                          <td className="px-2 py-1">
-                            {a.row.firstName} {a.row.lastName}
-                          </td>
-                          <td className="px-2 py-1">
-                            {a.notes?.join('; ') || a.reason || '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded border px-3 py-2 text-sm"
-                onClick={() => setImportOpen(false)}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                disabled={importBusy || !importCsv.trim()}
-                className="rounded border px-3 py-2 text-sm disabled:opacity-40"
-                onClick={() => void previewImport()}
-              >
-                Dry run
-              </button>
-              <button
-                type="button"
-                disabled={importBusy || !importCsv.trim()}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-                onClick={() => void commitImport()}
-              >
-                {importPreview ? 'Commit import' : 'Import now'}
-              </button>
             </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className={`rounded border px-3 py-2 text-sm ${FOCUS_RING}`}
+              onClick={() => setImportOpen(false)}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={importBusy || !importCsv.trim()}
+              className={`rounded border px-3 py-2 text-sm disabled:opacity-40 ${FOCUS_RING}`}
+              onClick={() => void previewImport()}
+            >
+              Dry run
+            </button>
+            <button
+              type="button"
+              disabled={importBusy || !importCsv.trim()}
+              className={`rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
+              onClick={() => void commitImport()}
+            >
+              {importPreview ? 'Commit import' : 'Import now'}
+            </button>
           </div>
         </div>
-      ) : null}
+      </Dialog>
     </div>
   )
 }
