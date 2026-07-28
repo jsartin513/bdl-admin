@@ -49,6 +49,13 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       jerseyNumber?: number | null
       jerseyName?: string | null
       skillLevel?: number | null
+      skillLevelFib?: number | null
+      skillAreas?: {
+        offense?: number | null
+        defense?: number | null
+        stayingAlive?: number | null
+        courtPresence?: number | null
+      } | null
       gender?: string | null
       hasStrongPersonality?: boolean
       strongPersonalityNotes?: string | null
@@ -75,6 +82,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       body.jerseyNumber !== undefined ||
       body.jerseyName !== undefined ||
       body.skillLevel !== undefined ||
+      body.skillLevelFib !== undefined ||
+      body.skillAreas !== undefined ||
       body.gender !== undefined ||
       body.hasStrongPersonality !== undefined ||
       body.strongPersonalityNotes !== undefined
@@ -90,6 +99,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           jerseyNumber: body.jerseyNumber,
           jerseyName: body.jerseyName,
           skillLevel: body.skillLevel,
+          skillLevelFib: body.skillLevelFib,
+          skillAreas: body.skillAreas,
           gender: body.gender,
           hasStrongPersonality: body.hasStrongPersonality,
           strongPersonalityNotes: body.strongPersonalityNotes,

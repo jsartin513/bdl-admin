@@ -99,6 +99,13 @@
       "when": 1753302000000,
       "tag": "0013_non_bdl_events",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1753303000000,
+      "tag": "0014_skill_level_alternatives",
+      "breakpoints": true
     }
   ]
 }

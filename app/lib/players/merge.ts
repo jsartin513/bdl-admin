@@ -13,9 +13,14 @@ import {
   snapshotToJson,
 } from '@/app/lib/players/queries'
 import {
+  emptySkillAreas,
+  isValidFibSkillLevel,
   isValidSkillLevel,
+  mergeSkillAreasPatch,
   normalizeStoredJerseyName,
   normalizeStoredNickname,
+  SKILL_AREA_KEYS,
+  type SkillAreas,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
 import { isValidHomeLeague } from '@/app/lib/players/home-league'
@@ -29,6 +34,8 @@ export type MergeFieldResolution = {
   jerseyNumber?: number | null
   jerseyName?: string | null
   skillLevel?: number | null
+  skillLevelFib?: number | null
+  skillAreas?: SkillAreas | Partial<SkillAreas> | null
   gender?: string | null
 }
 
@@ -66,11 +73,26 @@ export async function mergePlayers(input: {
   let jerseyNumber = survivorBefore.jerseyNumber
   let jerseyNameCustom = survivorBefore.jerseyNameCustom
   let skillLevel = survivorBefore.skillLevel
+  let skillLevelFib = survivorBefore.skillLevelFib
+  let skillAreas: SkillAreas | null = survivorBefore.skillAreas
   let gender = survivorBefore.gender
 
   for (const loser of loserSnapshots) {
     if (jerseyNumber == null && loser.jerseyNumber != null) jerseyNumber = loser.jerseyNumber
     if (skillLevel == null && loser.skillLevel != null) skillLevel = loser.skillLevel
+    if (skillLevelFib == null && loser.skillLevelFib != null) {
+      skillLevelFib = loser.skillLevelFib
+    }
+    if (loser.skillAreas) {
+      const merged = emptySkillAreas()
+      const base = skillAreas ?? emptySkillAreas()
+      let any = false
+      for (const key of SKILL_AREA_KEYS) {
+        merged[key] = base[key] ?? loser.skillAreas[key] ?? null
+        if (merged[key] != null) any = true
+      }
+      skillAreas = any ? merged : null
+    }
     if (gender == null && loser.gender != null) gender = loser.gender
     if (nicknameCustom == null && loser.nicknameCustom != null) {
       nicknameCustom = loser.nicknameCustom
@@ -97,6 +119,22 @@ export async function mergePlayers(input: {
       throw new Error('Invalid skill level')
     }
     skillLevel = input.fields.skillLevel
+  }
+  if (input.fields?.skillLevelFib !== undefined) {
+    if (
+      input.fields.skillLevelFib !== null &&
+      !isValidFibSkillLevel(input.fields.skillLevelFib)
+    ) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    skillLevelFib = input.fields.skillLevelFib
+  }
+  if (input.fields?.skillAreas !== undefined) {
+    if (input.fields.skillAreas === null) {
+      skillAreas = null
+    } else {
+      skillAreas = mergeSkillAreasPatch(skillAreas, input.fields.skillAreas)
+    }
   }
   if (input.fields?.gender !== undefined) {
     if (input.fields.gender !== null && !isValidGender(input.fields.gender)) {
@@ -126,6 +164,8 @@ export async function mergePlayers(input: {
       jerseyNumber,
       jerseyName: jerseyNameCustom,
       skillLevel,
+      skillLevelFib,
+      skillAreas,
       gender,
       updatedAt: new Date(),
     })
