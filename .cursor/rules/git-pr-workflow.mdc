@@ -1,0 +1,15 @@
+---
+description: Pull request base branch and preview-to-main deploy promotion flow
+alwaysApply: true
+---
+
+# Pull requests and deploy flow
+
+**Default base branch for new PRs is `preview`, not `main`.**
+
+- Open feature and fix PRs against **`preview`**. Merge there first; Vercel deploys `admin-preview.bostondodgeballleague.com`.
+- When creating or updating PRs (`ManagePullRequest`, `gh pr create`, etc.), pass **`base_branch: "preview"`** unless you are explicitly promoting preview to production.
+- **Production promote only:** open **`preview` → `main`** after preview deploy and Preview smoke are healthy. The **Main merge gate** requires the head branch to be exactly `preview`; any other head into `main` fails CI.
+- If `preview` has fallen behind `main`, merge or fast-forward `main` into `preview` before landing new work.
+
+Full details: [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md), [.github/pull_request_template.md](.github/pull_request_template.md).
