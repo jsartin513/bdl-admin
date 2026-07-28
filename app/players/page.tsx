@@ -37,6 +37,39 @@ import {
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
 
+function PlayerAvatar(props: {
+  photoUrl: string | null | undefined
+  name: string
+  size?: 'sm' | 'md'
+}) {
+  const sizeClass = props.size === 'md' ? 'h-16 w-16' : 'h-8 w-8'
+  if (props.photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={props.photoUrl}
+        alt=""
+        title={props.name}
+        className={`${sizeClass} shrink-0 rounded-full object-cover bg-gray-100`}
+      />
+    )
+  }
+  const initials = props.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('')
+  return (
+    <span
+      aria-hidden
+      className={`${sizeClass} shrink-0 inline-flex items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600`}
+    >
+      {initials || '?'}
+    </span>
+  )
+}
+
 type HistoryRow = {
   id: string
   source: string
@@ -683,6 +716,47 @@ export default function PlayersPage() {
       }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function uploadEditPhoto(file: File) {
+    if (!editing) return
+    setSaving(true)
+    setFormError(null)
+    try {
+      const formData = new FormData()
+      formData.set('file', file)
+      const res = await fetch(`/api/players/${editing.id}/photo`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Photo upload failed')
+      setEditing(data.player)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Photo upload failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function clearEditPhoto() {
+    if (!editing) return
+    setSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/players/${editing.id}/photo`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to clear photo')
+      setEditing(data.player)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to clear photo')
     } finally {
       setSaving(false)
     }
@@ -1487,21 +1561,26 @@ export default function PlayersPage() {
                   ) : null}
                   {showFullNameColumns ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText
-                        score={effectiveSkillScore(p, skillViewMode)}
-                        mode={skillViewMode}
-                      >
-                        {p.firstName}
-                      </SkillStyledText>
-                      {p.hasStrongPersonality ? (
-                        <span
-                          title={p.strongPersonalityNotes || 'Strong personality'}
-                          className="ml-1 cursor-help text-amber-500"
-                          aria-label="Strong personality"
-                        >
-                          ⚡
+                      <div className="flex items-center gap-2">
+                        <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} />
+                        <span>
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {p.firstName}
+                          </SkillStyledText>
+                          {p.hasStrongPersonality ? (
+                            <span
+                              title={p.strongPersonalityNotes || 'Strong personality'}
+                              className="ml-1 cursor-help text-amber-500"
+                              aria-label="Strong personality"
+                            >
+                              ⚡
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
+                      </div>
                     </td>
                   ) : null}
                   {showFullNameColumns ? (
@@ -1526,21 +1605,28 @@ export default function PlayersPage() {
                   ) : null}
                   {visibleColumns.nickname ? (
                     <td className="px-3 py-2">
-                      <SkillStyledText
-                        score={effectiveSkillScore(p, skillViewMode)}
-                        mode={skillViewMode}
-                      >
-                        {p.nickname}
-                      </SkillStyledText>
-                      {!showFullNameColumns && p.hasStrongPersonality ? (
-                        <span
-                          title={p.strongPersonalityNotes || 'Strong personality'}
-                          className="ml-1 cursor-help text-amber-500"
-                          aria-label="Strong personality"
-                        >
-                          ⚡
+                      <div className="flex items-center gap-2">
+                        {!showFullNameColumns ? (
+                          <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} />
+                        ) : null}
+                        <span>
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {p.nickname}
+                          </SkillStyledText>
+                          {!showFullNameColumns && p.hasStrongPersonality ? (
+                            <span
+                              title={p.strongPersonalityNotes || 'Strong personality'}
+                              className="ml-1 cursor-help text-amber-500"
+                              aria-label="Strong personality"
+                            >
+                              ⚡
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
+                      </div>
                     </td>
                   ) : null}
                   {visibleColumns.jerseyNumber ? (
@@ -1746,6 +1832,8 @@ export default function PlayersPage() {
           onAddHomeLeague={(homeLeague) => void saveEdit({ addHomeLeague: homeLeague })}
           onRemoveHomeLeague={(id) => void saveEdit({ removeHomeLeagueId: id })}
           onReorderHomeLeagues={(ids) => void saveEdit({ reorderHomeLeagueIds: ids })}
+          onUploadPhoto={(file) => void uploadEditPhoto(file)}
+          onClearPhoto={() => void clearEditPhoto()}
           onUnmerge={() => void runUnmerge(editing.id)}
         />
       ) : null}
@@ -2029,6 +2117,8 @@ function EditPanel(props: {
   onAddHomeLeague: (homeLeague: string) => void
   onRemoveHomeLeague: (id: string) => void
   onReorderHomeLeagues: (ids: string[]) => void
+  onUploadPhoto: (file: File) => void
+  onClearPhoto: () => void
   onUnmerge: () => void
 }) {
   const p = props.player
@@ -2179,6 +2269,43 @@ function EditPanel(props: {
                 ).
               </span>
             </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Photo</h3>
+          <div className="flex items-center gap-4">
+            <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} size="md" />
+            <div className="flex flex-wrap gap-2">
+              <label className="rounded border px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 disabled:opacity-40">
+                {p.photoUrl ? 'Replace photo' : 'Upload photo'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+                  className="hidden"
+                  disabled={p.isMerged || props.saving}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) props.onUploadPhoto(file)
+                  }}
+                />
+              </label>
+              {p.photoUrl ? (
+                <button
+                  type="button"
+                  disabled={p.isMerged || props.saving}
+                  className="rounded border px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"
+                  onClick={() => {
+                    if (window.confirm('Remove this player photo?')) {
+                      props.onClearPhoto()
+                    }
+                  }}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 

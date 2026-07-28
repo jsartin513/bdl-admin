@@ -76,6 +76,8 @@ export async function mergePlayers(input: {
   let skillLevelFib = survivorBefore.skillLevelFib
   let skillAreas: SkillAreas | null = survivorBefore.skillAreas
   let gender = survivorBefore.gender
+  let photoUrl = survivorBefore.photoUrl
+  let photoPathname = survivorBefore.photoPathname
 
   for (const loser of loserSnapshots) {
     if (jerseyNumber == null && loser.jerseyNumber != null) jerseyNumber = loser.jerseyNumber
@@ -94,6 +96,10 @@ export async function mergePlayers(input: {
       skillAreas = any ? merged : null
     }
     if (gender == null && loser.gender != null) gender = loser.gender
+    if (photoUrl == null && loser.photoUrl != null) {
+      photoUrl = loser.photoUrl
+      photoPathname = loser.photoPathname
+    }
     if (nicknameCustom == null && loser.nicknameCustom != null) {
       nicknameCustom = loser.nicknameCustom
     }
@@ -167,6 +173,8 @@ export async function mergePlayers(input: {
       skillLevelFib,
       skillAreas,
       gender,
+      photoUrl,
+      photoPathname,
       updatedAt: new Date(),
     })
     .where(eq(players.id, survivorId))
