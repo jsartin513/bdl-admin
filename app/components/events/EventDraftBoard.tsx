@@ -350,25 +350,43 @@ function TeamColumn(props: {
               {count}
             </span>
             {props.onCopy && props.team != null ? (
-              <button
-                type="button"
-                aria-label="Copy roster names"
-                onClick={handleCopy}
-                disabled={isCopying}
-                className="text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-              >
+              <>
+                <button
+                  type="button"
+                  aria-label={
+                    copied
+                      ? 'Roster names copied'
+                      : copyError
+                        ? 'Failed to copy roster names'
+                        : 'Copy roster names'
+                  }
+                  onClick={handleCopy}
+                  disabled={isCopying}
+                  className="text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  {copied ? (
+                    <span className="text-xs font-medium text-green-600" aria-hidden="true">
+                      Copied!
+                    </span>
+                  ) : copyError ? (
+                    <span className="text-xs font-medium text-red-600" aria-hidden="true">
+                      Failed
+                    </span>
+                  ) : (
+                    <CopyIcon />
+                  )}
+                </button>
                 {copied ? (
-                  <LiveMessage variant="status" className="text-xs font-medium text-green-600">
-                    Copied!
+                  <LiveMessage variant="status" className="sr-only">
+                    Roster names copied
                   </LiveMessage>
-                ) : copyError ? (
-                  <LiveMessage variant="alert" className="text-xs font-medium text-red-600">
-                    Failed
+                ) : null}
+                {copyError ? (
+                  <LiveMessage variant="alert" className="sr-only">
+                    Failed to copy roster names
                   </LiveMessage>
-                ) : (
-                  <CopyIcon />
-                )}
-              </button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>

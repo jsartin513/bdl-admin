@@ -53,7 +53,6 @@ function NavDropdown({ label, children }: { label: string; children: React.React
       {open && (
         <div
           id={panelId}
-          role="menu"
           className="absolute left-0 mt-1 w-52 rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
         >
           {children}
@@ -99,14 +98,12 @@ export default function TopNav() {
         <NavDropdown label="Leagues">
           <Link
             href={withDevMode('/schedules', devMode)}
-            role="menuitem"
             className={menuItemClassName()}
           >
             View Schedule
           </Link>
           <Link
             href={withDevMode('/create-league', devMode)}
-            role="menuitem"
             className={menuItemClassName()}
           >
             Create New Schedule
@@ -140,21 +137,18 @@ export default function TopNav() {
           <NavDropdown label="Developer">
             <Link
               href={withDevMode('/tournament', devMode)}
-              role="menuitem"
               className={menuItemClassName()}
             >
               Tournament Audio
             </Link>
             <Link
               href={withDevMode('/tournament/team-schedules', devMode)}
-              role="menuitem"
               className={menuItemClassName()}
             >
               Team Schedules
             </Link>
             <Link
               href={withDevMode('/tournament/scoresheets', devMode)}
-              role="menuitem"
               className={menuItemClassName()}
             >
               Scoresheets

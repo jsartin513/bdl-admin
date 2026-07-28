@@ -82,12 +82,11 @@ export default function BoardAppsMenu({
         Switch Application
       </button>
       {open ? (
-        <div id={panelId} role="menu" className={menuClassName}>
+        <div id={panelId} className={menuClassName}>
           {links.map((app) => (
             <a
               key={app.id}
               href={app.href}
-              role="menuitem"
               className={linkClassName}
               onClick={() => setOpen(false)}
             >

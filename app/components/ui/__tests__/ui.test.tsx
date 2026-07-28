@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '../index'
 
@@ -31,6 +32,46 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Last' })).toHaveFocus()
     await userEvent.tab()
     expect(screen.getByRole('button', { name: 'First' })).toHaveFocus()
+  })
+
+  it('prefers the first form field over earlier buttons when opening', () => {
+    const onClose = vi.fn()
+    render(
+      <Dialog open onClose={onClose} title="Edit">
+        <button type="button">Close</button>
+        <label>
+          Name
+          <input aria-label="Name" />
+        </label>
+      </Dialog>
+    )
+
+    expect(screen.getByLabelText('Name')).toHaveFocus()
+  })
+
+  it('keeps focus in the field while parent re-renders with a new onClose', async () => {
+    function Harness() {
+      const [value, setValue] = useState('')
+      return (
+        <Dialog open onClose={() => undefined} title="Create">
+          <label>
+            Event name
+            <input
+              aria-label="Event name"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </label>
+        </Dialog>
+      )
+    }
+
+    render(<Harness />)
+    const input = screen.getByLabelText('Event name')
+    expect(input).toHaveFocus()
+    await userEvent.type(input, 'Thursday')
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue('Thursday')
   })
 })
 

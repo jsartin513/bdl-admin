@@ -10,6 +10,9 @@ import {
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+const PREFERRED_FOCUS =
+  'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])'
+
 type DialogProps = {
   open: boolean
   onClose: () => void
@@ -20,6 +23,13 @@ type DialogProps = {
   /** When false, backdrop click does not close (Escape still does unless closeOnEscape is false). */
   closeOnBackdrop?: boolean
   closeOnEscape?: boolean
+}
+
+function getInitialFocus(panel: HTMLElement): HTMLElement {
+  const preferred = panel.querySelector<HTMLElement>(PREFERRED_FOCUS)
+  if (preferred) return preferred
+  const focusables = panel.querySelectorAll<HTMLElement>(FOCUSABLE)
+  return focusables[0] ?? panel
 }
 
 /**
@@ -37,6 +47,13 @@ export function Dialog({
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const previouslyFocused = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  const closeOnEscapeRef = useRef(closeOnEscape)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+    closeOnEscapeRef.current = closeOnEscape
+  })
 
   useEffect(() => {
     if (!open) return
@@ -45,19 +62,13 @@ export function Dialog({
 
     const panel = panelRef.current
     if (panel) {
-      const focusables = panel.querySelectorAll<HTMLElement>(FOCUSABLE)
-      const first = focusables[0]
-      if (first) {
-        first.focus()
-      } else {
-        panel.focus()
-      }
+      getInitialFocus(panel).focus()
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && closeOnEscape) {
+      if (event.key === 'Escape' && closeOnEscapeRef.current) {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (event.key !== 'Tab' || !panelRef.current) return
@@ -95,8 +106,9 @@ export function Dialog({
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = prevOverflow
       previouslyFocused.current?.focus?.()
+      previouslyFocused.current = null
     }
-  }, [open, onClose, closeOnEscape])
+  }, [open])
 
   if (!open) return null
 
