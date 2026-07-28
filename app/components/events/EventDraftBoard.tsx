@@ -31,6 +31,7 @@ import {
   effectiveSkillScore,
   type SkillViewMode,
 } from '@/app/lib/players/skill'
+import { FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
 
 type DraftAssignment = Map<string, number | null>
 
@@ -144,34 +145,41 @@ function DraftPlayerCard(props: {
       <div className="font-medium text-gray-900">
         {player.nickname || `${player.firstName} ${player.lastName}`}
         {captainBadge ? (
-          <span
-            className="ml-1 text-[10px] font-semibold text-blue-700"
-            title={captainBadge === '(CC)' ? 'Co-captain' : 'Captain'}
-          >
-            {captainBadge}
-          </span>
-        ) : null}
-        {player.hasStrongPersonality ? (
-          <span
-            title={player.strongPersonalityNotes || 'Strong personality'}
-            className="ml-1 cursor-help text-amber-500"
-            aria-label="Strong personality"
-          >
-            ⚡
-          </span>
-        ) : null}
-        {pairingEnabled !== false && player.pairId ? (
-          <span
-            className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700"
-            title={
-              player.partnerNickname
-                ? `Paired with ${player.partnerNickname}`
-                : 'Paired'
+          <Tooltip
+            label={captainBadge === '(CC)' ? 'Co-captain' : 'Captain'}
+            content={
+              captainBadge === '(CC)'
+                ? 'Co-captain on this team (more than one captain assigned).'
+                : 'Team captain.'
             }
           >
-            Pair
-            {player.partnerNickname ? ` · ${player.partnerNickname}` : ''}
-          </span>
+            <span className="ml-1 text-[10px] font-semibold text-blue-700">
+              {captainBadge}
+            </span>
+          </Tooltip>
+        ) : null}
+        {player.hasStrongPersonality ? (
+          <Tooltip
+            label="Strong personality"
+            content={player.strongPersonalityNotes || 'Flagged as strong personality'}
+          >
+            <span className="ml-1 text-amber-500">⚡</span>
+          </Tooltip>
+        ) : null}
+        {pairingEnabled !== false && player.pairId ? (
+          <Tooltip
+            label="Paired player"
+            content={
+              player.partnerNickname
+                ? `Paired with ${player.partnerNickname}. Keep pairs on the same team when pairing is enabled.`
+                : 'Paired with another registrant. Keep pairs on the same team when pairing is enabled.'
+            }
+          >
+            <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+              Pair
+              {player.partnerNickname ? ` · ${player.partnerNickname}` : ''}
+            </span>
+          </Tooltip>
         ) : null}
       </div>
       <div className="text-gray-600">
@@ -342,21 +350,43 @@ function TeamColumn(props: {
               {count}
             </span>
             {props.onCopy && props.team != null ? (
-              <button
-                type="button"
-                title="Copy roster names"
-                onClick={handleCopy}
-                disabled={isCopying}
-                className="text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-50"
-              >
+              <>
+                <button
+                  type="button"
+                  aria-label={
+                    copied
+                      ? 'Roster names copied'
+                      : copyError
+                        ? 'Failed to copy roster names'
+                        : 'Copy roster names'
+                  }
+                  onClick={handleCopy}
+                  disabled={isCopying}
+                  className="text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  {copied ? (
+                    <span className="text-xs font-medium text-green-600" aria-hidden="true">
+                      Copied!
+                    </span>
+                  ) : copyError ? (
+                    <span className="text-xs font-medium text-red-600" aria-hidden="true">
+                      Failed
+                    </span>
+                  ) : (
+                    <CopyIcon />
+                  )}
+                </button>
                 {copied ? (
-                  <span className="text-xs font-medium text-green-600">Copied!</span>
-                ) : copyError ? (
-                  <span className="text-xs font-medium text-red-600">Failed</span>
-                ) : (
-                  <CopyIcon />
-                )}
-              </button>
+                  <LiveMessage variant="status" className="sr-only">
+                    Roster names copied
+                  </LiveMessage>
+                ) : null}
+                {copyError ? (
+                  <LiveMessage variant="alert" className="sr-only">
+                    Failed to copy roster names
+                  </LiveMessage>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
@@ -605,6 +635,10 @@ export function EventDraftBoard(props: Props) {
             Working copy only — permanent draft groups are unchanged until you Apply.
             {pairingEnabled ? ' Paired players move together.' : ''}
           </p>
+          <FieldHelp className="mt-1">
+            Drag players between teams. Reshuffle re-seeds from the current setup. Save
+            snapshots to compare alternatives before applying.
+          </FieldHelp>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {unassignedCount > 0 ? (
@@ -655,7 +689,11 @@ export function EventDraftBoard(props: Props) {
         </div>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error}
+        </LiveMessage>
+      ) : null}
 
       <div className="space-y-3 rounded border border-violet-200 bg-white px-3 py-3">
         <div className="flex flex-wrap items-end gap-2">

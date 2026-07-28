@@ -8,6 +8,7 @@ import {
   isValidSkillViewMode,
   type SkillViewMode,
 } from '@/app/lib/players/skill'
+import { Tooltip } from '@/app/components/ui'
 
 function readStoredSkillViewMode(): SkillViewMode {
   if (typeof window === 'undefined') return 'linear'
@@ -48,9 +49,15 @@ export function SkillViewModeToggle(props: {
     <label
       className={`inline-flex items-center gap-2 text-sm text-gray-700 ${className ?? ''}`}
     >
-      <span className="font-medium">Skill view</span>
+      <span className="inline-flex items-center gap-1.5 font-medium">
+        Skill view
+        <Tooltip
+          label="About skill view"
+          content="Controls how skill is shown in lists and drafts: Linear (1–100), Fibonacci, or by skill area when set."
+        />
+      </span>
       <select
-        className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900"
+        className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         value={mode}
         onChange={(e) => {
           const next = e.target.value

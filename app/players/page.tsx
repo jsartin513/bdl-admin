@@ -36,6 +36,7 @@ import {
   SkillViewModeToggle,
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
+import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
 
 function PlayerAvatar(props: {
   photoUrl: string | null | undefined
@@ -238,7 +239,7 @@ function SortableHeaderButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`inline-flex items-center gap-1 font-medium hover:text-gray-900 ${
+      className={`inline-flex items-center gap-1 font-medium hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
         props.active ? 'text-gray-900' : 'text-gray-700'
       }`}
     >
@@ -250,6 +251,11 @@ function SortableHeaderButton(props: {
   )
 }
 
+function sortAriaValue(active: boolean, dir: 'asc' | 'desc'): 'none' | 'ascending' | 'descending' {
+  if (!active) return 'none'
+  return dir === 'asc' ? 'ascending' : 'descending'
+}
+
 function SortableHeader(props: {
   label: string
   active: boolean
@@ -257,7 +263,7 @@ function SortableHeader(props: {
   onClick: () => void
 }) {
   return (
-    <th className="px-3 py-2">
+    <th className="px-3 py-2" scope="col" aria-sort={sortAriaValue(props.active, props.dir)}>
       <SortableHeaderButton {...props} />
     </th>
   )
@@ -1018,6 +1024,12 @@ export default function PlayersPage() {
             Roster names, jersey numbers, skill levels, gender, home leagues, aliases, and
             emails.
           </p>
+          <FieldHelp id="players-modes-help" className="mt-1">
+            <strong>Quick fill</strong> walks through players missing gender or skill one at a
+            time and auto-saves when you pick a value. <strong>Bulk edit</strong> lets you
+            filter, select many players, and apply shared updates (leave a field blank to skip
+            it).
+          </FieldHelp>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -1026,7 +1038,7 @@ export default function PlayersPage() {
               setCreateOpen(true)
               setFormError(null)
             }}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Add player
           </button>
@@ -1045,7 +1057,7 @@ export default function PlayersPage() {
               }
               setQuickFillMode((value) => !value)
             }}
-            className={`rounded px-3 py-2 text-sm ${
+            className={`rounded px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
               quickFillMode
                 ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
                 : 'border border-amber-300 bg-white text-amber-900 hover:bg-amber-50'
@@ -1062,7 +1074,7 @@ export default function PlayersPage() {
                 enterBulkEditMode()
               }
             }}
-            className={`rounded px-3 py-2 text-sm ${
+            className={`rounded px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
               bulkEditMode
                 ? 'bg-violet-100 text-violet-900 hover:bg-violet-200'
                 : 'border border-violet-300 bg-white text-violet-900 hover:bg-violet-50'
@@ -1083,7 +1095,7 @@ export default function PlayersPage() {
               setFormError(null)
               void loadEvents()
             }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Import TeamLinkt CSV
           </button>
@@ -1167,13 +1179,17 @@ export default function PlayersPage() {
             onChange={(e) => setIncludeMerged(e.target.checked)}
           />
           Show merged
+          <Tooltip
+            label="Show merged players"
+            content="Include players that were merged into another record. Merged rows are read-only and shown grayed out."
+          />
         </label>
         <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} className="pb-2" />
         <div className="relative pb-0.5">
           <button
             type="button"
             onClick={() => setColumnsOpen((open) => !open)}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Columns
           </button>
@@ -1240,21 +1256,31 @@ export default function PlayersPage() {
       </p>
 
       {quickFillMode ? (
-        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Quick fill mode: one player at a time
-          {displayedPlayers.length > 0
-            ? ` (${displayedPlayers.length} remaining)`
-            : ''}. Select missing gender/skill — saves automatically and advances to the
-          next player.
-        </p>
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p>
+            Quick fill mode: one player at a time
+            {displayedPlayers.length > 0
+              ? ` (${displayedPlayers.length} remaining)`
+              : ''}
+            .
+          </p>
+          <FieldHelp id="quick-fill-auto-save-help" className="text-amber-800">
+            Select missing gender or skill for the shown player — each choice saves
+            automatically and advances to the next player in the queue.
+          </FieldHelp>
+        </div>
       ) : null}
 
       {bulkEditMode ? (
         <div className="rounded border border-violet-200 bg-violet-50 px-3 py-3 space-y-3 text-violet-950">
           <p className="text-sm">
             Bulk edit mode: filter the list (gender, skill, home league, search), select
-            players, then apply shared updates. Leave a field blank to leave it unchanged.
+            players, then apply shared updates.
           </p>
+          <FieldHelp id="bulk-edit-unchanged-help" className="text-violet-800">
+            Leave any bulk field at &ldquo;No change&rdquo; (or blank) to leave that property
+            unchanged on selected players.
+          </FieldHelp>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <button
               type="button"
@@ -1412,19 +1438,23 @@ export default function PlayersPage() {
           ) : null}
 
           {bulkEditMessage ? (
-            <p className="text-sm text-violet-900" role="status">
+            <LiveMessage variant="status" className="text-sm text-violet-900">
               {bulkEditMessage}
-            </p>
+            </LiveMessage>
           ) : null}
           {formError && bulkEditMode ? (
-            <p className="text-sm text-red-700" role="alert">
+            <LiveMessage variant="alert" className="text-sm text-red-700">
               {formError}
-            </p>
+            </LiveMessage>
           ) : null}
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error}
+        </LiveMessage>
+      ) : null}
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}
 
       {!loading && (
@@ -1436,10 +1466,13 @@ export default function PlayersPage() {
           </p>
           <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white text-gray-900">
           <table className="min-w-full text-sm text-gray-900">
+            <caption className="sr-only">
+              Players roster with sortable columns and row actions
+            </caption>
             <thead className="bg-gray-50 text-left text-gray-700">
               <tr>
                 {bulkEditMode ? (
-                  <th className="px-3 py-2 w-10">
+                  <th className="px-3 py-2 w-10" scope="col">
                     <input
                       type="checkbox"
                       aria-label="Select all visible players"
@@ -1468,8 +1501,16 @@ export default function PlayersPage() {
                     onClick={() => toggleSort('last')}
                   />
                 ) : null}
-                {visibleColumns.roster ? <th className="px-3 py-2">Roster name</th> : null}
-                {visibleColumns.nickname ? <th className="px-3 py-2">Nickname</th> : null}
+                {visibleColumns.roster ? (
+                  <th className="px-3 py-2" scope="col">
+                    Roster name
+                  </th>
+                ) : null}
+                {visibleColumns.nickname ? (
+                  <th className="px-3 py-2" scope="col">
+                    Nickname
+                  </th>
+                ) : null}
                 {visibleColumns.jerseyNumber ? (
                   <SortableHeader
                     label="Jersey #"
@@ -1487,7 +1528,11 @@ export default function PlayersPage() {
                   />
                 ) : null}
                 {showGenderColumn ? (
-                  <th className="px-3 py-2 align-bottom">
+                  <th
+                    className="px-3 py-2 align-bottom"
+                    scope="col"
+                    aria-sort={sortAriaValue(sortKey === 'gender', sortDir)}
+                  >
                     <div className="space-y-1">
                       <SortableHeaderButton
                         label="Gender"
@@ -1510,7 +1555,11 @@ export default function PlayersPage() {
                   </th>
                 ) : null}
                 {showSkillColumn ? (
-                  <th className="px-3 py-2 align-bottom">
+                  <th
+                    className="px-3 py-2 align-bottom"
+                    scope="col"
+                    aria-sort={sortAriaValue(sortKey === 'skill', sortDir)}
+                  >
                     <div className="space-y-1">
                       <SortableHeaderButton
                         label="Skill"
@@ -1535,11 +1584,19 @@ export default function PlayersPage() {
                     </div>
                   </th>
                 ) : null}
-                {visibleColumns.email ? <th className="px-3 py-2">Email</th> : null}
-                {showHomeLeaguesColumn ? (
-                  <th className="px-3 py-2">Home leagues</th>
+                {visibleColumns.email ? (
+                  <th className="px-3 py-2" scope="col">
+                    Email
+                  </th>
                 ) : null}
-                <th className="px-3 py-2">Actions</th>
+                {showHomeLeaguesColumn ? (
+                  <th className="px-3 py-2" scope="col">
+                    Home leagues
+                  </th>
+                ) : null}
+                <th className="px-3 py-2" scope="col">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="text-gray-900">
@@ -1571,13 +1628,14 @@ export default function PlayersPage() {
                             {p.firstName}
                           </SkillStyledText>
                           {p.hasStrongPersonality ? (
-                            <span
-                              title={p.strongPersonalityNotes || 'Strong personality'}
-                              className="ml-1 cursor-help text-amber-500"
-                              aria-label="Strong personality"
+                            <Tooltip
+                              label="Strong personality"
+                              content={
+                                p.strongPersonalityNotes || 'Flagged as strong personality'
+                              }
                             >
-                              ⚡
-                            </span>
+                              <span className="ml-1 text-amber-500">⚡</span>
+                            </Tooltip>
                           ) : null}
                         </span>
                       </div>
@@ -1617,13 +1675,14 @@ export default function PlayersPage() {
                             {p.nickname}
                           </SkillStyledText>
                           {!showFullNameColumns && p.hasStrongPersonality ? (
-                            <span
-                              title={p.strongPersonalityNotes || 'Strong personality'}
-                              className="ml-1 cursor-help text-amber-500"
-                              aria-label="Strong personality"
+                            <Tooltip
+                              label="Strong personality"
+                              content={
+                                p.strongPersonalityNotes || 'Flagged as strong personality'
+                              }
                             >
-                              ⚡
-                            </span>
+                              <span className="ml-1 text-amber-500">⚡</span>
+                            </Tooltip>
                           ) : null}
                         </span>
                       </div>
@@ -1858,19 +1917,25 @@ export default function PlayersPage() {
       ) : null}
 
       {mergeOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 text-gray-900">
-            <h2 className="text-lg font-semibold text-gray-900">Merge players</h2>
-            <p className="text-sm text-gray-600">
-              Choose the survivor. Emails, aliases, and home leagues from the others will
-              move onto them; the other records will be marked merged.
-            </p>
+        <Dialog
+          open={mergeOpen}
+          onClose={() => setMergeOpen(false)}
+          title="Merge players"
+          className="max-w-lg"
+        >
+          <div className="space-y-4 text-gray-900">
+            <FieldHelp id="merge-survivor-help">
+              The survivor keeps their profile; emails, aliases, and home leagues from the
+              other selected players move onto them. The other records are marked merged and
+              hidden from the default list.
+            </FieldHelp>
             <label className="block text-sm">
               <span className="text-gray-600">Survivor</span>
               <select
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 value={survivorId}
                 onChange={(e) => setSurvivorId(e.target.value)}
+                aria-describedby="merge-survivor-help"
               >
                 {selectedPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -1879,11 +1944,15 @@ export default function PlayersPage() {
                 ))}
               </select>
             </label>
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+            {formError ? (
+              <LiveMessage variant="alert" className="text-sm text-red-600">
+                {formError}
+              </LiveMessage>
+            ) : null}
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border px-3 py-2 text-sm"
+                className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setMergeOpen(false)}
               >
                 Cancel
@@ -1891,27 +1960,35 @@ export default function PlayersPage() {
               <button
                 type="button"
                 disabled={saving || !survivorId}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void runMerge()}
               >
                 Confirm merge
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       ) : null}
 
       {importOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-            <h2 className="text-lg font-semibold text-gray-900">Import TeamLinkt CSV</h2>
+        <Dialog
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          title="Import TeamLinkt CSV"
+          className="max-w-3xl"
+        >
+          <div className="space-y-4 text-gray-900">
             <p className="text-sm text-gray-600">
               New players always get skill, gender, and jersey from the CSV. For existing
               players, those fields are left alone by default so manual edits are preserved.
-              Choose an event below to also register matched players for that event.
             </p>
-            <fieldset className="space-y-2 text-sm">
+            <fieldset className="space-y-2 text-sm" aria-describedby="import-scope-help">
               <legend className="text-gray-600">Import type</legend>
+              <FieldHelp id="import-scope-help">
+                <strong>Generic</strong> updates the player roster only.{' '}
+                <strong>For an event</strong> also registers matched players for the selected
+                event (useful after importing a TeamLinkt roster for a tournament).
+              </FieldHelp>
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -1972,7 +2049,7 @@ export default function PlayersPage() {
             <label className="block text-sm">
               <span className="text-gray-600">Existing players: skill / gender / jersey</span>
               <select
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 value={importProfileFields}
                 onChange={(e) => {
                   setImportProfileFields(
@@ -1980,11 +2057,17 @@ export default function PlayersPage() {
                   )
                   setImportPreview(null)
                 }}
+                aria-describedby="import-profile-fields-help"
               >
                 <option value="skip">Skip (keep current values)</option>
                 <option value="fill_blank">Fill blanks only</option>
                 <option value="overwrite">Overwrite from CSV</option>
               </select>
+              <FieldHelp id="import-profile-fields-help">
+                <strong>Skip</strong> never changes existing skill, gender, or jersey on matched
+                players. <strong>Fill blanks only</strong> sets those fields when empty.
+                <strong> Overwrite</strong> replaces them with CSV values.
+              </FieldHelp>
             </label>
             <label className="block text-sm">
               <span className="text-gray-600">CSV file</span>
@@ -2025,7 +2108,11 @@ export default function PlayersPage() {
               }}
               placeholder="Or paste CSV contents here…"
             />
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+            {formError ? (
+              <LiveMessage variant="alert" className="text-sm text-red-600">
+                {formError}
+              </LiveMessage>
+            ) : null}
             {importPreview ? (
               <div className="space-y-2 text-sm">
                 <p>
@@ -2070,7 +2157,7 @@ export default function PlayersPage() {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border px-3 py-2 text-sm"
+                className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setImportOpen(false)}
               >
                 Close
@@ -2078,7 +2165,7 @@ export default function PlayersPage() {
               <button
                 type="button"
                 disabled={importBusy || !importCsv.trim()}
-                className="rounded border px-3 py-2 text-sm disabled:opacity-40"
+                className="rounded border px-3 py-2 text-sm disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void previewImport()}
               >
                 Dry run
@@ -2090,14 +2177,14 @@ export default function PlayersPage() {
                   !importCsv.trim() ||
                   (importScope === 'event' && !importEventId)
                 }
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void commitImport()}
               >
                 {importPreview ? 'Commit import' : 'Import now'}
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       ) : null}
     </div>
   )
@@ -2176,11 +2263,14 @@ function EditPanel(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-        <div className="flex justify-between items-start gap-4">
-          <h2 className="text-lg font-semibold text-gray-900">Edit player</h2>
-          <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
+    <Dialog open onClose={props.onClose} title="Edit player" className="max-w-xl">
+      <div className="space-y-4 text-gray-900">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Close
           </button>
         </div>
@@ -2257,17 +2347,18 @@ function EditPanel(props: {
             <label className="text-sm">
               Jersey name
               <input
-                className="mt-1 w-full rounded border px-3 py-2"
+                className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 value={jerseyName}
                 disabled={p.isMerged}
                 onChange={(e) => setJerseyName(e.target.value)}
                 placeholder={jerseyNameDefault}
+                aria-describedby="edit-jersey-name-help"
               />
-              <span className="mt-1 block text-xs text-gray-500">
+              <FieldHelp id="edit-jersey-name-help">
                 Defaults to last name ({jerseyNameDefault}
                 {p.jerseyNameCustom ? '' : ' — currently using default'}
                 ).
-              </span>
+              </FieldHelp>
             </label>
           </div>
         </div>
@@ -2342,17 +2433,18 @@ function EditPanel(props: {
             <label className="text-sm col-span-2">
               Nickname
               <input
-                className="mt-1 w-full rounded border px-3 py-2"
+                className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 value={nickname}
                 disabled={p.isMerged}
                 onChange={(e) => setNickname(e.target.value)}
                 placeholder={nicknameDefault}
+                aria-describedby="edit-nickname-help"
               />
-              <span className="mt-1 block text-xs text-gray-500">
+              <FieldHelp id="edit-nickname-help">
                 Defaults to first name + last initial ({nicknameDefault}
                 {p.nicknameCustom ? '' : ' — currently using default'}
                 ). Clear or match the default to keep it automatic.
-              </span>
+              </FieldHelp>
             </label>
           </div>
         </div>
@@ -2369,14 +2461,24 @@ function EditPanel(props: {
                 onChange={(e) => {
                   setHasStrongPersonality(e.target.checked)
                 }}
+                aria-describedby="edit-strong-personality-help"
               />
-              <span>Strong personality</span>
+              <span className="flex items-center gap-1">
+                Strong personality
+                <Tooltip
+                  label="Strong personality"
+                  content="Flags players who may need extra care in team building. Notes appear on hover in the roster and draft board."
+                />
+              </span>
             </label>
+            <FieldHelp id="edit-strong-personality-help" className="pl-6">
+              Mark players whose communication style or intensity may affect team dynamics.
+            </FieldHelp>
             {showStrongPersonalityNotesPrompt ? (
-              <p className="mt-2 text-xs text-amber-900" role="alert" aria-live="polite">
+              <LiveMessage variant="alert" className="mt-2 text-xs text-amber-900">
                 Add a note describing the player&apos;s strong personality and communication
                 considerations.
-              </p>
+              </LiveMessage>
             ) : null}
           </div>
           {hasStrongPersonality ? (
@@ -2524,9 +2626,9 @@ function EditPanel(props: {
 
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Home leagues</h3>
-          <p className="text-xs text-gray-500">
+          <FieldHelp id="edit-home-leagues-help">
             Ordered preference — first is primary home league.
-          </p>
+          </FieldHelp>
           <ul className="space-y-1 text-sm">
             {p.homeLeagues.map((h, index) => (
               <li key={h.id} className="flex items-center justify-between gap-2">
@@ -2610,9 +2712,13 @@ function EditPanel(props: {
           {effectiveSkillLabel(p, 'fibonacci')} · Areas:{' '}
           {effectiveSkillLabel(p, 'areas')}
         </p>
-        {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
+        {props.formError ? (
+          <LiveMessage variant="alert" className="text-sm text-red-600">
+            {props.formError}
+          </LiveMessage>
+        ) : null}
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -2654,14 +2760,13 @@ function CreatePanel(props: {
   const jerseyNameDefault = defaultJerseyName(lastName)
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-        <h2 className="text-lg font-semibold text-gray-900">Add player</h2>
+    <Dialog open onClose={props.onClose} title="Add player" className="max-w-lg">
+      <div className="space-y-4 text-gray-900">
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
             First name
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
             />
@@ -2669,7 +2774,7 @@ function CreatePanel(props: {
           <label className="text-sm">
             Last name
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
             />
@@ -2677,7 +2782,7 @@ function CreatePanel(props: {
           <label className="text-sm col-span-2">
             Roster name (optional)
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={rosterName}
               onChange={(e) => setRosterName(e.target.value)}
             />
@@ -2685,19 +2790,20 @@ function CreatePanel(props: {
           <label className="text-sm col-span-2">
             Nickname (optional)
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder={nicknameDefault || 'First L'}
+              aria-describedby="create-nickname-help"
             />
-            <span className="mt-1 block text-xs text-gray-500">
+            <FieldHelp id="create-nickname-help">
               Leave blank to use {nicknameDefault || 'first name + last initial'}.
-            </span>
+            </FieldHelp>
           </label>
           <label className="text-sm">
             Jersey #
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={jerseyNumber}
               onChange={(e) => setJerseyNumber(e.target.value)}
             />
@@ -2705,14 +2811,15 @@ function CreatePanel(props: {
           <label className="text-sm">
             Jersey name (optional)
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={jerseyName}
               onChange={(e) => setJerseyName(e.target.value)}
               placeholder={jerseyNameDefault || 'Last name'}
+              aria-describedby="create-jersey-name-help"
             />
-            <span className="mt-1 block text-xs text-gray-500">
+            <FieldHelp id="create-jersey-name-help">
               Leave blank to use {jerseyNameDefault || 'last name'}.
-            </span>
+            </FieldHelp>
           </label>
           <label className="text-sm">
             Gender
@@ -2743,15 +2850,23 @@ function CreatePanel(props: {
           onChange={setSkillFields}
           idPrefix="create-skill"
         />
-        {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
+        {props.formError ? (
+          <LiveMessage variant="alert" className="text-sm text-red-600">
+            {props.formError}
+          </LiveMessage>
+        ) : null}
         <div className="flex justify-end gap-2">
-          <button type="button" className="rounded border px-3 py-2 text-sm" onClick={props.onClose}>
+          <button
+            type="button"
+            className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Cancel
           </button>
           <button
             type="button"
             disabled={props.saving || !firstName.trim() || !lastName.trim()}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
+            className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             onClick={() => {
               const skillPatch = skillFieldsToPatch(skillFields)
               props.onCreate({
@@ -2773,17 +2888,20 @@ function CreatePanel(props: {
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
 function HistoryPanel(props: { history: HistoryRow[]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">Change history</h2>
-          <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
+    <Dialog open onClose={props.onClose} title="Change history" className="max-w-2xl">
+      <div className="space-y-4 text-gray-900">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Close
           </button>
         </div>
@@ -2813,6 +2931,6 @@ function HistoryPanel(props: { history: HistoryRow[]; onClose: () => void }) {
           </ul>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }
