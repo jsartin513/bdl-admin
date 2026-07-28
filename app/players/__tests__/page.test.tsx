@@ -560,3 +560,36 @@ describe('PlayersPage tournament filters and columns', () => {
     })
   })
 })
+
+describe('PlayersPage accessible dialogs', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('opens edit dialog with dialog role and closes on Escape', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(jsonResponse({ player: playerSnapshot() }))
+
+    render(<PlayersPage />)
+
+    await screen.findByText('1 player')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Edit player' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/About skill view/i)).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit player' })).not.toBeInTheDocument()
+    })
+  })
+})

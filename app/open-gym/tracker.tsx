@@ -15,6 +15,9 @@ import {
   SCHEDULE_6TEAM_BY_SECTION,
 } from './schedule-data'
 
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+
 // ── All available schedules ────────────────────────────────────────────────
 
 const ALL_SCHEDULES: Schedule[] = [
@@ -139,7 +142,7 @@ function SchedulePicker({ onSelect }: { onSelect: (key: string) => void }) {
                     key={s.key}
                     type="button"
                     onClick={() => onSelect(s.key)}
-                    className="flex-1 min-w-[140px] text-left border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                    className={`flex-1 min-w-[140px] text-left border-2 border-gray-200 rounded-xl p-4 hover:border-blue-500 hover:bg-blue-50 transition-colors ${FOCUS_RING}`}
                   >
                     <div className="font-semibold text-gray-900">
                       {sublabel || group.label}
@@ -223,7 +226,9 @@ function ScoreEntry({
           {/* Home team */}
           <div className="flex-1 flex flex-col items-center gap-2">
             <div className="text-lg font-bold text-gray-900">{game.home}</div>
-            <div className="text-xs text-gray-400 font-medium">HOME</div>
+            <label htmlFor="home-score" className="text-xs text-gray-400 font-medium">
+              HOME score
+            </label>
             <input
               ref={homeRef}
               id="home-score"
@@ -234,7 +239,8 @@ function ScoreEntry({
               onChange={(e) => onHomeScore(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && awayRef.current?.focus()}
               placeholder="—"
-              className="w-24 h-16 text-3xl font-bold text-center border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+              aria-label={`${game.home} score`}
+              className={`w-24 h-16 text-3xl font-bold text-center border-2 border-gray-300 rounded-xl focus:border-blue-500 ${FOCUS_RING}`}
             />
           </div>
 
@@ -243,7 +249,9 @@ function ScoreEntry({
           {/* Away team */}
           <div className="flex-1 flex flex-col items-center gap-2">
             <div className="text-lg font-bold text-gray-900">{game.away}</div>
-            <div className="text-xs text-gray-400 font-medium">AWAY</div>
+            <label htmlFor="away-score" className="text-xs text-gray-400 font-medium">
+              AWAY score
+            </label>
             <input
               ref={awayRef}
               id="away-score"
@@ -254,7 +262,8 @@ function ScoreEntry({
               onChange={(e) => onAwayScore(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && scoresValid && onNext()}
               placeholder="—"
-              className="w-24 h-16 text-3xl font-bold text-center border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none"
+              aria-label={`${game.away} score`}
+              className={`w-24 h-16 text-3xl font-bold text-center border-2 border-gray-300 rounded-xl focus:border-blue-500 ${FOCUS_RING}`}
             />
           </div>
         </div>
@@ -275,14 +284,14 @@ function ScoreEntry({
           type="button"
           onClick={onPrev}
           disabled={!canGoBack}
-          className="px-4 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium disabled:opacity-30 hover:bg-gray-50 transition-colors"
+          className={`px-4 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium disabled:opacity-30 hover:bg-gray-50 transition-colors ${FOCUS_RING}`}
         >
           ← Back
         </button>
         <button
           type="button"
           onClick={onNext}
-          className={`flex-1 py-3 rounded-xl font-semibold text-white transition-colors ${
+          className={`flex-1 py-3 rounded-xl font-semibold text-white transition-colors ${FOCUS_RING} ${
             scoresValid
               ? 'bg-blue-600 hover:bg-blue-700'
               : 'bg-gray-400 cursor-not-allowed'
@@ -321,11 +330,12 @@ function Scoreboard({
       </div>
       <div className="border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
+          <caption className="sr-only">Completed games</caption>
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-3 py-2 text-left text-gray-500 font-medium w-10">#</th>
-              <th className="px-3 py-2 text-left text-gray-500 font-medium">Matchup</th>
-              <th className="px-3 py-2 text-center text-gray-500 font-medium w-16">Score</th>
+              <th scope="col" className="px-3 py-2 text-left text-gray-500 font-medium w-10">#</th>
+              <th scope="col" className="px-3 py-2 text-left text-gray-500 font-medium">Matchup</th>
+              <th scope="col" className="px-3 py-2 text-center text-gray-500 font-medium w-16">Score</th>
             </tr>
           </thead>
           <tbody>
@@ -433,7 +443,7 @@ function DoneScreen({
       <button
         type="button"
         onClick={onReset}
-        className="w-full py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+        className={`w-full py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors ${FOCUS_RING}`}
       >
         Start a new night
       </button>

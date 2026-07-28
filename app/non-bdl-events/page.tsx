@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Dialog, FieldHelp, LiveMessage } from '@/app/components/ui'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import {
@@ -9,6 +10,9 @@ import {
   HOME_LEAGUES,
   type NonBdlEventListItem,
 } from '@/app/lib/non-bdl-events/types'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 function formatDisplayDate(isoDate: string): string {
   const d = new Date(`${isoDate}T12:00:00`)
@@ -119,10 +123,14 @@ function NonBdlEventsPageContent() {
             Track travel tournaments — who&apos;s going, which teams, results, and
             website story drafts.
           </p>
+          <FieldHelp>
+            Add a travel event, then open it to assign players, record results, and draft
+            website stories.
+          </FieldHelp>
         </div>
         <button
           type="button"
-          className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
+          className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
           onClick={() => {
             setCreateOpen(true)
             setFormError(null)
@@ -132,7 +140,11 @@ function NonBdlEventsPageContent() {
         </button>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error}
+        </LiveMessage>
+      ) : null}
 
       {loading ? (
         <p className="text-sm text-gray-600">Loading…</p>
@@ -144,14 +156,15 @@ function NonBdlEventsPageContent() {
       ) : (
         <div className="overflow-x-auto rounded border border-gray-200">
           <table className="min-w-full text-sm">
+            <caption className="sr-only">Non-BDL travel events</caption>
             <thead className="bg-gray-50 text-left">
               <tr>
-                <th className="px-3 py-2 font-medium">Date</th>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">City</th>
-                <th className="px-3 py-2 font-medium">Host</th>
-                <th className="px-3 py-2 font-medium">Ball</th>
-                <th className="px-3 py-2 font-medium">Players</th>
+                <th scope="col" className="px-3 py-2 font-medium">Date</th>
+                <th scope="col" className="px-3 py-2 font-medium">Name</th>
+                <th scope="col" className="px-3 py-2 font-medium">City</th>
+                <th scope="col" className="px-3 py-2 font-medium">Host</th>
+                <th scope="col" className="px-3 py-2 font-medium">Ball</th>
+                <th scope="col" className="px-3 py-2 font-medium">Players</th>
               </tr>
             </thead>
             <tbody>
@@ -166,7 +179,7 @@ function NonBdlEventsPageContent() {
                   <td className="px-3 py-2">
                     <Link
                       href={withDevMode(`/non-bdl-events/${event.id}`, devMode)}
-                      className="text-blue-700 hover:underline font-medium"
+                      className={`text-blue-700 hover:underline font-medium ${FOCUS_RING}`}
                     >
                       {event.name}
                     </Link>
@@ -182,71 +195,40 @@ function NonBdlEventsPageContent() {
         </div>
       )}
 
-      {createOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold">New travel event</h2>
+      <Dialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New travel event"
+        className="max-w-lg"
+      >
+        <div className="space-y-4">
+          <label className="block text-sm">
+            <span className="text-gray-600">Name</span>
+            <input
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Philly Foam Classic"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-600">Date</span>
+            <input
+              type="date"
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              value={eventDate}
+              onChange={(e) => setEventDate(e.target.value)}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
-              <span className="text-gray-600">Name</span>
-              <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Philly Foam Classic"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-600">Date</span>
-              <input
-                type="date"
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm">
-                <span className="text-gray-600">Ball</span>
-                <select
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                  value={ballType}
-                  onChange={(e) => setBallType(e.target.value)}
-                >
-                  {Object.entries(BALL_TYPES).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="text-gray-600">Division</span>
-                <input
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                  value={division}
-                  onChange={(e) => setDivision(e.target.value)}
-                  placeholder="Open, Mixed…"
-                />
-              </label>
-            </div>
-            <label className="block text-sm">
-              <span className="text-gray-600">City</span>
-              <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Philadelphia"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="text-gray-600">Host org (known league)</span>
+              <span className="text-gray-600">Ball</span>
               <select
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={hostOrgHomeLeague}
-                onChange={(e) => setHostOrgHomeLeague(e.target.value)}
+                className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+                value={ballType}
+                onChange={(e) => setBallType(e.target.value)}
               >
-                <option value="">— None / use free text —</option>
-                {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                {Object.entries(BALL_TYPES).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -254,45 +236,82 @@ function NonBdlEventsPageContent() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="text-gray-600">Host org (free text)</span>
+              <span className="text-gray-600">Division</span>
               <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={hostOrgName}
-                onChange={(e) => setHostOrgName(e.target.value)}
-                placeholder="Required if no known league selected"
+                className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+                value={division}
+                onChange={(e) => setDivision(e.target.value)}
+                placeholder="Open, Mixed…"
               />
             </label>
-            <label className="block text-sm">
-              <span className="text-gray-600">Notes (optional)</span>
-              <textarea
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </label>
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded border px-3 py-2 text-sm"
-                onClick={() => setCreateOpen(false)}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50"
-                onClick={() => void createEvent()}
-                disabled={saving || !name.trim() || !eventDate}
-              >
-                {saving ? 'Saving…' : 'Create'}
-              </button>
-            </div>
+          </div>
+          <label className="block text-sm">
+            <span className="text-gray-600">City</span>
+            <input
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Philadelphia"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-600">Host org (known league)</span>
+            <select
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              value={hostOrgHomeLeague}
+              onChange={(e) => setHostOrgHomeLeague(e.target.value)}
+            >
+              <option value="">— None / use free text —</option>
+              {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-600">Host org (free text)</span>
+            <input
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              value={hostOrgName}
+              onChange={(e) => setHostOrgName(e.target.value)}
+              placeholder="Required if no known league selected"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-600">Notes (optional)</span>
+            <textarea
+              className={`mt-1 w-full rounded border border-gray-300 px-3 py-2 ${FOCUS_RING}`}
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
+          {formError ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {formError}
+            </LiveMessage>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className={`rounded border px-3 py-2 text-sm ${FOCUS_RING}`}
+              onClick={() => setCreateOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={`rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50 ${FOCUS_RING}`}
+              onClick={() => void createEvent()}
+              disabled={saving || !name.trim() || !eventDate}
+            >
+              {saving ? 'Saving…' : 'Create'}
+            </button>
           </div>
         </div>
-      ) : null}
+      </Dialog>
     </div>
   )
 }

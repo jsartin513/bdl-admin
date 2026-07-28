@@ -9,6 +9,7 @@ import {
   SKILL_LEVELS,
   type SkillAreas,
 } from '@/app/lib/players/skill'
+import { FieldHelp, Tooltip } from '@/app/components/ui'
 
 export type SkillFieldsValue = {
   skillLevel: string
@@ -95,9 +96,13 @@ export function SkillFieldsEditor(props: {
       <div>
         <label
           htmlFor={`${idPrefix}-linear`}
-          className="mb-1 block text-sm font-medium text-gray-700"
+          className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700"
         >
           Linear skill (1–100)
+          <Tooltip
+            label="About linear skill"
+            content="Primary 1–100 rating used for drafting and filters. Presets map common labels (e.g. Intermediate) to a number."
+          />
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -105,14 +110,15 @@ export function SkillFieldsEditor(props: {
             type="number"
             min={LINEAR_SKILL_MIN}
             max={LINEAR_SKILL_MAX}
-            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             value={value.skillLevel}
             disabled={disabled}
             placeholder="e.g. 40"
+            aria-describedby={`${idPrefix}-linear-help`}
             onChange={(e) => onChange({ ...value, skillLevel: e.target.value })}
           />
           <select
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             value=""
             disabled={disabled}
             aria-label="Set linear skill preset"
@@ -129,20 +135,28 @@ export function SkillFieldsEditor(props: {
             ))}
           </select>
         </div>
+        <FieldHelp id={`${idPrefix}-linear-help`}>
+          Use presets for common levels, or type any value from 1–100.
+        </FieldHelp>
       </div>
 
       <div>
         <label
           htmlFor={`${idPrefix}-fib`}
-          className="mb-1 block text-sm font-medium text-gray-700"
+          className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700"
         >
           Fibonacci skill
+          <Tooltip
+            label="About Fibonacci skill"
+            content="Optional coarser skill scale (Fibonacci numbers). Used when Skill view is set to Fibonacci."
+          />
         </label>
         <select
           id={`${idPrefix}-fib`}
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+          className="rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           value={value.skillLevelFib}
           disabled={disabled}
+          aria-describedby={`${idPrefix}-fib-help`}
           onChange={(e) => onChange({ ...value, skillLevelFib: e.target.value })}
         >
           <option value="">Unset</option>
@@ -152,15 +166,22 @@ export function SkillFieldsEditor(props: {
             </option>
           ))}
         </select>
+        <FieldHelp id={`${idPrefix}-fib-help`}>
+          Leave unset if you only track linear skill.
+        </FieldHelp>
       </div>
 
       <fieldset className="rounded border border-gray-200 p-3">
-        <legend className="px-1 text-sm font-medium text-gray-700">
+        <legend className="inline-flex items-center gap-1.5 px-1 text-sm font-medium text-gray-700">
           Skill areas
+          <Tooltip
+            label="About skill areas"
+            content="Break out offense, defense, staying alive, and court presence. Blank areas fall back to the main linear skill."
+          />
         </legend>
-        <p className="mb-2 text-xs text-gray-500">
+        <FieldHelp className="mb-2 mt-0">
           Leave blank to use the main linear skill ({mainHint}).
-        </p>
+        </FieldHelp>
         <div className="grid gap-2 sm:grid-cols-2">
           {SKILL_AREA_KEYS.map((key) => (
             <label key={key} className="block text-sm text-gray-700">

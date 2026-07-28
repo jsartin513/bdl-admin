@@ -13,6 +13,10 @@ import {
   type NonBdlEventStoryItem,
   type NonBdlEventTeamItem,
 } from '@/app/lib/non-bdl-events/types'
+import { FieldHelp, LiveMessage } from '@/app/components/ui'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 type EventDetail = {
   id: string
@@ -578,7 +582,7 @@ function NonBdlEventDetailContent() {
         </div>
         <button
           type="button"
-          className="rounded border border-red-300 px-3 py-2 text-sm text-red-700"
+          className={`rounded border border-red-300 px-3 py-2 text-sm text-red-700 ${FOCUS_RING}`}
           onClick={() => void deleteEvent()}
           disabled={saving}
         >
@@ -586,7 +590,16 @@ function NonBdlEventDetailContent() {
         </button>
       </div>
 
-      {actionError ? <p className="text-sm text-red-600">{actionError}</p> : null}
+      {actionError ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {actionError}
+        </LiveMessage>
+      ) : null}
+      {copied ? (
+        <LiveMessage variant="status" className="text-sm text-green-700">
+          Good luck blurb copied to clipboard.
+        </LiveMessage>
+      ) : null}
 
       {/* Event info */}
       <section className="space-y-3 rounded border border-gray-200 p-4">
@@ -674,7 +687,7 @@ function NonBdlEventDetailContent() {
         </div>
         <button
           type="button"
-          className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+          className={`rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50 ${FOCUS_RING}`}
           onClick={() => void saveEvent()}
           disabled={saving}
         >
@@ -685,16 +698,23 @@ function NonBdlEventDetailContent() {
       {/* Teams */}
       <section className="space-y-3 rounded border border-gray-200 p-4">
         <h2 className="text-lg font-semibold">Teams</h2>
+        <FieldHelp>
+          Add external teams attending this tournament. Rename or record how each team did.
+        </FieldHelp>
         <div className="flex flex-wrap gap-2">
+          <label className="sr-only" htmlFor="new-team-name">
+            External team name
+          </label>
           <input
-            className="rounded border border-gray-300 px-3 py-2 text-sm"
+            id="new-team-name"
+            className={`rounded border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
             placeholder="External team name"
             value={newTeamName}
             onChange={(e) => setNewTeamName(e.target.value)}
           />
           <button
             type="button"
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
+            className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
             onClick={() => void addTeam()}
           >
             Add team
@@ -710,8 +730,12 @@ function NonBdlEventDetailContent() {
                 className="rounded border border-gray-100 p-3 space-y-2"
               >
                 <div className="flex flex-wrap gap-2 items-center">
+                  <label className="sr-only" htmlFor={`team-name-${team.id}`}>
+                    Team name
+                  </label>
                   <input
-                    className="rounded border border-gray-300 px-2 py-1 text-sm font-medium"
+                    id={`team-name-${team.id}`}
+                    className={`rounded border border-gray-300 px-2 py-1 text-sm font-medium ${FOCUS_RING}`}
                     defaultValue={team.name}
                     onBlur={(e) => {
                       if (e.target.value.trim() !== team.name) {
@@ -809,12 +833,15 @@ function NonBdlEventDetailContent() {
         ) : (
           <div className="overflow-x-auto rounded border border-gray-200">
             <table className="min-w-full text-sm">
+              <caption className="sr-only">Players attending this event</caption>
               <thead className="bg-gray-50 text-left">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Player</th>
-                  <th className="px-3 py-2 font-medium">Team</th>
-                  <th className="px-3 py-2 font-medium">Notes</th>
-                  <th className="px-3 py-2 font-medium" />
+                  <th scope="col" className="px-3 py-2 font-medium">Player</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Team</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Notes</th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -840,8 +867,12 @@ function NonBdlEventDetailContent() {
                       </select>
                     </td>
                     <td className="px-3 py-2 min-w-[180px]">
+                      <label className="sr-only" htmlFor={`attendee-notes-${a.id}`}>
+                        Notes for {a.nickname}
+                      </label>
                       <input
-                        className="w-full rounded border border-gray-300 px-2 py-1"
+                        id={`attendee-notes-${a.id}`}
+                        className={`w-full rounded border border-gray-300 px-2 py-1 ${FOCUS_RING}`}
                         defaultValue={a.notes ?? ''}
                         onBlur={(e) => {
                           const next = e.target.value.trim() || null
@@ -875,12 +906,15 @@ function NonBdlEventDetailContent() {
           <h2 className="text-lg font-semibold">Good luck blurb</h2>
           <button
             type="button"
-            className="rounded border px-3 py-1.5 text-sm"
+            className={`rounded border px-3 py-1.5 text-sm ${FOCUS_RING}`}
             onClick={() => void copyGoodLuck()}
           >
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
+        <FieldHelp>
+          Auto-generated shout-out for social media — copy and paste before the tournament starts.
+        </FieldHelp>
         <pre className="whitespace-pre-wrap rounded bg-gray-50 p-3 text-sm border border-gray-100">
           {goodLuckBlurb}
         </pre>
@@ -889,15 +923,26 @@ function NonBdlEventDetailContent() {
       {/* Stories */}
       <section className="space-y-3 rounded border border-gray-200 p-4">
         <h2 className="text-lg font-semibold">Stories</h2>
+        <FieldHelp>
+          Draft website stories and tag teams or players. Edit existing stories inline.
+        </FieldHelp>
         <div className="space-y-2 rounded border border-dashed border-gray-300 p-3">
+          <label className="sr-only" htmlFor="story-title-new">
+            Story title (optional)
+          </label>
           <input
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            id="story-title-new"
+            className={`w-full rounded border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
             placeholder="Title (optional)"
             value={storyTitle}
             onChange={(e) => setStoryTitle(e.target.value)}
           />
+          <label className="sr-only" htmlFor="story-body-new">
+            Story body
+          </label>
           <textarea
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            id="story-body-new"
+            className={`w-full rounded border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
             rows={4}
             placeholder="Story draft for the website…"
             value={storyBody}
@@ -933,8 +978,12 @@ function NonBdlEventDetailContent() {
                 key={story.id}
                 className="rounded border border-gray-100 p-3 space-y-2"
               >
+                <label className="sr-only" htmlFor={`story-title-${story.id}`}>
+                  Story title
+                </label>
                 <input
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm font-medium"
+                  id={`story-title-${story.id}`}
+                  className={`w-full rounded border border-gray-300 px-2 py-1 text-sm font-medium ${FOCUS_RING}`}
                   defaultValue={story.title ?? ''}
                   placeholder="Untitled"
                   onBlur={(e) => {
@@ -944,8 +993,12 @@ function NonBdlEventDetailContent() {
                     }
                   }}
                 />
+                <label className="sr-only" htmlFor={`story-body-${story.id}`}>
+                  Story body
+                </label>
                 <textarea
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                  id={`story-body-${story.id}`}
+                  className={`w-full rounded border border-gray-300 px-2 py-1 text-sm ${FOCUS_RING}`}
                   rows={4}
                   defaultValue={story.body}
                   onBlur={(e) => {
@@ -984,9 +1037,16 @@ function NonBdlEventDetailContent() {
       {/* Photos */}
       <section className="space-y-3 rounded border border-gray-200 p-4">
         <h2 className="text-lg font-semibold">Photos</h2>
+        <FieldHelp>
+          Upload event photos with optional captions and tags for teams or players.
+        </FieldHelp>
         <div className="space-y-2 rounded border border-dashed border-gray-300 p-3">
+          <label className="sr-only" htmlFor="photo-caption-new">
+            Photo caption (optional)
+          </label>
           <input
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            id="photo-caption-new"
+            className={`w-full rounded border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
             placeholder="Caption (optional)"
             value={photoCaption}
             onChange={(e) => setPhotoCaption(e.target.value)}
@@ -1035,8 +1095,12 @@ function NonBdlEventDetailContent() {
                   alt={photo.caption || 'Event photo'}
                   className="w-full max-h-56 object-cover rounded"
                 />
+                <label className="sr-only" htmlFor={`photo-caption-${photo.id}`}>
+                  Photo caption
+                </label>
                 <input
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                  id={`photo-caption-${photo.id}`}
+                  className={`w-full rounded border border-gray-300 px-2 py-1 text-sm ${FOCUS_RING}`}
                   defaultValue={photo.caption ?? ''}
                   placeholder="Caption"
                   onBlur={(e) => {

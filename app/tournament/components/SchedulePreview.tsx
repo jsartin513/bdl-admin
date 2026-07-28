@@ -1,5 +1,6 @@
 'use client';
 
+import { FieldHelp } from '@/app/components/ui';
 import {
   COUNTDOWN_CLIP_SLUGS,
   clipKey,
@@ -91,19 +92,20 @@ export default function SchedulePreview({
 
       <div className="space-y-3">
         <h3 className="font-semibold text-gray-900">Round timeline</h3>
-        <p className="text-xs text-gray-500">
+        <FieldHelp>
           Key timestamps per round based on your configuration below.
-        </p>
+        </FieldHelp>
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <table className="min-w-full text-sm">
+            <caption className="sr-only">Round timeline</caption>
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-2 text-left">Round</th>
-                <th className="px-3 py-2 text-left">Round starts</th>
-                <th className="px-3 py-2 text-left">No-blocking starts</th>
-                <th className="px-3 py-2 text-left">No-blocking ends</th>
-                <th className="px-3 py-2 text-left">Next round</th>
-                <th className="px-3 py-2 text-left">Notes</th>
+                <th scope="col" className="px-3 py-2 text-left">Round</th>
+                <th scope="col" className="px-3 py-2 text-left">Round starts</th>
+                <th scope="col" className="px-3 py-2 text-left">No-blocking starts</th>
+                <th scope="col" className="px-3 py-2 text-left">No-blocking ends</th>
+                <th scope="col" className="px-3 py-2 text-left">Next round</th>
+                <th scope="col" className="px-3 py-2 text-left">Notes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -273,11 +275,12 @@ export default function SchedulePreview({
         </summary>
         <div className="max-h-96 overflow-y-auto p-2">
           <table className="min-w-full text-xs">
+            <caption className="sr-only">Full event timeline</caption>
             <thead>
               <tr className="text-left text-gray-500">
-                <th className="px-2 py-1">Time</th>
-                <th className="px-2 py-1">Event</th>
-                <th className="px-2 py-1">Clips</th>
+                <th scope="col" className="px-2 py-1">Time</th>
+                <th scope="col" className="px-2 py-1">Event</th>
+                <th scope="col" className="px-2 py-1">Clips</th>
               </tr>
             </thead>
             <tbody>

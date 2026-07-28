@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchAdminSession } from '@/app/lib/admin-client-auth'
+import { LiveMessage } from '@/app/components/ui'
 
 function adminErrorMessage(error: string | null): string | null {
   if (!error) return null
@@ -53,11 +54,15 @@ function LoginContent() {
             Access schedules, league tools, and the players dashboard.
           </p>
 
-          {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+          {errorMessage ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {errorMessage}
+            </LiveMessage>
+          ) : null}
 
           <a
             href={loginHref}
-            className="flex w-full items-center justify-center rounded-md bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+            className="flex w-full items-center justify-center rounded-md bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Sign in with Google
           </a>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FieldHelp, LiveMessage } from '@/app/components/ui';
 import type { AudioEvent, TimeSlot } from '@/app/lib/tournamentSchedule';
 import { getTournamentDurationMs } from '@/app/lib/tournamentSchedule';
 import { buildTournamentMp3 } from '@/app/lib/tournamentAudioBuilder';
@@ -67,10 +68,10 @@ export default function AudioGenerator({
 
   return (
     <div className="space-y-6">
-      <p className="text-gray-600 text-sm">
+      <FieldHelp>
         Generates the full tournament MP3 in your browser using ffmpeg.wasm. Play the file at
         tournament start (first slot). {durationLabel}
-      </p>
+      </FieldHelp>
 
       {missing.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
@@ -83,11 +84,11 @@ export default function AudioGenerator({
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+      {error ? (
+        <LiveMessage variant="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
           {error}
-        </div>
-      )}
+        </LiveMessage>
+      ) : null}
 
       <button
         type="button"
@@ -107,16 +108,18 @@ export default function AudioGenerator({
             />
           </div>
           <p className="text-sm text-gray-600">{status}</p>
-          <p className="text-xs text-gray-500">
+          <FieldHelp>
             First run downloads ~30MB of ffmpeg.wasm (cached afterward). Long tournaments may take
             several minutes.
-          </p>
+          </FieldHelp>
         </div>
       )}
 
       {downloadUrl && !generating && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
-          <p className="text-green-900 font-medium">MP3 ready</p>
+          <LiveMessage variant="status" className="text-green-900 font-medium">
+            MP3 ready
+          </LiveMessage>
           <a
             href={downloadUrl}
             download="throwdown_5_tournament_audio.mp3"
@@ -124,9 +127,9 @@ export default function AudioGenerator({
           >
             Download tournament_audio.mp3
           </a>
-          <p className="text-xs text-gray-600">
+          <FieldHelp>
             Click Generate again anytime after replacing clips — no re-upload needed.
-          </p>
+          </FieldHelp>
         </div>
       )}
     </div>
