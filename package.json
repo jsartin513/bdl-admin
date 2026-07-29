@@ -35,7 +35,10 @@
     "next": "15.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@bdl/admin-auth": "*",
+    "@bdl/app-config": "*",
+    "@bdl/board-apps": "*"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -57,5 +60,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.16"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

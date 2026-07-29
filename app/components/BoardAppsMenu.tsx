@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { getBoardAppLinks, type BoardAppId } from '@/app/lib/board-apps'
+import { getBoardAppLinks, type BoardAppId } from '@bdl/board-apps'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300'
@@ -31,7 +31,7 @@ export default function BoardAppsMenu({
   className = '',
   linkClassName = 'block px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 focus-visible:bg-gray-700 focus-visible:outline-none',
   menuClassName = 'absolute right-0 mt-1 w-48 rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-gray-600 z-50',
-  buttonClassName = 'hover:underline text-blue-100',
+  buttonClassName = `hover:underline text-blue-100 ${FOCUS_RING}`,
 }: BoardAppsMenuProps) {
   const [open, setOpen] = useState(false)
   const panelId = useId()
@@ -73,7 +73,7 @@ export default function BoardAppsMenu({
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`${buttonClassName} ${FOCUS_RING}`}
+        className={buttonClassName}
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={panelId}

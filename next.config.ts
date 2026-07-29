@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  transpilePackages: ['@bdl/admin-auth', '@bdl/app-config', '@bdl/board-apps'],
 };
 
 export default nextConfig;
