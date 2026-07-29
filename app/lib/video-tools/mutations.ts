@@ -275,8 +275,6 @@ export async function recordUploadedClip(input: {
     return reconcileExisting(raced)
   }
 
-  await releasePendingClipUpload(input.setId)
-
   // Conditional updates only — never clobber queued/processing/complete if the
   // set advanced between the initial read and this write (Start merge race).
   await db
@@ -310,6 +308,10 @@ export async function recordUploadedClip(input: {
         inArray(videoUploadSets.status, [...demoteFrom])
       )
     )
+
+  // Release after status writes so a later throw doesn't leave us needing a
+  // second decrement in the upload webhook catch handler.
+  await releasePendingClipUpload(input.setId)
 
   return mapClip(clip)
 }

@@ -134,6 +134,7 @@ function VideoUploadSetDetailContent() {
         const file = list[i]
         const pathname = clipBlobPathname(set.id, file.name)
 
+        let tokenMinted = false
         try {
           const blob = await upload(pathname, file, {
             access: 'public',
@@ -144,6 +145,7 @@ function VideoUploadSetDetailContent() {
               originalFilename: file.name,
             }),
             onUploadProgress: (event) => {
+              tokenMinted = true
               setUploads((prev) =>
                 prev.map((u, idx) =>
                   idx === i
@@ -153,6 +155,7 @@ function VideoUploadSetDetailContent() {
               )
             },
           })
+          tokenMinted = true
 
           setUploads((prev) =>
             prev.map((u, idx) =>
@@ -186,18 +189,19 @@ function VideoUploadSetDetailContent() {
               idx === i ? { ...u, status: 'error', error: message } : u
             )
           )
-          // Release the pending slot reserved when the Blob token was minted.
-          try {
-            const cancelRes = await fetch(
-              `/api/video-tools/sets/${set.id}/cancel-upload`,
-              { method: 'POST' }
-            )
-            if (cancelRes.ok) {
-              const cancelData = await cancelRes.json()
-              if (cancelData.set) setSet(cancelData.set)
+          if (tokenMinted) {
+            try {
+              const cancelRes = await fetch(
+                `/api/video-tools/sets/${set.id}/cancel-upload`,
+                { method: 'POST' }
+              )
+              if (cancelRes.ok) {
+                const cancelData = await cancelRes.json()
+                if (cancelData.set) setSet(cancelData.set)
+              }
+            } catch {
+              // best-effort
             }
-          } catch {
-            // best-effort
           }
         }
       }
