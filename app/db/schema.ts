@@ -398,6 +398,8 @@ export const videoUploadSets = pgTable(
     outputFilename: text('output_filename'),
     /** Rotated on each worker claim; invalidates stale complete/fail after retry. */
     claimToken: uuid('claim_token'),
+    /** In-flight Blob upload tokens; Mark ready / enqueue require zero. */
+    pendingUploadCount: integer('pending_upload_count').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

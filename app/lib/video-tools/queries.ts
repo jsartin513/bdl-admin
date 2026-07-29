@@ -21,6 +21,7 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     mergedBlobUrl: row.mergedBlobUrl,
     mergedBlobPathname: row.mergedBlobPathname,
     outputFilename: row.outputFilename,
+    pendingUploadCount: row.pendingUploadCount,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

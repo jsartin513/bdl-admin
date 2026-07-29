@@ -48,6 +48,7 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     mergedBlobUrl: row.mergedBlobUrl,
     mergedBlobPathname: row.mergedBlobPathname,
     outputFilename: row.outputFilename,
+    pendingUploadCount: row.pendingUploadCount,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -124,6 +125,8 @@ export async function markSetUploading(setId: string): Promise<void> {
 export const READY_ALLOWED_STATUSES = ['draft', 'uploading', 'ready', 'failed'] as const
 /** Allow clip registration while queued so in-flight multipart uploads can finish before claim. */
 export const CLIP_LOCKED_STATUSES = ['processing', 'complete'] as const
+/** New upload tokens only while actively collecting clips. */
+export const UPLOAD_TOKEN_ALLOWED_STATUSES = ['draft', 'uploading', 'failed'] as const
 /** ready = normal; failed/processing = operator retry for stuck or failed merges. */
 export const ENQUEUE_ALLOWED_STATUSES = ['ready', 'failed', 'processing'] as const
 
@@ -136,6 +139,41 @@ function isUniquePathnameError(err: unknown): boolean {
     message.includes('video_upload_clips_pathname_uidx') ||
     message.toLowerCase().includes('unique')
   )
+}
+
+/** Reserve an in-flight upload slot when minting a Blob client token. */
+export async function beginPendingClipUpload(setId: string): Promise<void> {
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      pendingUploadCount: sql`${videoUploadSets.pendingUploadCount} + 1`,
+      status: 'uploading',
+      updatedAt: new Date(),
+      errorMessage: null,
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        inArray(videoUploadSets.status, [...UPLOAD_TOKEN_ALLOWED_STATUSES])
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Cannot upload clips in the current set status')
+  }
+}
+
+async function releasePendingClipUpload(setId: string): Promise<void> {
+  const db = getDb()
+  await db
+    .update(videoUploadSets)
+    .set({
+      pendingUploadCount: sql`greatest(${videoUploadSets.pendingUploadCount} - 1, 0)`,
+      updatedAt: new Date(),
+    })
+    .where(eq(videoUploadSets.id, setId))
 }
 
 export async function recordUploadedClip(input: {
@@ -227,6 +265,8 @@ export async function recordUploadedClip(input: {
     return reconcileExisting(raced)
   }
 
+  await releasePendingClipUpload(input.setId)
+
   // Conditional updates only — never clobber queued/processing/complete if the
   // set advanced between the initial read and this write (Start merge race).
   await db
@@ -275,6 +315,11 @@ export async function markSetReady(setId: string): Promise<VideoUploadSetRecord>
   if (!(READY_ALLOWED_STATUSES as readonly string[]).includes(set.status)) {
     throw new Error(`Cannot mark ready while set is ${set.status}`)
   }
+  if (set.pendingUploadCount > 0) {
+    throw new Error(
+      `Wait for ${set.pendingUploadCount} in-flight upload(s) to finish before marking ready`
+    )
+  }
 
   const clips = await listClipsForSet(setId)
   if (clips.length === 0) {
@@ -300,13 +345,16 @@ export async function markSetReady(setId: string): Promise<VideoUploadSetRecord>
       and(
         eq(videoUploadSets.id, setId),
         // Re-check so we never clobber queued/processing/complete mid-flight.
-        eq(videoUploadSets.status, set.status)
+        eq(videoUploadSets.status, set.status),
+        eq(videoUploadSets.pendingUploadCount, 0)
       )
     )
     .returning()
 
   if (!updated) {
-    throw new Error('Upload set status changed; cannot mark ready')
+    throw new Error(
+      'Upload set changed or uploads are still in progress; cannot mark ready'
+    )
   }
   return mapSet(updated)
 }
@@ -324,6 +372,11 @@ export async function enqueueVideoUploadSet(
 
   if (!(ENQUEUE_ALLOWED_STATUSES as readonly string[]).includes(set.status)) {
     throw new Error(`Cannot enqueue set in status ${set.status}`)
+  }
+  if (set.pendingUploadCount > 0) {
+    throw new Error(
+      `Wait for ${set.pendingUploadCount} in-flight upload(s) to finish before starting merge`
+    )
   }
 
   const clips = await listClipsForSet(setId)
@@ -363,13 +416,16 @@ export async function enqueueVideoUploadSet(
     .where(
       and(
         eq(videoUploadSets.id, setId),
-        inArray(videoUploadSets.status, [...ENQUEUE_ALLOWED_STATUSES])
+        inArray(videoUploadSets.status, [...ENQUEUE_ALLOWED_STATUSES]),
+        eq(videoUploadSets.pendingUploadCount, 0)
       )
     )
     .returning()
 
   if (!updated) {
-    throw new Error('Upload set status changed; cannot enqueue')
+    throw new Error(
+      'Upload set status changed or uploads are still in progress; cannot enqueue'
+    )
   }
   return mapSet(updated)
 }

@@ -4,7 +4,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { recordUploadedClip } from '@/app/lib/video-tools/mutations'
+import { beginPendingClipUpload, recordUploadedClip } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 import { VIDEO_TOOLS_BLOB_PREFIX } from '@/app/lib/video-tools/naming'
 
@@ -46,9 +46,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         const set = await getVideoUploadSet(setId)
         if (!set) throw new Error('Upload set not found')
-        // Block new tokens once merge has started or finished. Queued still
-        // allows in-flight multipart completions via onUploadCompleted.
-        if (['processing', 'complete'].includes(set.status)) {
+        // New tokens only while collecting clips. In-flight completions may still
+        // land via onUploadCompleted / /clips after Mark ready.
+        if (!['draft', 'uploading', 'failed'].includes(set.status)) {
           throw new Error(`Cannot upload clips while set is ${set.status}`)
         }
 
@@ -56,6 +56,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (!pathname.startsWith(expectedPrefix)) {
           throw new Error('Invalid upload pathname')
         }
+
+        await beginPendingClipUpload(setId)
 
         return {
           allowedContentTypes: [
