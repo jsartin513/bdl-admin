@@ -6,6 +6,7 @@ import {
 import { recordUploadedClip } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 import { VIDEO_TOOLS_BLOB_PREFIX } from '@/app/lib/video-tools/naming'
+import { assertSafeVideoClipBlobUrl } from '@/app/lib/video-tools/blob-url'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -42,6 +43,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invalid pathname for this set' }, { status: 400 })
     }
 
+    let safeBlobUrl: string
+    try {
+      safeBlobUrl = assertSafeVideoClipBlobUrl(body.blobUrl, body.pathname)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid blobUrl'
+      return NextResponse.json({ error: message }, { status: 400 })
+    }
+
     const set = await getVideoUploadSet(setId)
     if (!set) {
       return NextResponse.json({ error: 'Upload set not found' }, { status: 404 })
@@ -51,7 +60,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const clip = await recordUploadedClip({
       setId,
       originalFilename: body.originalFilename,
-      blobUrl: body.blobUrl,
+      blobUrl: safeBlobUrl,
       pathname: body.pathname,
       sizeBytes: body.sizeBytes ?? 0,
     })
