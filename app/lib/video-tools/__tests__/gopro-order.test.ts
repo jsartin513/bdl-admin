@@ -54,9 +54,26 @@ describe('orderClipsForMerge', () => {
     ])
   })
 
+  it('orders GoPro chapters for .mov the same as .mp4', () => {
+    const clips = [
+      { originalFilename: 'GX020010.MOV' },
+      { originalFilename: 'GX010010.mov' },
+      { originalFilename: 'GOPR0010.MOV' },
+      { originalFilename: 'random_clip.mov' },
+    ]
+    const ordered = orderClipsForMerge(clips).map((c) => c.originalFilename)
+    expect(ordered).toEqual([
+      'GOPR0010.MOV',
+      'GX010010.mov',
+      'GX020010.MOV',
+      'random_clip.mov',
+    ])
+  })
+
   it('extracts session ids', () => {
     expect(extractGoProSessionId('GX010554.MP4')).toBe('0554')
     expect(extractGoProSessionId('GOPR0554.MP4')).toBe('0554')
+    expect(extractGoProSessionId('GX010554.MOV')).toBe('0554')
     expect(extractGoProSessionId('other.mp4')).toBeNull()
   })
 })

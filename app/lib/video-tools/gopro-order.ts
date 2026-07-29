@@ -18,9 +18,9 @@ type GoProParsed = {
   basename: string
 }
 
-const GOPR_RE = /^GOPR(\d{4})\.(mp4|MP4)$/
-const GP_RE = /^GP(\d{2})(\d{4})\.(mp4|MP4)$/
-const GX_RE = /^GX(\d{2})(\d{4})\.(mp4|MP4)$/
+const GOPR_RE = /^GOPR(\d{4})\.(mp4|mov)$/i
+const GP_RE = /^GP(\d{2})(\d{4})\.(mp4|mov)$/i
+const GX_RE = /^GX(\d{2})(\d{4})\.(mp4|mov)$/i
 
 function basenameOf(filename: string): string {
   const parts = filename.replace(/\\/g, '/').split('/')

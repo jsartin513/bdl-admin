@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
+import { assertSafeVideoClipBlobUrl } from '@/app/lib/video-tools/blob-url'
 import { orderClipsForMerge } from '@/app/lib/video-tools/gopro-order'
 import {
   buildUntrimmedOutputFilename,
@@ -141,6 +142,7 @@ export async function recordUploadedClip(input: {
   sizeBytes?: number
 }): Promise<VideoUploadClipRecord> {
   const db = getDb()
+  const safeBlobUrl = assertSafeVideoClipBlobUrl(input.blobUrl, input.pathname)
 
   const [existing] = await db
     .select()
@@ -151,7 +153,17 @@ export async function recordUploadedClip(input: {
     if (existing.setId !== input.setId) {
       throw new Error('Clip pathname already belongs to another upload set')
     }
-    return mapClip(existing)
+    if (existing.blobUrl === safeBlobUrl) {
+      return mapClip(existing)
+    }
+    // Replace a mismatched / previously unvalidated URL so the worker never
+    // fetches an attacker-controlled address after an idempotent re-register.
+    const [updated] = await db
+      .update(videoUploadClips)
+      .set({ blobUrl: safeBlobUrl, uploadComplete: true })
+      .where(eq(videoUploadClips.id, existing.id))
+      .returning()
+    return mapClip(updated)
   }
 
   const [set] = await db
@@ -171,7 +183,7 @@ export async function recordUploadedClip(input: {
       .values({
         setId: input.setId,
         originalFilename: input.originalFilename,
-        blobUrl: input.blobUrl,
+        blobUrl: safeBlobUrl,
         pathname: input.pathname,
         sizeBytes: input.sizeBytes ?? 0,
         uploadComplete: true,
@@ -186,7 +198,13 @@ export async function recordUploadedClip(input: {
       .where(eq(videoUploadClips.pathname, input.pathname))
       .limit(1)
     if (!raced || raced.setId !== input.setId) throw err
-    return mapClip(raced)
+    if (raced.blobUrl === safeBlobUrl) return mapClip(raced)
+    const [updated] = await db
+      .update(videoUploadClips)
+      .set({ blobUrl: safeBlobUrl, uploadComplete: true })
+      .where(eq(videoUploadClips.id, raced.id))
+      .returning()
+    return mapClip(updated)
   }
 
   // Do not demote queued sets; late in-flight uploads may land before the worker claims.
