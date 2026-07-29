@@ -227,28 +227,36 @@ export async function recordUploadedClip(input: {
     return reconcileExisting(raced)
   }
 
-  // Do not demote queued sets; late in-flight uploads may land before the worker claims.
-  // Demote ready → uploading if another clip arrives after Mark ready.
-  if (set.status === 'queued') {
-    await db
-      .update(videoUploadSets)
-      .set({ updatedAt: new Date() })
-      .where(eq(videoUploadSets.id, input.setId))
-  } else {
-    await db
-      .update(videoUploadSets)
-      .set({
-        status:
-          set.status === 'draft' ||
-          set.status === 'failed' ||
-          set.status === 'ready'
-            ? 'uploading'
-            : set.status,
-        updatedAt: new Date(),
-        errorMessage: null,
-      })
-      .where(eq(videoUploadSets.id, input.setId))
-  }
+  // Conditional updates only — never clobber queued/processing/complete if the
+  // set advanced between the initial read and this write (Start merge race).
+  await db
+    .update(videoUploadSets)
+    .set({ updatedAt: new Date() })
+    .where(
+      and(
+        eq(videoUploadSets.id, input.setId),
+        eq(videoUploadSets.status, 'queued')
+      )
+    )
+
+  await db
+    .update(videoUploadSets)
+    .set({
+      status: 'uploading',
+      updatedAt: new Date(),
+      errorMessage: null,
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, input.setId),
+        inArray(videoUploadSets.status, [
+          'draft',
+          'failed',
+          'ready',
+          'uploading',
+        ])
+      )
+    )
 
   return mapClip(clip)
 }
