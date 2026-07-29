@@ -3,7 +3,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { markSetReady } from '@/app/lib/video-tools/mutations'
+import { markSetReady, resetPendingUploads } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -35,6 +35,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (body.action === 'mark_ready') {
       const updated = await markSetReady(id)
+      const set = await getVideoUploadSet(updated.id)
+      return NextResponse.json({ set })
+    }
+
+    if (body.action === 'reset_pending_uploads') {
+      const updated = await resetPendingUploads(id)
       const set = await getVideoUploadSet(updated.id)
       return NextResponse.json({ set })
     }

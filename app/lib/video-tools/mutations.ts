@@ -186,6 +186,20 @@ export async function cancelPendingClipUpload(setId: string): Promise<void> {
   await releasePendingClipUpload(setId)
 }
 
+/** Operator recovery when pending_upload_count is stuck after abandoned uploads. */
+export async function resetPendingUploads(
+  setId: string
+): Promise<VideoUploadSetRecord> {
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({ pendingUploadCount: 0, updatedAt: new Date() })
+    .where(eq(videoUploadSets.id, setId))
+    .returning()
+  if (!updated) throw new Error('Upload set not found')
+  return mapSet(updated)
+}
+
 export async function recordUploadedClip(input: {
   setId: string
   originalFilename: string

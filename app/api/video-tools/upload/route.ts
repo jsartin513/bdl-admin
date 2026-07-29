@@ -4,7 +4,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { beginPendingClipUpload, cancelPendingClipUpload, recordUploadedClip } from '@/app/lib/video-tools/mutations'
+import { beginPendingClipUpload, recordUploadedClip } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 import { VIDEO_TOOLS_BLOB_PREFIX } from '@/app/lib/video-tools/naming'
 
@@ -84,20 +84,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           throw new Error('Missing token payload for clip record')
         }
 
-        try {
-          await recordUploadedClip({
-            setId: payload.setId,
-            originalFilename: payload.originalFilename,
-            blobUrl: blob.url,
-            pathname: blob.pathname,
-            sizeBytes: 0,
-          })
-        } catch (err) {
-          // Token mint already incremented pending; release if registration failed
-          // before the insert path could decrement.
-          await cancelPendingClipUpload(payload.setId).catch(() => {})
-          throw err
-        }
+        await recordUploadedClip({
+          setId: payload.setId,
+          originalFilename: payload.originalFilename,
+          blobUrl: blob.url,
+          pathname: blob.pathname,
+          sizeBytes: 0,
+        })
       },
     })
 

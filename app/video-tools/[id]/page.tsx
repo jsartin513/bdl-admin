@@ -189,6 +189,8 @@ function VideoUploadSetDetailContent() {
               idx === i ? { ...u, status: 'error', error: message } : u
             )
           )
+          // Best-effort: clear this slot if a token was minted. Safe at floor 0;
+          // operators can also use Clear stuck uploads if a count remains.
           if (tokenMinted) {
             try {
               const cancelRes = await fetch(
@@ -226,6 +228,27 @@ function VideoUploadSetDetailContent() {
       setSet(data.set)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to mark ready')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resetPending() {
+    setBusy(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/video-tools/sets/${setId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset_pending_uploads' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to clear pending uploads')
+      setSet(data.set)
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to clear pending uploads'
+      )
     } finally {
       setBusy(false)
     }
@@ -458,6 +481,17 @@ function VideoUploadSetDetailContent() {
               : 'Mark ready'}
           </button>
         )}
+        {set.pendingUploadCount > 0 &&
+          !['queued', 'processing', 'complete'].includes(set.status) && (
+            <button
+              type="button"
+              onClick={() => void resetPending()}
+              disabled={busy}
+              className="rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+            >
+              Clear stuck uploads ({set.pendingUploadCount})
+            </button>
+          )}
         {canStartOrRetryMerge && (
             <button
               type="button"
