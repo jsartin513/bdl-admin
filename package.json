@@ -16,7 +16,8 @@
     "db:migrate:deploy": "node scripts/migrate-on-deploy.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "smoke:preview": "node scripts/smoke-preview.mjs"
+    "smoke:preview": "node scripts/smoke-preview.mjs",
+    "worker:video-merge": "node workers/video-merge/index.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

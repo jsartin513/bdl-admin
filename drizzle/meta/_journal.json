@@ -113,6 +113,27 @@
       "when": 1753304000000,
       "tag": "0015_player_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1753804800000,
+      "tag": "0016_video_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1753812000000,
+      "tag": "0017_video_tools_claim_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1753815600000,
+      "tag": "0018_video_tools_pending_uploads",
+      "breakpoints": true
     }
   ]
 }
