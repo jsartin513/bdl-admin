@@ -6,9 +6,6 @@ import {
 import { recordUploadedClip } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 import { VIDEO_TOOLS_BLOB_PREFIX } from '@/app/lib/video-tools/naming'
-import { getDb } from '@/app/lib/db'
-import { videoUploadClips } from '@/app/db/schema'
-import { eq } from 'drizzle-orm'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -50,18 +47,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Upload set not found' }, { status: 404 })
     }
 
-    const db = getDb()
-    const [existing] = await db
-      .select()
-      .from(videoUploadClips)
-      .where(eq(videoUploadClips.pathname, body.pathname))
-      .limit(1)
-
-    if (existing) {
-      const refreshed = await getVideoUploadSet(setId)
-      return NextResponse.json({ set: refreshed, clipId: existing.id })
-    }
-
+    // recordUploadedClip is idempotent on pathname (client + Blob webhook race).
     const clip = await recordUploadedClip({
       setId,
       originalFilename: body.originalFilename,

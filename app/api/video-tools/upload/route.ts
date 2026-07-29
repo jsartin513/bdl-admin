@@ -46,7 +46,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         const set = await getVideoUploadSet(setId)
         if (!set) throw new Error('Upload set not found')
-        if (['queued', 'processing', 'complete'].includes(set.status)) {
+        // Block new tokens once merge has started or finished. Queued still
+        // allows in-flight multipart completions via onUploadCompleted.
+        if (['processing', 'complete'].includes(set.status)) {
           throw new Error(`Cannot upload clips while set is ${set.status}`)
         }
 

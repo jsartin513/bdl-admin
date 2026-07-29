@@ -103,6 +103,11 @@ function VideoUploadSetDetailContent() {
     !['queued', 'processing', 'complete'].includes(set.status) &&
     !busy
 
+  const canStartOrRetryMerge =
+    set != null &&
+    set.clips.length > 0 &&
+    ['draft', 'uploading', 'ready', 'failed', 'processing'].includes(set.status)
+
   async function uploadFiles(files: FileList | File[]) {
     if (!set || !canUpload) return
     const list = Array.from(files).filter((f) =>
@@ -322,7 +327,7 @@ function VideoUploadSetDetailContent() {
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           {set.status === 'queued'
             ? 'Queued for the merge worker…'
-            : 'Worker is merging clips (this can take a while for large sets).'}
+            : 'Worker is merging clips (this can take a while for large sets). If this seems stuck, use Retry merge to re-queue.'}
         </div>
       )}
 
@@ -442,15 +447,16 @@ function VideoUploadSetDetailContent() {
             Mark ready
           </button>
         )}
-        {set.clips.length > 0 &&
-          ['draft', 'uploading', 'ready', 'failed'].includes(set.status) && (
+        {canStartOrRetryMerge && (
             <button
               type="button"
               onClick={() => void startMerge()}
               disabled={busy}
               className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
             >
-              {set.status === 'failed' ? 'Retry merge' : 'Start merge'}
+              {set.status === 'failed' || set.status === 'processing'
+                ? 'Retry merge'
+                : 'Start merge'}
             </button>
           )}
       </div>

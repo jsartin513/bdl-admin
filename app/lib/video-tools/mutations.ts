@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
 import { orderClipsForMerge } from '@/app/lib/video-tools/gopro-order'
@@ -116,6 +116,23 @@ export async function markSetUploading(setId: string): Promise<void> {
     )
 }
 
+export const READY_ALLOWED_STATUSES = ['draft', 'uploading', 'ready', 'failed'] as const
+/** Allow clip registration while queued so in-flight multipart uploads can finish before claim. */
+export const CLIP_LOCKED_STATUSES = ['processing', 'complete'] as const
+/** ready = normal; failed/processing = operator retry for stuck or failed merges. */
+export const ENQUEUE_ALLOWED_STATUSES = ['ready', 'failed', 'processing'] as const
+
+function isUniquePathnameError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = 'code' in err ? String(err.code) : ''
+  const message = 'message' in err ? String(err.message) : ''
+  return (
+    code === '23505' ||
+    message.includes('video_upload_clips_pathname_uidx') ||
+    message.toLowerCase().includes('unique')
+  )
+}
+
 export async function recordUploadedClip(input: {
   setId: string
   originalFilename: string
@@ -124,42 +141,89 @@ export async function recordUploadedClip(input: {
   sizeBytes?: number
 }): Promise<VideoUploadClipRecord> {
   const db = getDb()
+
+  const [existing] = await db
+    .select()
+    .from(videoUploadClips)
+    .where(eq(videoUploadClips.pathname, input.pathname))
+    .limit(1)
+  if (existing) {
+    if (existing.setId !== input.setId) {
+      throw new Error('Clip pathname already belongs to another upload set')
+    }
+    return mapClip(existing)
+  }
+
   const [set] = await db
     .select()
     .from(videoUploadSets)
     .where(eq(videoUploadSets.id, input.setId))
     .limit(1)
   if (!set) throw new Error('Upload set not found')
-  if (['queued', 'processing', 'complete'].includes(set.status)) {
+  if ((CLIP_LOCKED_STATUSES as readonly string[]).includes(set.status)) {
     throw new Error(`Cannot add clips while set is ${set.status}`)
   }
 
-  const [clip] = await db
-    .insert(videoUploadClips)
-    .values({
-      setId: input.setId,
-      originalFilename: input.originalFilename,
-      blobUrl: input.blobUrl,
-      pathname: input.pathname,
-      sizeBytes: input.sizeBytes ?? 0,
-      uploadComplete: true,
-    })
-    .returning()
+  let clip: typeof videoUploadClips.$inferSelect
+  try {
+    const [inserted] = await db
+      .insert(videoUploadClips)
+      .values({
+        setId: input.setId,
+        originalFilename: input.originalFilename,
+        blobUrl: input.blobUrl,
+        pathname: input.pathname,
+        sizeBytes: input.sizeBytes ?? 0,
+        uploadComplete: true,
+      })
+      .returning()
+    clip = inserted
+  } catch (err) {
+    if (!isUniquePathnameError(err)) throw err
+    const [raced] = await db
+      .select()
+      .from(videoUploadClips)
+      .where(eq(videoUploadClips.pathname, input.pathname))
+      .limit(1)
+    if (!raced || raced.setId !== input.setId) throw err
+    return mapClip(raced)
+  }
 
-  await db
-    .update(videoUploadSets)
-    .set({
-      status: set.status === 'draft' ? 'uploading' : set.status === 'failed' ? 'uploading' : set.status,
-      updatedAt: new Date(),
-      errorMessage: null,
-    })
-    .where(eq(videoUploadSets.id, input.setId))
+  // Do not demote queued sets; late in-flight uploads may land before the worker claims.
+  if (set.status === 'queued') {
+    await db
+      .update(videoUploadSets)
+      .set({ updatedAt: new Date() })
+      .where(eq(videoUploadSets.id, input.setId))
+  } else {
+    await db
+      .update(videoUploadSets)
+      .set({
+        status:
+          set.status === 'draft' || set.status === 'failed'
+            ? 'uploading'
+            : set.status,
+        updatedAt: new Date(),
+        errorMessage: null,
+      })
+      .where(eq(videoUploadSets.id, input.setId))
+  }
 
   return mapClip(clip)
 }
 
 export async function markSetReady(setId: string): Promise<VideoUploadSetRecord> {
   const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) throw new Error('Upload set not found')
+  if (!(READY_ALLOWED_STATUSES as readonly string[]).includes(set.status)) {
+    throw new Error(`Cannot mark ready while set is ${set.status}`)
+  }
+
   const clips = await listClipsForSet(setId)
   if (clips.length === 0) {
     throw new Error('Add at least one clip before marking ready')
@@ -180,10 +244,18 @@ export async function markSetReady(setId: string): Promise<VideoUploadSetRecord>
       updatedAt: new Date(),
       errorMessage: null,
     })
-    .where(eq(videoUploadSets.id, setId))
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        // Re-check so we never clobber queued/processing/complete mid-flight.
+        eq(videoUploadSets.status, set.status)
+      )
+    )
     .returning()
 
-  if (!updated) throw new Error('Upload set not found')
+  if (!updated) {
+    throw new Error('Upload set status changed; cannot mark ready')
+  }
   return mapSet(updated)
 }
 
@@ -198,7 +270,7 @@ export async function enqueueVideoUploadSet(
     .limit(1)
   if (!set) throw new Error('Upload set not found')
 
-  if (!['ready', 'failed'].includes(set.status)) {
+  if (!(ENQUEUE_ALLOWED_STATUSES as readonly string[]).includes(set.status)) {
     throw new Error(`Cannot enqueue set in status ${set.status}`)
   }
 
@@ -234,10 +306,17 @@ export async function enqueueVideoUploadSet(
       mergedBlobUrl: null,
       mergedBlobPathname: null,
     })
-    .where(eq(videoUploadSets.id, setId))
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        inArray(videoUploadSets.status, [...ENQUEUE_ALLOWED_STATUSES])
+      )
+    )
     .returning()
 
-  if (!updated) throw new Error('Upload set not found')
+  if (!updated) {
+    throw new Error('Upload set status changed; cannot enqueue')
+  }
   return mapSet(updated)
 }
 
@@ -328,11 +407,27 @@ export async function failVideoUploadSet(input: {
       updatedAt: new Date(),
       errorMessage: input.errorMessage.slice(0, 2000),
     })
-    .where(eq(videoUploadSets.id, input.setId))
+    .where(
+      and(
+        eq(videoUploadSets.id, input.setId),
+        eq(videoUploadSets.status, 'processing')
+      )
+    )
     .returning()
 
-  if (!updated) throw new Error('Upload set not found')
-  return mapSet(updated)
+  if (updated) return mapSet(updated)
+
+  const [existing] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, input.setId))
+    .limit(1)
+  if (!existing) throw new Error('Upload set not found')
+  // Idempotent / race-safe: do not overwrite a successful complete (or prior fail).
+  if (existing.status === 'complete' || existing.status === 'failed') {
+    return mapSet(existing)
+  }
+  throw new Error(`Set not found or not processing (status: ${existing.status})`)
 }
 
 export async function updateVideoUploadSetStatus(
