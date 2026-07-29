@@ -128,6 +128,12 @@ export default function TopNav() {
           Events
         </Link>
         <Link
+          href={withDevMode('/video-tools', devMode)}
+          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          Video Tools
+        </Link>
+        <Link
           href={withDevMode('/non-bdl-events', devMode)}
           className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
