@@ -186,6 +186,19 @@ function VideoUploadSetDetailContent() {
               idx === i ? { ...u, status: 'error', error: message } : u
             )
           )
+          // Release the pending slot reserved when the Blob token was minted.
+          try {
+            const cancelRes = await fetch(
+              `/api/video-tools/sets/${set.id}/cancel-upload`,
+              { method: 'POST' }
+            )
+            if (cancelRes.ok) {
+              const cancelData = await cancelRes.json()
+              if (cancelData.set) setSet(cancelData.set)
+            }
+          } catch {
+            // best-effort
+          }
         }
       }
       await loadSet()

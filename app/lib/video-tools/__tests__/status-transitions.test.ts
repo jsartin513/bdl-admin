@@ -45,6 +45,7 @@ describe('video tools status transition policy', () => {
       'draft',
       'uploading',
       'failed',
+      'ready',
     ])
   })
 

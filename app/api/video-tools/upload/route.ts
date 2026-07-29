@@ -4,7 +4,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
-import { beginPendingClipUpload, recordUploadedClip } from '@/app/lib/video-tools/mutations'
+import { beginPendingClipUpload, cancelPendingClipUpload, recordUploadedClip } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
 import { VIDEO_TOOLS_BLOB_PREFIX } from '@/app/lib/video-tools/naming'
 
@@ -46,9 +46,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         const set = await getVideoUploadSet(setId)
         if (!set) throw new Error('Upload set not found')
-        // New tokens only while collecting clips. In-flight completions may still
-        // land via onUploadCompleted / /clips after Mark ready.
-        if (!['draft', 'uploading', 'failed'].includes(set.status)) {
+        // New tokens while collecting clips (including demoting ready → uploading).
+        if (!['draft', 'uploading', 'failed', 'ready'].includes(set.status)) {
           throw new Error(`Cannot upload clips while set is ${set.status}`)
         }
 
@@ -85,13 +84,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           throw new Error('Missing token payload for clip record')
         }
 
-        await recordUploadedClip({
-          setId: payload.setId,
-          originalFilename: payload.originalFilename,
-          blobUrl: blob.url,
-          pathname: blob.pathname,
-          sizeBytes: 0,
-        })
+        try {
+          await recordUploadedClip({
+            setId: payload.setId,
+            originalFilename: payload.originalFilename,
+            blobUrl: blob.url,
+            pathname: blob.pathname,
+            sizeBytes: 0,
+          })
+        } catch (err) {
+          // Token mint already incremented pending; release if registration failed
+          // before the insert path could decrement.
+          await cancelPendingClipUpload(payload.setId).catch(() => {})
+          throw err
+        }
       },
     })
 
