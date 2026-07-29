@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
@@ -162,9 +162,8 @@ export async function recordUploadedClip(input: {
     if (existing.setId !== input.setId) {
       throw new Error('Clip pathname already belongs to another upload set')
     }
-    const nextSize = Math.max(existing.sizeBytes, incomingSize)
     const needsUrl = existing.blobUrl !== safeBlobUrl
-    const needsSize = nextSize > existing.sizeBytes
+    const needsSize = incomingSize > 0 && incomingSize > existing.sizeBytes
     if (!needsUrl && !needsSize) {
       return mapClip(existing)
     }
@@ -172,7 +171,11 @@ export async function recordUploadedClip(input: {
       .update(videoUploadClips)
       .set({
         ...(needsUrl ? { blobUrl: safeBlobUrl } : {}),
-        ...(needsSize ? { sizeBytes: nextSize } : {}),
+        ...(incomingSize > 0
+          ? {
+              sizeBytes: sql`greatest(${videoUploadClips.sizeBytes}, ${incomingSize})`,
+            }
+          : {}),
         uploadComplete: true,
       })
       .where(eq(videoUploadClips.id, existing.id))
@@ -390,6 +393,22 @@ export async function claimNextQueuedSet(): Promise<WorkerClaimPayload | null> {
 
   const clips = await listClipsForSet(claimed.id)
   const ordered = orderClipsForMerge(clips)
+
+  try {
+    for (const clip of ordered) {
+      assertSafeVideoClipBlobUrl(clip.blobUrl, clip.pathname, claimed.id)
+    }
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Invalid clip blob URL at claim'
+    await failVideoUploadSet({
+      setId: claimed.id,
+      claimToken,
+      errorMessage: `Refusing to merge: ${message}`,
+    })
+    return null
+  }
+
   const outputFilename =
     claimed.outputFilename ||
     buildUntrimmedOutputFilename({
