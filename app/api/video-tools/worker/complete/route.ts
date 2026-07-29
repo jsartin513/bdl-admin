@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       setId?: string
+      claimToken?: string
       mergedBlobUrl?: string
       mergedBlobPathname?: string
       outputFilename?: string
@@ -20,6 +21,9 @@ export async function POST(request: NextRequest) {
 
     if (!body.setId?.trim()) {
       return NextResponse.json({ error: 'setId is required' }, { status: 400 })
+    }
+    if (!body.claimToken?.trim()) {
+      return NextResponse.json({ error: 'claimToken is required' }, { status: 400 })
     }
     if (!body.mergedBlobUrl?.trim()) {
       return NextResponse.json({ error: 'mergedBlobUrl is required' }, { status: 400 })
@@ -33,6 +37,7 @@ export async function POST(request: NextRequest) {
 
     const set = await completeVideoUploadSet({
       setId: body.setId,
+      claimToken: body.claimToken,
       mergedBlobUrl: body.mergedBlobUrl,
       mergedBlobPathname: body.mergedBlobPathname,
       outputFilename: body.outputFilename,

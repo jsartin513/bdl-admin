@@ -157,7 +157,10 @@ async function uploadMerged(localPath, pathname) {
 }
 
 async function processJob(job) {
-  const { set, clips, outputFilename } = job
+  const { set, clips, outputFilename, claimToken } = job
+  if (!claimToken) {
+    throw new Error('Job missing claimToken')
+  }
   console.log(
     `[job ${set.id}] ${set.eventName} · ${set.label} — ${clips.length} clips → ${outputFilename}`
   )
@@ -219,6 +222,7 @@ async function processJob(job) {
       method: 'POST',
       body: JSON.stringify({
         setId: set.id,
+        claimToken,
         mergedBlobUrl: blob.url,
         mergedBlobPathname: blob.pathname,
         outputFilename,
@@ -245,6 +249,7 @@ async function tick() {
         method: 'POST',
         body: JSON.stringify({
           setId: job.set.id,
+          claimToken: job.claimToken,
           errorMessage: message,
         }),
       })

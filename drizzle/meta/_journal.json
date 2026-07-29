@@ -120,6 +120,13 @@
       "when": 1753804800000,
       "tag": "0016_video_tools",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1753812000000,
+      "tag": "0017_video_tools_claim_token",
+      "breakpoints": true
     }
   ]
 }

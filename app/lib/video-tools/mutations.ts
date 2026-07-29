@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
 import { assertSafeVideoClipBlobUrl } from '@/app/lib/video-tools/blob-url'
@@ -323,6 +324,8 @@ export async function enqueueVideoUploadSet(
       outputFilename,
       mergedBlobUrl: null,
       mergedBlobPathname: null,
+      // Invalidate any in-flight worker claim so a stale complete cannot win.
+      claimToken: null,
     })
     .where(
       and(
@@ -350,9 +353,15 @@ export async function claimNextQueuedSet(): Promise<WorkerClaimPayload | null> {
 
   if (!next) return null
 
+  const claimToken = randomUUID()
   const [claimed] = await db
     .update(videoUploadSets)
-    .set({ status: 'processing', updatedAt: new Date(), errorMessage: null })
+    .set({
+      status: 'processing',
+      updatedAt: new Date(),
+      errorMessage: null,
+      claimToken,
+    })
     .where(
       and(
         eq(videoUploadSets.id, next.id),
@@ -377,15 +386,20 @@ export async function claimNextQueuedSet(): Promise<WorkerClaimPayload | null> {
     set: mapSet(claimed),
     clips: ordered,
     outputFilename,
+    claimToken,
   }
 }
 
 export async function completeVideoUploadSet(input: {
   setId: string
+  claimToken: string
   mergedBlobUrl: string
   mergedBlobPathname: string
   outputFilename?: string
 }): Promise<VideoUploadSetRecord> {
+  const claimToken = input.claimToken.trim()
+  if (!claimToken) throw new Error('claimToken is required')
+
   const db = getDb()
   const [updated] = await db
     .update(videoUploadSets)
@@ -402,21 +416,26 @@ export async function completeVideoUploadSet(input: {
     .where(
       and(
         eq(videoUploadSets.id, input.setId),
-        eq(videoUploadSets.status, 'processing')
+        eq(videoUploadSets.status, 'processing'),
+        eq(videoUploadSets.claimToken, claimToken)
       )
     )
     .returning()
 
   if (!updated) {
-    throw new Error('Set not found or not processing')
+    throw new Error('Set not found, not processing, or stale claim token')
   }
   return mapSet(updated)
 }
 
 export async function failVideoUploadSet(input: {
   setId: string
+  claimToken: string
   errorMessage: string
 }): Promise<VideoUploadSetRecord> {
+  const claimToken = input.claimToken.trim()
+  if (!claimToken) throw new Error('claimToken is required')
+
   const db = getDb()
   const [updated] = await db
     .update(videoUploadSets)
@@ -428,7 +447,8 @@ export async function failVideoUploadSet(input: {
     .where(
       and(
         eq(videoUploadSets.id, input.setId),
-        eq(videoUploadSets.status, 'processing')
+        eq(videoUploadSets.status, 'processing'),
+        eq(videoUploadSets.claimToken, claimToken)
       )
     )
     .returning()
@@ -444,6 +464,14 @@ export async function failVideoUploadSet(input: {
   // Idempotent / race-safe: do not overwrite a successful complete (or prior fail).
   if (existing.status === 'complete' || existing.status === 'failed') {
     return mapSet(existing)
+  }
+  // Another claim owns this set (retry / second worker) — do not mutate.
+  if (
+    existing.status === 'processing' &&
+    existing.claimToken &&
+    existing.claimToken !== claimToken
+  ) {
+    throw new Error('Stale claim token')
   }
   throw new Error(`Set not found or not processing (status: ${existing.status})`)
 }

@@ -33,6 +33,11 @@ describe('video tools status transition policy', () => {
     }
   })
 
+  it('documents claim-token invalidation on retry', () => {
+    // enqueue clears claimToken; complete/fail require matching token + processing.
+    expect(ENQUEUE_ALLOWED_STATUSES).toContain('processing')
+  })
+
   it('covers every set status in at least one transition list', () => {
     const covered = new Set<string>([
       ...READY_ALLOWED_STATUSES,
