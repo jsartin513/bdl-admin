@@ -37,6 +37,7 @@ export type VideoUploadSetRecord = {
   mergedBlobUrl: string | null
   mergedBlobPathname: string | null
   outputFilename: string | null
+  pendingUploadCount: number
   createdAt: Date
   updatedAt: Date
 }

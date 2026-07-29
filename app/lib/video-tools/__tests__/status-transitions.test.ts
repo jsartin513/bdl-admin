@@ -3,6 +3,7 @@ import {
   CLIP_LOCKED_STATUSES,
   ENQUEUE_ALLOWED_STATUSES,
   READY_ALLOWED_STATUSES,
+  UPLOAD_TOKEN_ALLOWED_STATUSES,
 } from '@/app/lib/video-tools/mutations'
 import { VIDEO_SET_STATUSES } from '@/app/lib/video-tools/types'
 
@@ -37,6 +38,14 @@ describe('video tools status transition policy', () => {
     expect(ENQUEUE_ALLOWED_STATUSES).not.toContain('uploading')
     expect(ENQUEUE_ALLOWED_STATUSES).not.toContain('draft')
     expect(READY_ALLOWED_STATUSES).toContain('uploading')
+  })
+
+  it('only mints upload tokens while collecting clips', () => {
+    expect([...UPLOAD_TOKEN_ALLOWED_STATUSES]).toEqual([
+      'draft',
+      'uploading',
+      'failed',
+    ])
   })
 
   it('documents claim-token invalidation on retry', () => {

@@ -14,6 +14,8 @@ primary_region = "bos"
 [env]
   POLL_INTERVAL_MS = "15000"
 
+# Disk: clip downloads + merged output need headroom (uploads allow up to 20GB/clip).
+# Attach a volume or raise the VM size before large multi-court merges.
 [[vm]]
   size = "shared-cpu-2x"
   memory = "4gb"

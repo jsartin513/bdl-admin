@@ -433,10 +433,12 @@ function VideoUploadSetDetailContent() {
           <button
             type="button"
             onClick={() => void markReady()}
-            disabled={busy}
+            disabled={busy || set.pendingUploadCount > 0}
             className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
           >
-            Mark ready
+            {set.pendingUploadCount > 0
+              ? `Mark ready (${set.pendingUploadCount} uploading…)`
+              : 'Mark ready'}
           </button>
         )}
         {canStartOrRetryMerge && (
