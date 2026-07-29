@@ -125,8 +125,13 @@ export async function markSetUploading(setId: string): Promise<void> {
 export const READY_ALLOWED_STATUSES = ['draft', 'uploading', 'ready', 'failed'] as const
 /** Allow clip registration while queued so in-flight multipart uploads can finish before claim. */
 export const CLIP_LOCKED_STATUSES = ['processing', 'complete'] as const
-/** New upload tokens only while actively collecting clips. */
-export const UPLOAD_TOKEN_ALLOWED_STATUSES = ['draft', 'uploading', 'failed'] as const
+/** New upload tokens while collecting clips (ready demotes back to uploading). */
+export const UPLOAD_TOKEN_ALLOWED_STATUSES = [
+  'draft',
+  'uploading',
+  'failed',
+  'ready',
+] as const
 /** ready = normal; failed/processing = operator retry for stuck or failed merges. */
 export const ENQUEUE_ALLOWED_STATUSES = ['ready', 'failed', 'processing'] as const
 
@@ -174,6 +179,25 @@ async function releasePendingClipUpload(setId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(videoUploadSets.id, setId))
+}
+
+/** Public release for abandoned / failed client uploads after a token was minted. */
+export async function cancelPendingClipUpload(setId: string): Promise<void> {
+  await releasePendingClipUpload(setId)
+}
+
+/** Operator recovery when pending_upload_count is stuck after abandoned uploads. */
+export async function resetPendingUploads(
+  setId: string
+): Promise<VideoUploadSetRecord> {
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({ pendingUploadCount: 0, updatedAt: new Date() })
+    .where(eq(videoUploadSets.id, setId))
+    .returning()
+  if (!updated) throw new Error('Upload set not found')
+  return mapSet(updated)
 }
 
 export async function recordUploadedClip(input: {
@@ -265,8 +289,6 @@ export async function recordUploadedClip(input: {
     return reconcileExisting(raced)
   }
 
-  await releasePendingClipUpload(input.setId)
-
   // Conditional updates only — never clobber queued/processing/complete if the
   // set advanced between the initial read and this write (Start merge race).
   await db
@@ -300,6 +322,10 @@ export async function recordUploadedClip(input: {
         inArray(videoUploadSets.status, [...demoteFrom])
       )
     )
+
+  // Release after status writes so a later throw doesn't leave us needing a
+  // second decrement in the upload webhook catch handler.
+  await releasePendingClipUpload(input.setId)
 
   return mapClip(clip)
 }

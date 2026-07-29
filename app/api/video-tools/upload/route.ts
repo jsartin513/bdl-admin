@@ -46,9 +46,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         const set = await getVideoUploadSet(setId)
         if (!set) throw new Error('Upload set not found')
-        // New tokens only while collecting clips. In-flight completions may still
-        // land via onUploadCompleted / /clips after Mark ready.
-        if (!['draft', 'uploading', 'failed'].includes(set.status)) {
+        // New tokens while collecting clips (including demoting ready → uploading).
+        if (!['draft', 'uploading', 'failed', 'ready'].includes(set.status)) {
           throw new Error(`Cannot upload clips while set is ${set.status}`)
         }
 
