@@ -2,7 +2,10 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
-import { assertSafeVideoClipBlobUrl } from '@/app/lib/video-tools/blob-url'
+import {
+  assertSafeVideoClipBlobUrl,
+  assertSafeVideoMergedBlobUrl,
+} from '@/app/lib/video-tools/blob-url'
 import { orderClipsForMerge } from '@/app/lib/video-tools/gopro-order'
 import {
   buildUntrimmedOutputFilename,
@@ -143,7 +146,39 @@ export async function recordUploadedClip(input: {
   sizeBytes?: number
 }): Promise<VideoUploadClipRecord> {
   const db = getDb()
-  const safeBlobUrl = assertSafeVideoClipBlobUrl(input.blobUrl, input.pathname)
+  const safeBlobUrl = assertSafeVideoClipBlobUrl(
+    input.blobUrl,
+    input.pathname,
+    input.setId
+  )
+  const incomingSize =
+    typeof input.sizeBytes === 'number' && input.sizeBytes > 0
+      ? Math.floor(input.sizeBytes)
+      : 0
+
+  async function reconcileExisting(
+    existing: typeof videoUploadClips.$inferSelect
+  ): Promise<VideoUploadClipRecord> {
+    if (existing.setId !== input.setId) {
+      throw new Error('Clip pathname already belongs to another upload set')
+    }
+    const nextSize = Math.max(existing.sizeBytes, incomingSize)
+    const needsUrl = existing.blobUrl !== safeBlobUrl
+    const needsSize = nextSize > existing.sizeBytes
+    if (!needsUrl && !needsSize) {
+      return mapClip(existing)
+    }
+    const [updated] = await db
+      .update(videoUploadClips)
+      .set({
+        ...(needsUrl ? { blobUrl: safeBlobUrl } : {}),
+        ...(needsSize ? { sizeBytes: nextSize } : {}),
+        uploadComplete: true,
+      })
+      .where(eq(videoUploadClips.id, existing.id))
+      .returning()
+    return mapClip(updated)
+  }
 
   const [existing] = await db
     .select()
@@ -151,20 +186,7 @@ export async function recordUploadedClip(input: {
     .where(eq(videoUploadClips.pathname, input.pathname))
     .limit(1)
   if (existing) {
-    if (existing.setId !== input.setId) {
-      throw new Error('Clip pathname already belongs to another upload set')
-    }
-    if (existing.blobUrl === safeBlobUrl) {
-      return mapClip(existing)
-    }
-    // Replace a mismatched / previously unvalidated URL so the worker never
-    // fetches an attacker-controlled address after an idempotent re-register.
-    const [updated] = await db
-      .update(videoUploadClips)
-      .set({ blobUrl: safeBlobUrl, uploadComplete: true })
-      .where(eq(videoUploadClips.id, existing.id))
-      .returning()
-    return mapClip(updated)
+    return reconcileExisting(existing)
   }
 
   const [set] = await db
@@ -186,7 +208,7 @@ export async function recordUploadedClip(input: {
         originalFilename: input.originalFilename,
         blobUrl: safeBlobUrl,
         pathname: input.pathname,
-        sizeBytes: input.sizeBytes ?? 0,
+        sizeBytes: incomingSize,
         uploadComplete: true,
       })
       .returning()
@@ -198,14 +220,8 @@ export async function recordUploadedClip(input: {
       .from(videoUploadClips)
       .where(eq(videoUploadClips.pathname, input.pathname))
       .limit(1)
-    if (!raced || raced.setId !== input.setId) throw err
-    if (raced.blobUrl === safeBlobUrl) return mapClip(raced)
-    const [updated] = await db
-      .update(videoUploadClips)
-      .set({ blobUrl: safeBlobUrl, uploadComplete: true })
-      .where(eq(videoUploadClips.id, raced.id))
-      .returning()
-    return mapClip(updated)
+    if (!raced) throw err
+    return reconcileExisting(raced)
   }
 
   // Do not demote queued sets; late in-flight uploads may land before the worker claims.
@@ -401,17 +417,38 @@ export async function completeVideoUploadSet(input: {
   if (!claimToken) throw new Error('claimToken is required')
 
   const db = getDb()
+  const [current] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, input.setId))
+    .limit(1)
+  if (!current) throw new Error('Upload set not found')
+
+  const outputFilename =
+    input.outputFilename?.trim() ||
+    current.outputFilename ||
+    buildUntrimmedOutputFilename({
+      eventName: current.eventName,
+      eventDate: current.eventDate,
+      label: current.label,
+    })
+
+  const safeMergedUrl = assertSafeVideoMergedBlobUrl({
+    blobUrl: input.mergedBlobUrl,
+    pathname: input.mergedBlobPathname,
+    setId: input.setId,
+    outputFilename,
+  })
+
   const [updated] = await db
     .update(videoUploadSets)
     .set({
       status: 'complete',
       updatedAt: new Date(),
       errorMessage: null,
-      mergedBlobUrl: input.mergedBlobUrl,
-      mergedBlobPathname: input.mergedBlobPathname,
-      ...(input.outputFilename
-        ? { outputFilename: input.outputFilename }
-        : {}),
+      mergedBlobUrl: safeMergedUrl,
+      mergedBlobPathname: input.mergedBlobPathname.trim(),
+      outputFilename,
     })
     .where(
       and(

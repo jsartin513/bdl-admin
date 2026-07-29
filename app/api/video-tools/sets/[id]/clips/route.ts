@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     let safeBlobUrl: string
     try {
-      safeBlobUrl = assertSafeVideoClipBlobUrl(body.blobUrl, body.pathname)
+      safeBlobUrl = assertSafeVideoClipBlobUrl(body.blobUrl, body.pathname, setId)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid blobUrl'
       return NextResponse.json({ error: message }, { status: 400 })
