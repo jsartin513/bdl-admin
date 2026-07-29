@@ -11,6 +11,9 @@ function isPublicPath(pathname: string): boolean {
   // Allow session probe + logout without a valid cookie (401 / clear cookie).
   if (pathname === '/api/admin/session') return true
   if (pathname === '/api/admin/logout') return true
+  // Video Tools: Blob upload completion webhook + secret-gated worker APIs.
+  if (pathname === '/api/video-tools/upload') return true
+  if (pathname.startsWith('/api/video-tools/worker/')) return true
   return false
 }
 

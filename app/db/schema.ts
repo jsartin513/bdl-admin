@@ -378,3 +378,51 @@ export const nonBdlEventPhotoPlayerTags = pgTable(
     index('non_bdl_event_photo_player_tags_photo_id_idx').on(table.photoId),
   ]
 )
+
+/**
+ * Concurrent GoPro upload/merge jobs for Video Tools.
+ * Status: draft | uploading | ready | queued | processing | complete | failed
+ */
+export const videoUploadSets = pgTable(
+  'video_upload_sets',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventName: text('event_name').notNull(),
+    label: text('label').notNull(),
+    eventDate: date('event_date').notNull(),
+    status: text('status').notNull().default('draft'),
+    createdByEmail: text('created_by_email').notNull(),
+    errorMessage: text('error_message'),
+    mergedBlobUrl: text('merged_blob_url'),
+    mergedBlobPathname: text('merged_blob_pathname'),
+    outputFilename: text('output_filename'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('video_upload_sets_status_idx').on(table.status),
+    index('video_upload_sets_event_date_idx').on(table.eventDate),
+    index('video_upload_sets_created_at_idx').on(table.createdAt),
+  ]
+)
+
+export const videoUploadClips = pgTable(
+  'video_upload_clips',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    setId: uuid('set_id')
+      .notNull()
+      .references(() => videoUploadSets.id, { onDelete: 'cascade' }),
+    originalFilename: text('original_filename').notNull(),
+    blobUrl: text('blob_url').notNull(),
+    pathname: text('pathname').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    sortIndex: integer('sort_index'),
+    uploadComplete: boolean('upload_complete').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('video_upload_clips_set_id_idx').on(table.setId),
+    uniqueIndex('video_upload_clips_pathname_uidx').on(table.pathname),
+  ]
+)
