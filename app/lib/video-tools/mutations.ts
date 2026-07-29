@@ -239,6 +239,14 @@ export async function recordUploadedClip(input: {
       )
     )
 
+  // Only demote statuses we were admitted under. Do not include `failed` unless
+  // this request started against a failed set (retry upload); otherwise a
+  // queued→failed race could clear the merge error.
+  const demoteFrom =
+    set.status === 'failed'
+      ? (['draft', 'ready', 'uploading', 'failed'] as const)
+      : (['draft', 'ready', 'uploading'] as const)
+
   await db
     .update(videoUploadSets)
     .set({
@@ -249,12 +257,7 @@ export async function recordUploadedClip(input: {
     .where(
       and(
         eq(videoUploadSets.id, input.setId),
-        inArray(videoUploadSets.status, [
-          'draft',
-          'failed',
-          'ready',
-          'uploading',
-        ])
+        inArray(videoUploadSets.status, [...demoteFrom])
       )
     )
 
