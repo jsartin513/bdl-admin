@@ -106,7 +106,8 @@ function VideoUploadSetDetailContent() {
   const canStartOrRetryMerge =
     set != null &&
     set.clips.length > 0 &&
-    ['draft', 'uploading', 'ready', 'failed', 'processing'].includes(set.status)
+    ['ready', 'failed', 'processing'].includes(set.status) &&
+    !busy
 
   async function uploadFiles(files: FileList | File[]) {
     if (!set || !canUpload) return
@@ -217,17 +218,7 @@ function VideoUploadSetDetailContent() {
     setBusy(true)
     setActionError(null)
     try {
-      // Ensure ready first if still uploading
-      if (set && (set.status === 'uploading' || set.status === 'draft')) {
-        const readyRes = await fetch(`/api/video-tools/sets/${setId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'mark_ready' }),
-        })
-        const readyData = await readyRes.json()
-        if (!readyRes.ok) throw new Error(readyData.error || 'Failed to mark ready')
-      }
-
+      // Merge only from ready/failed/processing — require Mark ready after uploads finish.
       const res = await fetch(`/api/video-tools/sets/${setId}/enqueue`, {
         method: 'POST',
       })
@@ -334,7 +325,8 @@ function VideoUploadSetDetailContent() {
       <section className="mt-8">
         <h2 className="text-lg font-medium text-gray-900">Clips</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Drop GoPro MP4s here. Order is applied automatically (GoPro session +
+          Drop GoPro MP4s here. When all uploads are finished, click Mark ready,
+          then Start merge. Order is applied automatically (GoPro session +
           chapter rules) when you start the merge.
         </p>
 

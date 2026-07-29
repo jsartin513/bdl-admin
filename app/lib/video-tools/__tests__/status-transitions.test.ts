@@ -33,6 +33,12 @@ describe('video tools status transition policy', () => {
     }
   })
 
+  it('requires ready before enqueue (no merge while still uploading)', () => {
+    expect(ENQUEUE_ALLOWED_STATUSES).not.toContain('uploading')
+    expect(ENQUEUE_ALLOWED_STATUSES).not.toContain('draft')
+    expect(READY_ALLOWED_STATUSES).toContain('uploading')
+  })
+
   it('documents claim-token invalidation on retry', () => {
     // enqueue clears claimToken; complete/fail require matching token + processing.
     expect(ENQUEUE_ALLOWED_STATUSES).toContain('processing')

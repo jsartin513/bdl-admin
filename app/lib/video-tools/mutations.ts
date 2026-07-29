@@ -228,6 +228,7 @@ export async function recordUploadedClip(input: {
   }
 
   // Do not demote queued sets; late in-flight uploads may land before the worker claims.
+  // Demote ready → uploading if another clip arrives after Mark ready.
   if (set.status === 'queued') {
     await db
       .update(videoUploadSets)
@@ -238,7 +239,9 @@ export async function recordUploadedClip(input: {
       .update(videoUploadSets)
       .set({
         status:
-          set.status === 'draft' || set.status === 'failed'
+          set.status === 'draft' ||
+          set.status === 'failed' ||
+          set.status === 'ready'
             ? 'uploading'
             : set.status,
         updatedAt: new Date(),
