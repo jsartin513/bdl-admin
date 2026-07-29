@@ -396,6 +396,8 @@ export const videoUploadSets = pgTable(
     mergedBlobUrl: text('merged_blob_url'),
     mergedBlobPathname: text('merged_blob_pathname'),
     outputFilename: text('output_filename'),
+    /** Rotated on each worker claim; invalidates stale complete/fail after retry. */
+    claimToken: uuid('claim_token'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

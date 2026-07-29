@@ -13,11 +13,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as {
       setId?: string
+      claimToken?: string
       errorMessage?: string
     }
 
     if (!body.setId?.trim()) {
       return NextResponse.json({ error: 'setId is required' }, { status: 400 })
+    }
+    if (!body.claimToken?.trim()) {
+      return NextResponse.json({ error: 'claimToken is required' }, { status: 400 })
     }
     if (!body.errorMessage?.trim()) {
       return NextResponse.json({ error: 'errorMessage is required' }, { status: 400 })
@@ -25,6 +29,7 @@ export async function POST(request: NextRequest) {
 
     const set = await failVideoUploadSet({
       setId: body.setId,
+      claimToken: body.claimToken,
       errorMessage: body.errorMessage,
     })
 

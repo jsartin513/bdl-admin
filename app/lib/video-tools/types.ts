@@ -55,4 +55,6 @@ export type WorkerClaimPayload = {
   set: VideoUploadSetRecord
   clips: VideoUploadClipRecord[]
   outputFilename: string
+  /** Must be sent back on complete/fail; rotated on each claim. */
+  claimToken: string
 }
