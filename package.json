@@ -36,9 +36,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "xlsx": "^0.18.5",
-    "@bdl/admin-auth": "*",
-    "@bdl/app-config": "*",
-    "@bdl/board-apps": "*"
+    "@bdl/admin-auth": "github:jsartin513/bdl-packages#path:admin-auth",
+    "@bdl/app-config": "github:jsartin513/bdl-packages#path:app-config",
+    "@bdl/board-apps": "github:jsartin513/bdl-packages#path:board-apps"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -61,7 +61,13 @@
     "typescript": "^5",
     "vitest": "^4.0.16"
   },
-  "workspaces": [
-    "packages/*"
-  ]
+  "packageManager": "pnpm@10.33.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver",
+      "@ffmpeg/core"
+    ]
+  }
 }
