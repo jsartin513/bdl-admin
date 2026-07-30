@@ -6,25 +6,32 @@ describe('board apps menu links', () => {
     expect(isPreviewBoardHost('admin-preview.bostondodgeballleague.com')).toBe(true)
     expect(isPreviewBoardHost('store-preview.bostondodgeballleague.com')).toBe(true)
     expect(isPreviewBoardHost('open-gym-preview.bostondodgeballleague.com')).toBe(true)
+    expect(isPreviewBoardHost('concessions-preview.bostondodgeballleague.com')).toBe(true)
     expect(isPreviewBoardHost('admin.bostondodgeballleague.com')).toBe(false)
   })
 
   it('returns prod sibling apps and excludes the current app', () => {
     const links = getBoardAppLinks('admin', 'admin.bostondodgeballleague.com')
-    expect(links.map((link) => link.id)).toEqual(['merch', 'open-gym'])
+    expect(links.map((link) => link.id)).toEqual(['merch', 'open-gym', 'concessions'])
     expect(links.find((link) => link.id === 'merch')?.href).toBe(
       'https://merch.bostondodgeballleague.com/admin/dashboard'
+    )
+    expect(links.find((link) => link.id === 'concessions')?.href).toBe(
+      'https://concessions.bostondodgeballleague.com/admin/dashboard'
     )
   })
 
   it('returns preview sibling apps on preview hosts', () => {
     const links = getBoardAppLinks('merch', 'store-preview.bostondodgeballleague.com')
-    expect(links.map((link) => link.id)).toEqual(['admin', 'open-gym'])
+    expect(links.map((link) => link.id)).toEqual(['admin', 'open-gym', 'concessions'])
     expect(links.find((link) => link.id === 'admin')?.href).toBe(
       'https://admin-preview.bostondodgeballleague.com'
     )
     expect(links.find((link) => link.id === 'open-gym')?.href).toBe(
       'https://open-gym-preview.bostondodgeballleague.com/admin/dashboard'
+    )
+    expect(links.find((link) => link.id === 'concessions')?.href).toBe(
+      'https://concessions-preview.bostondodgeballleague.com/admin/dashboard'
     )
   })
 })
