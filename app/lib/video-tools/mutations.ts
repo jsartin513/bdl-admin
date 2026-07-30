@@ -49,6 +49,7 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     mergedBlobPathname: row.mergedBlobPathname,
     outputFilename: row.outputFilename,
     pendingUploadCount: row.pendingUploadCount,
+    autoEnqueueOnReady: row.autoEnqueueOnReady,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -134,6 +135,13 @@ export const UPLOAD_TOKEN_ALLOWED_STATUSES = [
 ] as const
 /** ready = normal; failed/processing = operator retry for stuck or failed merges. */
 export const ENQUEUE_ALLOWED_STATUSES = ['ready', 'failed', 'processing'] as const
+/** Metadata editable while collecting clips / after failure (not mid-merge). */
+export const METADATA_EDITABLE_STATUSES = [
+  'draft',
+  'uploading',
+  'ready',
+  'failed',
+] as const
 
 function isUniquePathnameError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
@@ -184,6 +192,186 @@ async function releasePendingClipUpload(setId: string): Promise<void> {
 /** Public release for abandoned / failed client uploads after a token was minted. */
 export async function cancelPendingClipUpload(setId: string): Promise<void> {
   await releasePendingClipUpload(setId)
+}
+
+/**
+ * Reserve N in-flight upload slots before a multi-file batch so pending count
+ * does not briefly hit 0 between sequential files (which would false-trigger
+ * auto-enqueue). Pair with clientPayload.preReserved on each Blob upload.
+ */
+export async function reservePendingClipUploads(
+  setId: string,
+  count: number
+): Promise<VideoUploadSetRecord> {
+  const n = Math.floor(count)
+  if (!Number.isFinite(n) || n < 1) {
+    throw new Error('count must be a positive integer')
+  }
+  if (n > 200) {
+    throw new Error('count is too large')
+  }
+
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      pendingUploadCount: sql`${videoUploadSets.pendingUploadCount} + ${n}`,
+      status: 'uploading',
+      updatedAt: new Date(),
+      errorMessage: null,
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        inArray(videoUploadSets.status, [...UPLOAD_TOKEN_ALLOWED_STATUSES])
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Cannot upload clips in the current set status')
+  }
+  return mapSet(updated)
+}
+
+export async function updateVideoUploadSetMetadata(
+  setId: string,
+  input: {
+    eventName: string
+    label: string
+    eventDate: string
+  }
+): Promise<VideoUploadSetDetail> {
+  const eventName = input.eventName.trim()
+  const label = input.label.trim()
+  if (!eventName) throw new Error('eventName is required')
+  if (!label) throw new Error('label is required')
+  const eventDate = parseEventDate(input.eventDate)
+
+  const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) throw new Error('Upload set not found')
+  if (!(METADATA_EDITABLE_STATUSES as readonly string[]).includes(set.status)) {
+    throw new Error(`Cannot edit metadata while set is ${set.status}`)
+  }
+
+  const outputFilename = buildUntrimmedOutputFilename({
+    eventName,
+    eventDate,
+    label,
+  })
+
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      eventName,
+      label,
+      eventDate,
+      outputFilename,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        inArray(videoUploadSets.status, [...METADATA_EDITABLE_STATUSES])
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Upload set status changed; cannot edit metadata')
+  }
+
+  const clips = await listClipsForSet(setId)
+  const mapped = mapSet(updated)
+  return {
+    ...mapped,
+    displayTitle: displayTitle(mapped.eventName, mapped.label),
+    clips,
+  }
+}
+
+export async function setAutoEnqueueOnReady(
+  setId: string,
+  autoEnqueueOnReady: boolean
+): Promise<VideoUploadSetRecord> {
+  const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) throw new Error('Upload set not found')
+  if (!(METADATA_EDITABLE_STATUSES as readonly string[]).includes(set.status)) {
+    throw new Error(`Cannot change auto-enqueue while set is ${set.status}`)
+  }
+
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      autoEnqueueOnReady: Boolean(autoEnqueueOnReady),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        inArray(videoUploadSets.status, [...METADATA_EDITABLE_STATUSES])
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Upload set status changed; cannot update auto-enqueue')
+  }
+  return mapSet(updated)
+}
+
+/**
+ * If auto_enqueue_on_ready is set, pending uploads are done, and clips exist,
+ * mark ready then enqueue. Safe / idempotent when already queued or conditions
+ * are not met (returns current set without throwing).
+ */
+export async function maybeAutoEnqueueVideoUploadSet(
+  setId: string
+): Promise<VideoUploadSetRecord | null> {
+  const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) return null
+  if (!set.autoEnqueueOnReady) return mapSet(set)
+  if (set.pendingUploadCount > 0) return mapSet(set)
+  if (['queued', 'processing', 'complete'].includes(set.status)) {
+    return mapSet(set)
+  }
+
+  const clips = await listClipsForSet(setId)
+  if (clips.length === 0) return mapSet(set)
+
+  try {
+    if ((READY_ALLOWED_STATUSES as readonly string[]).includes(set.status)) {
+      await markSetReady(setId)
+    }
+    return await enqueueVideoUploadSet(setId)
+  } catch (err) {
+    // Race with manual enqueue or status change — leave set as-is.
+    console.warn(
+      '[video-tools] maybeAutoEnqueue skipped:',
+      err instanceof Error ? err.message : err
+    )
+    const [latest] = await db
+      .select()
+      .from(videoUploadSets)
+      .where(eq(videoUploadSets.id, setId))
+      .limit(1)
+    return latest ? mapSet(latest) : null
+  }
 }
 
 /** Operator recovery when pending_upload_count is stuck after abandoned uploads. */
@@ -326,6 +514,14 @@ export async function recordUploadedClip(input: {
   // Release after status writes so a later throw doesn't leave us needing a
   // second decrement in the upload webhook catch handler.
   await releasePendingClipUpload(input.setId)
+
+  // When the last in-flight upload finishes and auto-enqueue is on, queue merge.
+  // Safe mid-batch only if the client reserved all slots upfront (preReserved).
+  try {
+    await maybeAutoEnqueueVideoUploadSet(input.setId)
+  } catch {
+    // best-effort; upload registration itself succeeded
+  }
 
   return mapClip(clip)
 }
@@ -577,7 +773,10 @@ export async function completeVideoUploadSet(input: {
   if (!updated) {
     throw new Error('Set not found, not processing, or stale claim token')
   }
-  return mapSet(updated)
+
+  const mapped = mapSet(updated)
+  void notifyVideoSetTerminal(mapped, 'complete')
+  return mapped
 }
 
 export async function failVideoUploadSet(input: {
@@ -605,7 +804,11 @@ export async function failVideoUploadSet(input: {
     )
     .returning()
 
-  if (updated) return mapSet(updated)
+  if (updated) {
+    const mapped = mapSet(updated)
+    void notifyVideoSetTerminal(mapped, 'failed')
+    return mapped
+  }
 
   const [existing] = await db
     .select()
@@ -626,6 +829,61 @@ export async function failVideoUploadSet(input: {
     throw new Error('Stale claim token')
   }
   throw new Error(`Set not found or not processing (status: ${existing.status})`)
+}
+
+async function notifyVideoSetTerminal(
+  set: VideoUploadSetRecord,
+  outcome: 'complete' | 'failed'
+): Promise<void> {
+  const title =
+    set.eventName && set.label
+      ? `${displayTitle(set.eventName, set.label)}`
+      : 'Video upload set'
+  const href = `/video-tools/${set.id}`
+  const notifTitle =
+    outcome === 'complete' ? 'Video merge complete' : 'Video merge failed'
+  const notifBody =
+    outcome === 'complete'
+      ? `${title} is ready to download.`
+      : `${title} failed${set.errorMessage ? `: ${set.errorMessage}` : '.'}`
+
+  try {
+    const { createAdminNotification } = await import(
+      '@/app/lib/admin-notifications'
+    )
+    await createAdminNotification({
+      recipientEmail: set.createdByEmail,
+      title: notifTitle,
+      body: notifBody,
+      href,
+    })
+  } catch (err) {
+    console.error(
+      '[video-tools] failed to create admin notification',
+      err instanceof Error ? err.message : err
+    )
+  }
+
+  try {
+    const { sendNotifyEmail } = await import('@/app/lib/notify-email')
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+      (process.env.VERCEL_URL?.trim()
+        ? `https://${process.env.VERCEL_URL.trim()}`
+        : '')
+    const link = baseUrl ? `${baseUrl.replace(/\/$/, '')}${href}` : href
+    await sendNotifyEmail({
+      to: set.createdByEmail,
+      subject: notifTitle,
+      text: `${notifBody}\n\nOpen: ${link}`,
+    })
+  } catch (err) {
+    console.error(
+      '[video-tools] failed to send notify email',
+      err instanceof Error ? err.message : err
+    )
+  }
 }
 
 export async function updateVideoUploadSetStatus(

@@ -40,6 +40,8 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+const METADATA_EDITABLE = new Set(['draft', 'uploading', 'ready', 'failed'])
+
 export default function VideoUploadSetDetailPage() {
   return (
     <Suspense
@@ -62,17 +64,30 @@ function VideoUploadSetDetailContent() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [uploads, setUploads] = useState<UploadProgress[]>([])
+  const [eventName, setEventName] = useState('')
+  const [label, setLabel] = useState('')
+  const [eventDate, setEventDate] = useState('')
+  const [savingMeta, setSavingMeta] = useState(false)
+  const [metaSaved, setMetaSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const uploadingRef = useRef(false)
+  const metaDirtyRef = useRef(false)
 
-  const loadSet = useCallback(async () => {
+  const loadSet = useCallback(async (opts?: { syncForm?: boolean }) => {
     try {
       const res = await fetch(`/api/video-tools/sets/${setId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load set')
-      setSet(data.set)
+      const next = data.set as VideoUploadSetDetail
+      setSet(next)
+      if (opts?.syncForm !== false && !metaDirtyRef.current) {
+        setEventName(next.eventName)
+        setLabel(next.label)
+        setEventDate(next.eventDate)
+      }
       setError(null)
-      return data.set as VideoUploadSetDetail
+      return next
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load set')
       return null
@@ -82,7 +97,7 @@ function VideoUploadSetDetailContent() {
   }, [setId])
 
   useEffect(() => {
-    void loadSet()
+    void loadSet({ syncForm: true })
   }, [loadSet])
 
   useEffect(() => {
@@ -98,16 +113,40 @@ function VideoUploadSetDetailContent() {
     }
   }, [set?.status, loadSet, set])
 
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!uploadingRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
   const canUpload =
     set != null &&
     !['queued', 'processing', 'complete'].includes(set.status) &&
     !busy
 
+  const canEditMetadata =
+    set != null && METADATA_EDITABLE.has(set.status)
+
   const canStartOrRetryMerge =
     set != null &&
     set.clips.length > 0 &&
     ['ready', 'failed', 'processing'].includes(set.status) &&
-    !busy
+    !busy &&
+    !set.autoEnqueueOnReady
+
+  const metaDirty =
+    set != null &&
+    (eventName.trim() !== set.eventName ||
+      label.trim() !== set.label ||
+      eventDate !== set.eventDate)
+
+  useEffect(() => {
+    metaDirtyRef.current = metaDirty
+  }, [metaDirty])
 
   async function uploadFiles(files: FileList | File[]) {
     if (!set || !canUpload) return
@@ -120,6 +159,7 @@ function VideoUploadSetDetailContent() {
     }
 
     setBusy(true)
+    uploadingRef.current = true
     setActionError(null)
     setUploads(
       list.map((f) => ({
@@ -129,7 +169,23 @@ function VideoUploadSetDetailContent() {
       }))
     )
 
+    let reserved = false
     try {
+      const reserveRes = await fetch(
+        `/api/video-tools/sets/${set.id}/reserve-uploads`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count: list.length }),
+        }
+      )
+      const reserveData = await reserveRes.json()
+      if (!reserveRes.ok) {
+        throw new Error(reserveData.error || 'Failed to reserve upload slots')
+      }
+      reserved = true
+      if (reserveData.set) setSet(reserveData.set)
+
       for (let i = 0; i < list.length; i++) {
         const file = list[i]
         const pathname = clipBlobPathname(set.id, file.name)
@@ -143,6 +199,7 @@ function VideoUploadSetDetailContent() {
             clientPayload: JSON.stringify({
               setId: set.id,
               originalFilename: file.name,
+              preReserved: true,
             }),
             onUploadProgress: (event) => {
               tokenMinted = true
@@ -189,9 +246,8 @@ function VideoUploadSetDetailContent() {
               idx === i ? { ...u, status: 'error', error: message } : u
             )
           )
-          // Best-effort: clear this slot if a token was minted. Safe at floor 0;
-          // operators can also use Clear stuck uploads if a count remains.
-          if (tokenMinted) {
+          // Best-effort: clear this slot if a token was minted or reserved.
+          if (tokenMinted || reserved) {
             try {
               const cancelRes = await fetch(
                 `/api/video-tools/sets/${set.id}/cancel-upload`,
@@ -207,10 +263,94 @@ function VideoUploadSetDetailContent() {
           }
         }
       }
+
+      // Client fallback: if auto-enqueue is on, ensure merge starts after the batch.
+      const after = await loadSet()
+      if (after?.autoEnqueueOnReady) {
+        try {
+          const autoRes = await fetch(`/api/video-tools/sets/${setId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'maybe_auto_enqueue' }),
+          })
+          const autoData = await autoRes.json()
+          if (autoRes.ok && autoData.set) setSet(autoData.set)
+        } catch {
+          // best-effort
+        }
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Upload failed')
+      if (reserved) {
+        // Release any leftover reserved slots from a failed batch start.
+        try {
+          await fetch(`/api/video-tools/sets/${set.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reset_pending_uploads' }),
+          })
+        } catch {
+          // best-effort
+        }
+      }
       await loadSet()
     } finally {
       setBusy(false)
+      uploadingRef.current = false
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function saveMetadata(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canEditMetadata) return
+    setSavingMeta(true)
+    setActionError(null)
+    setMetaSaved(false)
+    try {
+      const res = await fetch(`/api/video-tools/sets/${setId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_metadata',
+          eventName,
+          label,
+          eventDate,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save details')
+      setSet(data.set)
+      setEventName(data.set.eventName)
+      setLabel(data.set.label)
+      setEventDate(data.set.eventDate)
+      setMetaSaved(true)
+      metaDirtyRef.current = false
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to save details')
+    } finally {
+      setSavingMeta(false)
+    }
+  }
+
+  async function toggleAutoEnqueue(next: boolean) {
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/video-tools/sets/${setId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set_auto_enqueue',
+          autoEnqueueOnReady: next,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update auto-start')
+      setSet(data.set)
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to update auto-start'
+      )
     }
   }
 
@@ -258,7 +398,6 @@ function VideoUploadSetDetailContent() {
     setBusy(true)
     setActionError(null)
     try {
-      // Merge only from ready/failed/processing — require Mark ready after uploads finish.
       const res = await fetch(`/api/video-tools/sets/${setId}/enqueue`, {
         method: 'POST',
       })
@@ -357,17 +496,122 @@ function VideoUploadSetDetailContent() {
       {(set.status === 'queued' || set.status === 'processing') && (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           {set.status === 'queued'
-            ? 'Queued for the merge worker…'
-            : 'Worker is merging clips (this can take a while for large sets). If this seems stuck, use Retry merge to re-queue.'}
+            ? 'Queued for the merge worker. You can leave this page — you will get an in-app notification when it finishes.'
+            : 'Worker is merging clips (this can take a while for large sets). Safe to leave; you will be notified when it finishes or fails. If this seems stuck, turn off auto-start and use Retry merge.'}
         </div>
+      )}
+
+      {canEditMetadata && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900">Set details</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            You can edit these while clips are uploading.
+          </p>
+          <form
+            onSubmit={(e) => void saveMetadata(e)}
+            className="mt-4 grid gap-4 sm:grid-cols-2"
+          >
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="eventName"
+                className="block text-sm font-medium text-gray-800"
+              >
+                Event name
+              </label>
+              <input
+                id="eventName"
+                type="text"
+                required
+                value={eventName}
+                onChange={(e) => {
+                  setEventName(e.target.value)
+                  setMetaSaved(false)
+                }}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="label"
+                className="block text-sm font-medium text-gray-800"
+              >
+                Label (court / session)
+              </label>
+              <input
+                id="label"
+                type="text"
+                required
+                value={label}
+                onChange={(e) => {
+                  setLabel(e.target.value)
+                  setMetaSaved(false)
+                }}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="eventDate"
+                className="block text-sm font-medium text-gray-800"
+              >
+                Event date
+              </label>
+              <input
+                id="eventDate"
+                type="date"
+                required
+                value={eventDate}
+                onChange={(e) => {
+                  setEventDate(e.target.value)
+                  setMetaSaved(false)
+                }}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              />
+            </div>
+            <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                disabled={savingMeta || !metaDirty}
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {savingMeta ? 'Saving…' : 'Save details'}
+              </button>
+              {metaSaved && !metaDirty && (
+                <span className="text-sm text-green-700">Saved</span>
+              )}
+            </div>
+          </form>
+
+          <label className="mt-6 flex items-start gap-3 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              className="mt-0.5 rounded border-gray-300"
+              checked={set.autoEnqueueOnReady}
+              onChange={(e) => void toggleAutoEnqueue(e.target.checked)}
+              disabled={busy && uploads.some((u) => u.status === 'uploading')}
+            />
+            <span>
+              <span className="font-medium">
+                When uploads finish, start merge automatically
+              </span>
+              <span className="mt-0.5 block text-gray-600">
+                Keep this tab open until uploads finish. After that you can leave —
+                merge runs in the background and you will get a notification.
+              </span>
+            </span>
+          </label>
+        </section>
       )}
 
       <section className="mt-8">
         <h2 className="text-lg font-medium text-gray-900">Clips</h2>
         <p className="mt-1 text-sm text-gray-600">
-          Drop GoPro MP4s here. When all uploads are finished, click Mark ready,
-          then Start merge. Order is applied automatically (GoPro session +
-          chapter rules) when you start the merge.
+          Drop GoPro MP4s here
+          {set.autoEnqueueOnReady
+            ? '. With auto-start on, merge begins when the last upload finishes.'
+            : '. When all uploads are finished, click Mark ready, then Start merge.'}{' '}
+          Order is applied automatically (GoPro session + chapter rules) when
+          merge starts. Keep this tab open while files transfer.
         </p>
 
         {canUpload && (
@@ -469,18 +713,21 @@ function VideoUploadSetDetailContent() {
       </section>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        {canUpload && set.clips.length > 0 && set.status !== 'ready' && (
-          <button
-            type="button"
-            onClick={() => void markReady()}
-            disabled={busy || set.pendingUploadCount > 0}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
-          >
-            {set.pendingUploadCount > 0
-              ? `Mark ready (${set.pendingUploadCount} uploading…)`
-              : 'Mark ready'}
-          </button>
-        )}
+        {canUpload &&
+          set.clips.length > 0 &&
+          set.status !== 'ready' &&
+          !set.autoEnqueueOnReady && (
+            <button
+              type="button"
+              onClick={() => void markReady()}
+              disabled={busy || set.pendingUploadCount > 0}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {set.pendingUploadCount > 0
+                ? `Mark ready (${set.pendingUploadCount} uploading…)`
+                : 'Mark ready'}
+            </button>
+          )}
         {set.pendingUploadCount > 0 &&
           !['queued', 'processing', 'complete'].includes(set.status) && (
             <button
@@ -493,15 +740,26 @@ function VideoUploadSetDetailContent() {
             </button>
           )}
         {canStartOrRetryMerge && (
+          <button
+            type="button"
+            onClick={() => void startMerge()}
+            disabled={busy}
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
+          >
+            {set.status === 'failed' || set.status === 'processing'
+              ? 'Retry merge'
+              : 'Start merge'}
+          </button>
+        )}
+        {set.autoEnqueueOnReady &&
+          (set.status === 'failed' || set.status === 'processing') &&
+          !busy && (
             <button
               type="button"
               onClick={() => void startMerge()}
-              disabled={busy}
               className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
             >
-              {set.status === 'failed' || set.status === 'processing'
-                ? 'Retry merge'
-                : 'Start merge'}
+              Retry merge
             </button>
           )}
       </div>
