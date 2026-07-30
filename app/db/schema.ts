@@ -402,6 +402,15 @@ export const videoUploadSets = pgTable(
     pendingUploadCount: integer('pending_upload_count').notNull().default(0),
     /** When true, mark ready + enqueue once pending uploads hit zero. */
     autoEnqueueOnReady: boolean('auto_enqueue_on_ready').notNull().default(false),
+    youtubePlaylistId: text('youtube_playlist_id'),
+    youtubePlaylistTitle: text('youtube_playlist_title'),
+    youtubePrivacy: text('youtube_privacy').notNull().default('unlisted'),
+    youtubeUploadStatus: text('youtube_upload_status').notNull().default('none'),
+    youtubeVideoId: text('youtube_video_id'),
+    youtubeVideoUrl: text('youtube_video_url'),
+    youtubeErrorMessage: text('youtube_error_message'),
+    /** Rotated on each YouTube upload claim; invalidates stale complete/fail. */
+    youtubeClaimToken: uuid('youtube_claim_token'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -409,8 +418,20 @@ export const videoUploadSets = pgTable(
     index('video_upload_sets_status_idx').on(table.status),
     index('video_upload_sets_event_date_idx').on(table.eventDate),
     index('video_upload_sets_created_at_idx').on(table.createdAt),
+    index('video_upload_sets_youtube_upload_status_idx').on(table.youtubeUploadStatus),
   ]
 )
+
+/** Shared YouTube channel OAuth connection for Video Tools auto-upload. */
+export const youtubeChannelConnection = pgTable('youtube_channel_connection', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  channelId: text('channel_id').notNull(),
+  channelTitle: text('channel_title').notNull(),
+  refreshTokenEnc: text('refresh_token_enc').notNull(),
+  connectedByEmail: text('connected_by_email').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /** In-app notifications for admins (e.g. video merge complete/fail). */
 export const adminNotifications = pgTable(
