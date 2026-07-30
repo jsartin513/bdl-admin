@@ -18,8 +18,14 @@ import type {
   VideoUploadSetDetail,
   VideoUploadSetRecord,
   WorkerClaimPayload,
+  YoutubeWorkerClaimPayload,
 } from '@/app/lib/video-tools/types'
 import { isValidVideoSetStatus } from '@/app/lib/video-tools/types'
+import {
+  buildYoutubeVideoDescription,
+  buildYoutubeVideoTitle,
+  youtubeWatchUrl,
+} from '@/app/lib/youtube/types'
 
 function parseEventDate(value: string): string {
   const trimmed = value.trim()
@@ -50,6 +56,13 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     outputFilename: row.outputFilename,
     pendingUploadCount: row.pendingUploadCount,
     autoEnqueueOnReady: row.autoEnqueueOnReady,
+    youtubePlaylistId: row.youtubePlaylistId,
+    youtubePlaylistTitle: row.youtubePlaylistTitle,
+    youtubePrivacy: row.youtubePrivacy,
+    youtubeUploadStatus: row.youtubeUploadStatus,
+    youtubeVideoId: row.youtubeVideoId,
+    youtubeVideoUrl: row.youtubeVideoUrl,
+    youtubeErrorMessage: row.youtubeErrorMessage,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -758,6 +771,16 @@ export async function completeVideoUploadSet(input: {
       mergedBlobUrl: safeMergedUrl,
       mergedBlobPathname: input.mergedBlobPathname.trim(),
       outputFilename,
+      // Auto-queue YouTube when a playlist was chosen before merge finished.
+      ...(current.youtubePlaylistId
+        ? {
+            youtubeUploadStatus: 'queued',
+            youtubeErrorMessage: null,
+            youtubeClaimToken: null,
+            youtubeVideoId: null,
+            youtubeVideoUrl: null,
+          }
+        : {}),
     })
     .where(
       and(
@@ -827,6 +850,389 @@ export async function failVideoUploadSet(input: {
     throw new Error('Stale claim token')
   }
   throw new Error(`Set not found or not processing (status: ${existing.status})`)
+}
+
+export const YOUTUBE_PLAYLIST_EDITABLE_STATUSES = [
+  'draft',
+  'uploading',
+  'ready',
+  'failed',
+  'complete',
+] as const
+
+export async function setYoutubePlaylist(
+  setId: string,
+  input: {
+    playlistId: string | null
+    playlistTitle: string | null
+  }
+): Promise<VideoUploadSetRecord> {
+  const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) throw new Error('Upload set not found')
+  if (
+    !(YOUTUBE_PLAYLIST_EDITABLE_STATUSES as readonly string[]).includes(set.status)
+  ) {
+    throw new Error(`Cannot change YouTube playlist while set is ${set.status}`)
+  }
+  if (
+    set.youtubeUploadStatus === 'queued' ||
+    set.youtubeUploadStatus === 'uploading'
+  ) {
+    throw new Error('Cannot change playlist while a YouTube upload is in progress')
+  }
+
+  const playlistId = input.playlistId?.trim() || null
+  const playlistTitle = playlistId
+    ? input.playlistTitle?.trim() || playlistId
+    : null
+
+  const patch: {
+    youtubePlaylistId: string | null
+    youtubePlaylistTitle: string | null
+    youtubeUploadStatus?: string
+    youtubeErrorMessage?: string | null
+    youtubeClaimToken?: null
+    updatedAt: Date
+  } = {
+    youtubePlaylistId: playlistId,
+    youtubePlaylistTitle: playlistTitle,
+    updatedAt: new Date(),
+  }
+
+  if (!playlistId) {
+    if (set.youtubeUploadStatus !== 'complete') {
+      patch.youtubeUploadStatus = 'none'
+      patch.youtubeErrorMessage = null
+    }
+  } else if (
+    set.status === 'complete' &&
+    set.youtubeUploadStatus !== 'complete' &&
+    set.mergedBlobUrl
+  ) {
+    // Playlist chosen after merge: queue upload immediately.
+    patch.youtubeUploadStatus = 'queued'
+    patch.youtubeErrorMessage = null
+    patch.youtubeClaimToken = null
+  } else if (set.youtubeUploadStatus === 'failed') {
+    patch.youtubeErrorMessage = null
+  }
+
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set(patch)
+    .where(eq(videoUploadSets.id, setId))
+    .returning()
+
+  if (!updated) throw new Error('Upload set not found')
+  return mapSet(updated)
+}
+
+export async function enqueueYoutubeUpload(
+  setId: string
+): Promise<VideoUploadSetRecord> {
+  const db = getDb()
+  const [set] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, setId))
+    .limit(1)
+  if (!set) throw new Error('Upload set not found')
+  if (set.status !== 'complete' || !set.mergedBlobUrl) {
+    throw new Error('Merge must be complete before uploading to YouTube')
+  }
+  if (!set.youtubePlaylistId) {
+    throw new Error('Select a YouTube playlist before uploading')
+  }
+  if (set.youtubeUploadStatus === 'uploading') {
+    throw new Error('YouTube upload is already in progress')
+  }
+
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      youtubeUploadStatus: 'queued',
+      youtubeErrorMessage: null,
+      youtubeClaimToken: null,
+      youtubeVideoId: null,
+      youtubeVideoUrl: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, setId),
+        eq(videoUploadSets.status, 'complete'),
+        inArray(videoUploadSets.youtubeUploadStatus, [
+          'none',
+          'queued',
+          'failed',
+          'complete',
+        ])
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Could not queue YouTube upload; try again')
+  }
+  return mapSet(updated)
+}
+
+export async function claimNextYoutubeUpload(): Promise<YoutubeWorkerClaimPayload | null> {
+  const db = getDb()
+  const [next] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(
+      and(
+        eq(videoUploadSets.status, 'complete'),
+        eq(videoUploadSets.youtubeUploadStatus, 'queued')
+      )
+    )
+    .orderBy(asc(videoUploadSets.updatedAt))
+    .limit(1)
+
+  if (!next) return null
+  if (!next.mergedBlobUrl || !next.youtubePlaylistId) {
+    await db
+      .update(videoUploadSets)
+      .set({
+        youtubeUploadStatus: 'failed',
+        youtubeErrorMessage: !next.mergedBlobUrl
+          ? 'Missing merged video URL'
+          : 'Missing YouTube playlist',
+        updatedAt: new Date(),
+      })
+      .where(eq(videoUploadSets.id, next.id))
+    return null
+  }
+
+  const claimToken = randomUUID()
+  const [claimed] = await db
+    .update(videoUploadSets)
+    .set({
+      youtubeUploadStatus: 'uploading',
+      youtubeClaimToken: claimToken,
+      youtubeErrorMessage: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, next.id),
+        eq(videoUploadSets.youtubeUploadStatus, 'queued')
+      )
+    )
+    .returning()
+
+  if (!claimed) return null
+
+  let accessToken: string
+  try {
+    const { getYoutubeAccessToken } = await import('@/app/lib/youtube/client')
+    accessToken = await getYoutubeAccessToken()
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to get YouTube access token'
+    await db
+      .update(videoUploadSets)
+      .set({
+        youtubeUploadStatus: 'failed',
+        youtubeErrorMessage: message.slice(0, 2000),
+        youtubeClaimToken: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(videoUploadSets.id, claimed.id),
+          eq(videoUploadSets.youtubeClaimToken, claimToken)
+        )
+      )
+    return null
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    (process.env.VERCEL_URL?.trim()
+      ? `https://${process.env.VERCEL_URL.trim()}`
+      : '')
+  const appHref = baseUrl
+    ? `${baseUrl.replace(/\/$/, '')}/video-tools/${claimed.id}`
+    : null
+
+  return {
+    set: mapSet(claimed),
+    claimToken,
+    accessToken,
+    mergedBlobUrl: claimed.mergedBlobUrl!,
+    title: buildYoutubeVideoTitle({
+      eventName: claimed.eventName,
+      label: claimed.label,
+      eventDate: claimed.eventDate,
+    }),
+    description: buildYoutubeVideoDescription({
+      eventName: claimed.eventName,
+      label: claimed.label,
+      eventDate: claimed.eventDate,
+      appHref,
+    }),
+    privacyStatus: claimed.youtubePrivacy || 'unlisted',
+    playlistId: claimed.youtubePlaylistId!,
+  }
+}
+
+export async function completeYoutubeUpload(input: {
+  setId: string
+  claimToken: string
+  youtubeVideoId: string
+}): Promise<VideoUploadSetRecord> {
+  const claimToken = input.claimToken.trim()
+  const youtubeVideoId = input.youtubeVideoId.trim()
+  if (!claimToken) throw new Error('claimToken is required')
+  if (!youtubeVideoId) throw new Error('youtubeVideoId is required')
+
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      youtubeUploadStatus: 'complete',
+      youtubeVideoId,
+      youtubeVideoUrl: youtubeWatchUrl(youtubeVideoId),
+      youtubeErrorMessage: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, input.setId),
+        eq(videoUploadSets.youtubeUploadStatus, 'uploading'),
+        eq(videoUploadSets.youtubeClaimToken, claimToken)
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error('Set not found, not uploading, or stale YouTube claim token')
+  }
+
+  const mapped = mapSet(updated)
+  void notifyYoutubeTerminal(mapped, 'complete')
+  return mapped
+}
+
+export async function failYoutubeUpload(input: {
+  setId: string
+  claimToken: string
+  errorMessage: string
+}): Promise<VideoUploadSetRecord> {
+  const claimToken = input.claimToken.trim()
+  if (!claimToken) throw new Error('claimToken is required')
+
+  const db = getDb()
+  const [updated] = await db
+    .update(videoUploadSets)
+    .set({
+      youtubeUploadStatus: 'failed',
+      youtubeErrorMessage: input.errorMessage.slice(0, 2000),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(videoUploadSets.id, input.setId),
+        eq(videoUploadSets.youtubeUploadStatus, 'uploading'),
+        eq(videoUploadSets.youtubeClaimToken, claimToken)
+      )
+    )
+    .returning()
+
+  if (updated) {
+    const mapped = mapSet(updated)
+    void notifyYoutubeTerminal(mapped, 'failed')
+    return mapped
+  }
+
+  const [existing] = await db
+    .select()
+    .from(videoUploadSets)
+    .where(eq(videoUploadSets.id, input.setId))
+    .limit(1)
+  if (!existing) throw new Error('Upload set not found')
+  if (
+    existing.youtubeUploadStatus === 'complete' ||
+    existing.youtubeUploadStatus === 'failed'
+  ) {
+    return mapSet(existing)
+  }
+  if (
+    existing.youtubeUploadStatus === 'uploading' &&
+    existing.youtubeClaimToken &&
+    existing.youtubeClaimToken !== claimToken
+  ) {
+    throw new Error('Stale YouTube claim token')
+  }
+  throw new Error(
+    `Set not uploading to YouTube (status: ${existing.youtubeUploadStatus})`
+  )
+}
+
+async function notifyYoutubeTerminal(
+  set: VideoUploadSetRecord,
+  outcome: 'complete' | 'failed'
+): Promise<void> {
+  const title =
+    set.eventName && set.label
+      ? `${displayTitle(set.eventName, set.label)}`
+      : 'Video upload set'
+  const href = `/video-tools/${set.id}`
+  const notifTitle =
+    outcome === 'complete' ? 'YouTube upload complete' : 'YouTube upload failed'
+  const notifBody =
+    outcome === 'complete'
+      ? `${title} is on YouTube${set.youtubeVideoUrl ? `: ${set.youtubeVideoUrl}` : '.'}`
+      : `${title} YouTube upload failed${
+          set.youtubeErrorMessage ? `: ${set.youtubeErrorMessage}` : '.'
+        }`
+
+  try {
+    const { createAdminNotification } = await import(
+      '@/app/lib/admin-notifications'
+    )
+    await createAdminNotification({
+      recipientEmail: set.createdByEmail,
+      title: notifTitle,
+      body: notifBody,
+      href,
+    })
+  } catch (err) {
+    console.error(
+      '[video-tools] failed to create YouTube notification',
+      err instanceof Error ? err.message : err
+    )
+  }
+
+  try {
+    const { sendNotifyEmail } = await import('@/app/lib/notify-email')
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+      (process.env.VERCEL_URL?.trim()
+        ? `https://${process.env.VERCEL_URL.trim()}`
+        : '')
+    const link = baseUrl ? `${baseUrl.replace(/\/$/, '')}${href}` : href
+    await sendNotifyEmail({
+      to: set.createdByEmail,
+      subject: notifTitle,
+      text: `${notifBody}\n\nOpen: ${link}`,
+    })
+  } catch (err) {
+    console.error(
+      '[video-tools] failed to send YouTube notify email',
+      err instanceof Error ? err.message : err
+    )
+  }
 }
 
 async function notifyVideoSetTerminal(

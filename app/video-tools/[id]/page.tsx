@@ -8,6 +8,7 @@ import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { clipBlobPathname } from '@/app/lib/video-tools/naming'
 import type { VideoUploadSetDetail } from '@/app/lib/video-tools/types'
+import type { YoutubePlaylistSummary } from '@/app/lib/youtube/types'
 
 type UploadProgress = {
   filename: string
@@ -69,6 +70,11 @@ function VideoUploadSetDetailContent() {
   const [eventDate, setEventDate] = useState('')
   const [savingMeta, setSavingMeta] = useState(false)
   const [metaSaved, setMetaSaved] = useState(false)
+  const [ytConnected, setYtConnected] = useState(false)
+  const [playlists, setPlaylists] = useState<YoutubePlaylistSummary[]>([])
+  const [playlistsLoading, setPlaylistsLoading] = useState(false)
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState('')
+  const [ytBusy, setYtBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const uploadingRef = useRef(false)
@@ -101,8 +107,36 @@ function VideoUploadSetDetailContent() {
   }, [loadSet])
 
   useEffect(() => {
+    async function loadPlaylists() {
+      setPlaylistsLoading(true)
+      try {
+        const connRes = await fetch('/api/youtube/connection')
+        const connData = await connRes.json()
+        if (!connRes.ok || !connData.connection) {
+          setYtConnected(false)
+          setPlaylists([])
+          return
+        }
+        setYtConnected(true)
+        const res = await fetch('/api/youtube/playlists')
+        const data = await res.json()
+        if (res.ok) setPlaylists(data.playlists ?? [])
+      } catch {
+        setYtConnected(false)
+      } finally {
+        setPlaylistsLoading(false)
+      }
+    }
+    void loadPlaylists()
+  }, [])
+
+  useEffect(() => {
     if (!set) return
-    const shouldPoll = set.status === 'queued' || set.status === 'processing'
+    const shouldPoll =
+      set.status === 'queued' ||
+      set.status === 'processing' ||
+      set.youtubeUploadStatus === 'queued' ||
+      set.youtubeUploadStatus === 'uploading'
     if (shouldPoll) {
       pollRef.current = setInterval(() => {
         void loadSet()
@@ -111,7 +145,7 @@ function VideoUploadSetDetailContent() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [set?.status, loadSet, set])
+  }, [set?.status, set?.youtubeUploadStatus, loadSet, set])
 
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -363,6 +397,84 @@ function VideoUploadSetDetailContent() {
     }
   }
 
+  async function saveYoutubePlaylist(playlistId: string | null, playlistTitle: string | null) {
+    setYtBusy(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/video-tools/sets/${setId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set_youtube_playlist',
+          playlistId,
+          playlistTitle,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save playlist')
+      setSet(data.set)
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to save playlist'
+      )
+    } finally {
+      setYtBusy(false)
+    }
+  }
+
+  async function createAndSelectPlaylist() {
+    const title = newPlaylistTitle.trim()
+    if (!title) {
+      setActionError('Enter a playlist name')
+      return
+    }
+    setYtBusy(true)
+    setActionError(null)
+    try {
+      const res = await fetch('/api/youtube/playlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, privacyStatus: 'unlisted' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create playlist')
+      const created = data.playlist as YoutubePlaylistSummary
+      setPlaylists((prev) =>
+        [...prev.filter((p) => p.id !== created.id), created].sort((a, b) =>
+          a.title.localeCompare(b.title)
+        )
+      )
+      setNewPlaylistTitle('')
+      await saveYoutubePlaylist(created.id, created.title)
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to create playlist'
+      )
+      setYtBusy(false)
+    }
+  }
+
+  async function enqueueYoutube() {
+    setYtBusy(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/video-tools/sets/${setId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'enqueue_youtube_upload' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to queue YouTube upload')
+      setSet(data.set)
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to queue YouTube upload'
+      )
+    } finally {
+      setYtBusy(false)
+    }
+  }
+
   async function markReady() {
     setBusy(true)
     setActionError(null)
@@ -499,6 +611,60 @@ function VideoUploadSetDetailContent() {
           >
             Download merged video
           </a>
+          {set.youtubeUploadStatus === 'complete' && set.youtubeVideoUrl && (
+            <p className="mt-2 text-sm text-green-900">
+              YouTube:{' '}
+              <a
+                href={set.youtubeVideoUrl}
+                className="font-medium underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {set.youtubeVideoUrl}
+              </a>
+            </p>
+          )}
+          {set.youtubeUploadStatus === 'queued' && (
+            <p className="mt-2 text-sm text-green-900">
+              Queued for YouTube upload
+              {set.youtubePlaylistTitle
+                ? ` → ${set.youtubePlaylistTitle}`
+                : ''}
+              .
+            </p>
+          )}
+          {set.youtubeUploadStatus === 'uploading' && (
+            <p className="mt-2 text-sm text-green-900">
+              Uploading to YouTube…
+            </p>
+          )}
+          {set.youtubeUploadStatus === 'failed' && (
+            <div className="mt-2">
+              <p className="text-sm text-red-800">
+                YouTube upload failed
+                {set.youtubeErrorMessage ? `: ${set.youtubeErrorMessage}` : '.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => void enqueueYoutube()}
+                disabled={ytBusy || !set.youtubePlaylistId}
+                className="mt-2 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-50 disabled:opacity-60"
+              >
+                Retry YouTube upload
+              </button>
+            </div>
+          )}
+          {set.youtubePlaylistId &&
+            set.youtubeUploadStatus === 'none' && (
+              <button
+                type="button"
+                onClick={() => void enqueueYoutube()}
+                disabled={ytBusy}
+                className="mt-2 rounded-md border border-green-300 bg-white px-3 py-1.5 text-sm font-medium text-green-900 hover:bg-green-100 disabled:opacity-60"
+              >
+                Upload to YouTube now
+              </button>
+            )}
         </div>
       )}
 
@@ -507,6 +673,9 @@ function VideoUploadSetDetailContent() {
           {set.status === 'queued'
             ? 'Queued for the merge worker. You can leave this page — you will get an in-app notification when it finishes.'
             : 'Worker is merging clips (this can take a while for large sets). Safe to leave; you will be notified when it finishes or fails. If this seems stuck, turn off auto-start and use Retry merge.'}
+          {set.youtubePlaylistId
+            ? ' After merge, the video will upload to YouTube automatically.'
+            : ''}
         </div>
       )}
 
@@ -612,6 +781,102 @@ function VideoUploadSetDetailContent() {
               </span>
             </span>
           </label>
+        </section>
+      )}
+
+      {(canEditMetadata || set.status === 'complete') && (
+        <section className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900">YouTube playlist</h2>
+          {!ytConnected ? (
+            <p className="mt-1 text-sm text-gray-600">
+              Connect the shared YouTube channel on the{' '}
+              <Link
+                href={withDevMode('/video-tools', devMode)}
+                className="text-blue-700 hover:underline"
+              >
+                Video Tools
+              </Link>{' '}
+              page to select or create a playlist. After merge, the video uploads
+              automatically when a playlist is set.
+            </p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-gray-600">
+                After merge, upload to YouTube (unlisted) and add to this playlist.
+                {playlistsLoading ? ' Loading playlists…' : ''}
+              </p>
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <div className="min-w-[16rem] flex-1">
+                  <label
+                    htmlFor="youtubePlaylist"
+                    className="block text-sm font-medium text-gray-800"
+                  >
+                    Playlist
+                  </label>
+                  <select
+                    id="youtubePlaylist"
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                    value={set.youtubePlaylistId || ''}
+                    disabled={
+                      ytBusy ||
+                      playlistsLoading ||
+                      set.youtubeUploadStatus === 'queued' ||
+                      set.youtubeUploadStatus === 'uploading'
+                    }
+                    onChange={(e) => {
+                      const id = e.target.value || null
+                      const title =
+                        playlists.find((p) => p.id === id)?.title || null
+                      void saveYoutubePlaylist(id, title)
+                    }}
+                  >
+                    <option value="">No YouTube upload</option>
+                    {set.youtubePlaylistId &&
+                      !playlists.some((p) => p.id === set.youtubePlaylistId) && (
+                        <option value={set.youtubePlaylistId}>
+                          {set.youtubePlaylistTitle || set.youtubePlaylistId}
+                        </option>
+                      )}
+                    {playlists.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                        {p.itemCount != null ? ` (${p.itemCount})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {set.youtubeUploadStatus !== 'queued' &&
+                set.youtubeUploadStatus !== 'uploading' && (
+                  <div className="mt-4 flex flex-wrap items-end gap-3">
+                    <div className="min-w-[16rem] flex-1">
+                      <label
+                        htmlFor="newPlaylist"
+                        className="block text-sm font-medium text-gray-800"
+                      >
+                        Or create a new playlist
+                      </label>
+                      <input
+                        id="newPlaylist"
+                        type="text"
+                        value={newPlaylistTitle}
+                        onChange={(e) => setNewPlaylistTitle(e.target.value)}
+                        placeholder="e.g. BDL Season 7 — Court 1"
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void createAndSelectPlaylist()}
+                      disabled={ytBusy || !newPlaylistTitle.trim()}
+                      className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Create & select
+                    </button>
+                  </div>
+                )}
+            </>
+          )}
         </section>
       )}
 

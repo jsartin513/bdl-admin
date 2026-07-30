@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import type { VideoUploadSetListItem } from '@/app/lib/video-tools/types'
+import type { YoutubeChannelConnectionPublic } from '@/app/lib/youtube/types'
 
 function formatDisplayDate(isoDate: string): string {
   const d = new Date(`${isoDate}T12:00:00`)
@@ -34,6 +36,20 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+function youtubeBadgeClass(status: string): string {
+  switch (status) {
+    case 'complete':
+      return 'bg-green-100 text-green-800'
+    case 'failed':
+      return 'bg-red-100 text-red-800'
+    case 'uploading':
+    case 'queued':
+      return 'bg-amber-100 text-amber-900'
+    default:
+      return 'bg-gray-100 text-gray-600'
+  }
+}
+
 export default function VideoToolsPage() {
   return (
     <Suspense
@@ -55,9 +71,14 @@ export default function VideoToolsPage() {
 
 function VideoToolsPageContent() {
   const { devMode } = useDevMode()
+  const searchParams = useSearchParams()
   const [sets, setSets] = useState<VideoUploadSetListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [ytConnection, setYtConnection] =
+    useState<YoutubeChannelConnectionPublic | null>(null)
+  const [ytBusy, setYtBusy] = useState(false)
+  const [ytMessage, setYtMessage] = useState<string | null>(null)
 
   const loadSets = useCallback(async (opts?: { quiet?: boolean }) => {
     if (!opts?.quiet) setLoading(true)
@@ -74,13 +95,38 @@ function VideoToolsPageContent() {
     }
   }, [])
 
-  useEffect(() => {
-    void loadSets()
-  }, [loadSets])
+  const loadYoutube = useCallback(async () => {
+    try {
+      const res = await fetch('/api/youtube/connection')
+      const data = await res.json()
+      if (!res.ok) return
+      setYtConnection(data.connection ?? null)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   useEffect(() => {
-    const hasActive = sets.some((s) =>
-      ['uploading', 'queued', 'processing'].includes(s.status)
+    void loadSets()
+    void loadYoutube()
+  }, [loadSets, loadYoutube])
+
+  useEffect(() => {
+    const connected = searchParams.get('youtube_connected')
+    const ytError = searchParams.get('youtube_error')
+    if (connected === '1') {
+      setYtMessage('YouTube channel connected.')
+      void loadYoutube()
+    } else if (ytError) {
+      setYtMessage(`YouTube connect failed: ${ytError}`)
+    }
+  }, [searchParams, loadYoutube])
+
+  useEffect(() => {
+    const hasActive = sets.some(
+      (s) =>
+        ['uploading', 'queued', 'processing'].includes(s.status) ||
+        ['queued', 'uploading'].includes(s.youtubeUploadStatus)
     )
     if (!hasActive) return
     const id = setInterval(() => {
@@ -89,15 +135,30 @@ function VideoToolsPageContent() {
     return () => clearInterval(id)
   }, [sets, loadSets])
 
+  async function disconnectYoutube() {
+    setYtBusy(true)
+    setYtMessage(null)
+    try {
+      const res = await fetch('/api/youtube/connection', { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to disconnect')
+      setYtConnection(null)
+      setYtMessage('YouTube channel disconnected.')
+    } catch (err) {
+      setYtMessage(err instanceof Error ? err.message : 'Failed to disconnect')
+    } finally {
+      setYtBusy(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Video Tools</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Upload GoPro clips per court or session, then merge into one untrimmed
-            video. Turn on auto-start merge to set-and-forget after uploads; you
-            will get an in-app notification when merge finishes.
+            Upload GoPro clips per court or session, merge into one untrimmed
+            video, then auto-upload to a YouTube playlist when merge finishes.
           </p>
         </div>
         <Link
@@ -107,6 +168,50 @@ function VideoToolsPageContent() {
           New upload set
         </Link>
       </div>
+
+      <section className="mb-6 rounded-md border border-gray-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">YouTube</h2>
+            {ytConnection ? (
+              <p className="mt-1 text-sm text-gray-600">
+                Connected to <span className="font-medium">{ytConnection.channelTitle}</span>
+                {' '}(by {ytConnection.connectedByEmail}). Pick a playlist on each
+                upload set to auto-publish after merge.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-gray-600">
+                Connect the shared BDL YouTube channel once. Operators can then
+                choose or create a playlist on each set.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ytConnection ? (
+              <button
+                type="button"
+                onClick={() => void disconnectYoutube()}
+                disabled={ytBusy}
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {ytBusy ? 'Working…' : 'Disconnect'}
+              </button>
+            ) : (
+              <a
+                href="/api/youtube/connect"
+                className="rounded-md bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-800"
+              >
+                Connect YouTube
+              </a>
+            )}
+          </div>
+        </div>
+        {ytMessage && (
+          <p className="mt-2 text-sm text-gray-700" role="status">
+            {ytMessage}
+          </p>
+        )}
+      </section>
 
       {error && (
         <div
@@ -146,13 +251,25 @@ function VideoToolsPageContent() {
                   <div className="mt-0.5 text-sm text-gray-600">
                     {formatDisplayDate(set.eventDate)} · {set.clipCount} clip
                     {set.clipCount === 1 ? '' : 's'} · {set.createdByEmail}
+                    {set.youtubePlaylistTitle
+                      ? ` · YT: ${set.youtubePlaylistTitle}`
+                      : ''}
                   </div>
                 </div>
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(set.status)}`}
-                >
-                  {set.status}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {set.youtubeUploadStatus !== 'none' && (
+                    <span
+                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${youtubeBadgeClass(set.youtubeUploadStatus)}`}
+                    >
+                      yt {set.youtubeUploadStatus}
+                    </span>
+                  )}
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(set.status)}`}
+                  >
+                    {set.status}
+                  </span>
+                </div>
               </Link>
             </li>
           ))}
