@@ -515,13 +515,11 @@ export async function recordUploadedClip(input: {
   // second decrement in the upload webhook catch handler.
   await releasePendingClipUpload(input.setId)
 
-  // When the last in-flight upload finishes and auto-enqueue is on, queue merge.
-  // Safe mid-batch only if the client reserved all slots upfront (preReserved).
-  try {
-    await maybeAutoEnqueueVideoUploadSet(input.setId)
-  } catch {
-    // best-effort; upload registration itself succeeded
-  }
+  // Auto-enqueue is triggered by the client after a fully successful upload
+  // batch (or when enabling the checkbox with pending already at zero). Do not
+  // enqueue here — a mid-batch webhook completion must not start merge early,
+  // and a successful first batch should not block a planned second batch until
+  // the operator finishes uploading.
 
   return mapClip(clip)
 }

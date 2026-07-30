@@ -135,8 +135,7 @@ function VideoUploadSetDetailContent() {
     set != null &&
     set.clips.length > 0 &&
     ['ready', 'failed', 'processing'].includes(set.status) &&
-    !busy &&
-    !set.autoEnqueueOnReady
+    !busy
 
   const metaDirty =
     set != null &&
@@ -170,6 +169,7 @@ function VideoUploadSetDetailContent() {
     )
 
     let reserved = false
+    let batchHadError = false
     try {
       const reserveRes = await fetch(
         `/api/video-tools/sets/${set.id}/reserve-uploads`,
@@ -190,7 +190,8 @@ function VideoUploadSetDetailContent() {
         const file = list[i]
         const pathname = clipBlobPathname(set.id, file.name)
 
-        let tokenMinted = false
+        let uploadCompleted = false
+        let registered = false
         try {
           const blob = await upload(pathname, file, {
             access: 'public',
@@ -202,7 +203,6 @@ function VideoUploadSetDetailContent() {
               preReserved: true,
             }),
             onUploadProgress: (event) => {
-              tokenMinted = true
               setUploads((prev) =>
                 prev.map((u, idx) =>
                   idx === i
@@ -212,7 +212,7 @@ function VideoUploadSetDetailContent() {
               )
             },
           })
-          tokenMinted = true
+          uploadCompleted = true
 
           setUploads((prev) =>
             prev.map((u, idx) =>
@@ -232,6 +232,7 @@ function VideoUploadSetDetailContent() {
           })
           const regData = await reg.json()
           if (!reg.ok) throw new Error(regData.error || 'Failed to register clip')
+          registered = true
 
           setUploads((prev) =>
             prev.map((u, idx) =>
@@ -240,14 +241,17 @@ function VideoUploadSetDetailContent() {
           )
           if (regData.set) setSet(regData.set)
         } catch (err) {
+          batchHadError = true
           const message = err instanceof Error ? err.message : 'Upload failed'
           setUploads((prev) =>
             prev.map((u, idx) =>
               idx === i ? { ...u, status: 'error', error: message } : u
             )
           )
-          // Best-effort: clear this slot if a token was minted or reserved.
-          if (tokenMinted || reserved) {
+          // Only release the reserved slot if Blob upload never finished.
+          // Once upload completes, client register and/or the Blob webhook own
+          // the pending decrement — cancel here would double-release.
+          if (!registered && !uploadCompleted && reserved) {
             try {
               const cancelRes = await fetch(
                 `/api/video-tools/sets/${set.id}/cancel-upload`,
@@ -264,9 +268,10 @@ function VideoUploadSetDetailContent() {
         }
       }
 
-      // Client fallback: if auto-enqueue is on, ensure merge starts after the batch.
+      // Only auto-enqueue after a fully successful batch so partial failures
+      // cannot start merge with an incomplete clip set.
       const after = await loadSet()
-      if (after?.autoEnqueueOnReady) {
+      if (after?.autoEnqueueOnReady && !batchHadError) {
         try {
           const autoRes = await fetch(`/api/video-tools/sets/${setId}`, {
             method: 'PATCH',
@@ -278,6 +283,10 @@ function VideoUploadSetDetailContent() {
         } catch {
           // best-effort
         }
+      } else if (batchHadError && after?.autoEnqueueOnReady) {
+        setActionError(
+          'Some uploads failed. Fix or re-upload those clips before merge starts automatically, or use Start merge when ready.'
+        )
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Upload failed')
@@ -595,8 +604,11 @@ function VideoUploadSetDetailContent() {
                 When uploads finish, start merge automatically
               </span>
               <span className="mt-0.5 block text-gray-600">
-                Keep this tab open until uploads finish. After that you can leave —
-                merge runs in the background and you will get a notification.
+                Upload all clips in one batch (or turn this on after every clip is
+                uploaded). Keep this tab open until transfers finish. After that
+                you can leave — merge runs in the background and you will get a
+                notification. Start merge stays available if auto-start does not
+                fire.
               </span>
             </span>
           </label>
@@ -608,7 +620,7 @@ function VideoUploadSetDetailContent() {
         <p className="mt-1 text-sm text-gray-600">
           Drop GoPro MP4s here
           {set.autoEnqueueOnReady
-            ? '. With auto-start on, merge begins when the last upload finishes.'
+            ? '. With auto-start on, merge begins after a fully successful upload batch — add every clip before that batch finishes, or enable auto-start after all clips are up.'
             : '. When all uploads are finished, click Mark ready, then Start merge.'}{' '}
           Order is applied automatically (GoPro session + chapter rules) when
           merge starts. Keep this tab open while files transfer.
@@ -751,17 +763,6 @@ function VideoUploadSetDetailContent() {
               : 'Start merge'}
           </button>
         )}
-        {set.autoEnqueueOnReady &&
-          (set.status === 'failed' || set.status === 'processing') &&
-          !busy && (
-            <button
-              type="button"
-              onClick={() => void startMerge()}
-              className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-60"
-            >
-              Retry merge
-            </button>
-          )}
       </div>
     </div>
   )
