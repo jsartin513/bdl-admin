@@ -120,6 +120,12 @@ export const events = pgTable(
     notes: text('notes'),
     /** When false, pair UI/behavior is disabled for the event */
     pairingEnabled: boolean('pairing_enabled').notNull().default(true),
+    /** Ordered team names; index i maps to draft group i + 1 */
+    teamNames: jsonb('team_names').$type<string[]>().notNull().default([]),
+    /** When true, draft-group assignment mutations are blocked */
+    teamsLocked: boolean('teams_locked').notNull().default(false),
+    /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
+    teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
