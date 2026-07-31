@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
 import BoardAppsMenu from '@/app/components/BoardAppsMenu'
 import { Tooltip } from '@/app/components/ui'
+import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
 
 function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -64,6 +65,203 @@ function NavDropdown({ label, children }: { label: string; children: React.React
 
 function menuItemClassName() {
   return 'block px-3 py-2 text-sm text-gray-100 hover:bg-gray-600 focus-visible:bg-gray-600 focus-visible:outline-none'
+}
+
+function NotificationsBell({
+  enabled,
+  devMode,
+}: {
+  enabled: boolean
+  devMode: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [notifications, setNotifications] = useState<AdminNotificationRecord[]>(
+    []
+  )
+  const [unreadCount, setUnreadCount] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
+  const panelId = useId()
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  const load = useCallback(async () => {
+    if (!enabled) return
+    try {
+      const res = await fetch('/api/admin/notifications?limit=15')
+      if (!res.ok) return
+      const data = await res.json()
+      setNotifications(data.notifications ?? [])
+      setUnreadCount(Number(data.unreadCount) || 0)
+    } catch {
+      // ignore poll errors
+    }
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
+    void load()
+    const id = setInterval(() => void load(), 30000)
+    return () => clearInterval(id)
+  }, [enabled, load])
+
+  useEffect(() => {
+    if (!open) return
+    const onMouseDown = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  async function markRead(id: string) {
+    try {
+      const res = await fetch(`/api/admin/notifications/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_read' }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setUnreadCount(Number(data.unreadCount) || 0)
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === id ? { ...n, readAt: data.notification?.readAt ?? new Date() } : n
+        )
+      )
+    } catch {
+      // ignore
+    }
+  }
+
+  async function markAllRead() {
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_all_read' }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setUnreadCount(Number(data.unreadCount) || 0)
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date() }))
+      )
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!enabled) return null
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((v) => !v)
+          if (!open) void load()
+        }}
+        className="relative rounded px-2 py-1 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls={panelId}
+        aria-label={
+          unreadCount > 0
+            ? `Notifications, ${unreadCount} unread`
+            : 'Notifications'
+        }
+      >
+        <span aria-hidden="true">Alerts</span>
+        {unreadCount > 0 && (
+          <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-gray-900">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div
+          id={panelId}
+          className="absolute right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
+          role="menu"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-gray-600 px-3 py-2">
+            <span className="text-sm font-medium text-gray-100">Notifications</span>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void markAllRead()}
+                className="text-xs text-blue-200 hover:underline"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          {notifications.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-gray-300">No notifications yet.</p>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto">
+              {notifications.map((n) => {
+                const href = n.href
+                  ? withDevMode(n.href, devMode)
+                  : null
+                const unread = !n.readAt
+                const content = (
+                  <>
+                    <div
+                      className={`text-sm ${unread ? 'font-semibold text-white' : 'text-gray-100'}`}
+                    >
+                      {n.title}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-300 line-clamp-2">
+                      {n.body}
+                    </div>
+                  </>
+                )
+                return (
+                  <li key={n.id} className="border-b border-gray-600 last:border-0">
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="block px-3 py-2 hover:bg-gray-600"
+                        onClick={() => {
+                          if (unread) void markRead(n.id)
+                          setOpen(false)
+                        }}
+                      >
+                        {content}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left hover:bg-gray-600"
+                        onClick={() => {
+                          if (unread) void markRead(n.id)
+                        }}
+                      >
+                        {content}
+                      </button>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function TopNav() {
@@ -163,6 +361,7 @@ export default function TopNav() {
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <NotificationsBell enabled={Boolean(email)} devMode={devMode} />
         <BoardAppsMenu currentApp="admin" />
         {email ? (
           <>

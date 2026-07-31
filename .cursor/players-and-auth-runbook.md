@@ -100,7 +100,7 @@ Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… 
 
 - Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
 - Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
-- Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0019_contact_players`).
+- Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0021_contact_players`).
 - Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging`.
 
 ## Players

@@ -15,6 +15,7 @@ import {
   type EventRecord,
   type EventRegistrationListItem,
 } from '@/app/lib/events/types'
+import { normalizeTeamNames } from '@/app/lib/events/dodgeballhub-export'
 import {
   resolveNickname,
   skillLevelLabel,
@@ -61,7 +62,11 @@ export async function listEvents(): Promise<EventListItem[]> {
 export async function getEvent(id: string): Promise<EventRecord | null> {
   const db = getDb()
   const [row] = await db.select().from(events).where(eq(events.id, id)).limit(1)
-  return row ?? null
+  if (!row) return null
+  return {
+    ...row,
+    teamNames: normalizeTeamNames(row.teamNames),
+  }
 }
 
 export async function listEventRegistrations(

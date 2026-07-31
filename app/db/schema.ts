@@ -120,6 +120,12 @@ export const events = pgTable(
     notes: text('notes'),
     /** When false, pair UI/behavior is disabled for the event */
     pairingEnabled: boolean('pairing_enabled').notNull().default(true),
+    /** Ordered team names; index i maps to draft group i + 1 */
+    teamNames: jsonb('team_names').$type<string[]>().notNull().default([]),
+    /** When true, draft-group assignment mutations are blocked */
+    teamsLocked: boolean('teams_locked').notNull().default(false),
+    /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
+    teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -400,6 +406,8 @@ export const videoUploadSets = pgTable(
     claimToken: uuid('claim_token'),
     /** In-flight Blob upload tokens; Mark ready / enqueue require zero. */
     pendingUploadCount: integer('pending_upload_count').notNull().default(0),
+    /** When true, mark ready + enqueue once pending uploads hit zero. */
+    autoEnqueueOnReady: boolean('auto_enqueue_on_ready').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -407,6 +415,24 @@ export const videoUploadSets = pgTable(
     index('video_upload_sets_status_idx').on(table.status),
     index('video_upload_sets_event_date_idx').on(table.eventDate),
     index('video_upload_sets_created_at_idx').on(table.createdAt),
+  ]
+)
+
+/** In-app notifications for admins (e.g. video merge complete/fail). */
+export const adminNotifications = pgTable(
+  'admin_notifications',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    recipientEmail: text('recipient_email').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    href: text('href'),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('admin_notifications_recipient_email_idx').on(table.recipientEmail),
+    index('admin_notifications_created_at_idx').on(table.createdAt),
   ]
 )
 

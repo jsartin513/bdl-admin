@@ -82,6 +82,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'draftGroup is required' }, { status: 400 })
     }
 
+    if (event.teamsLocked) {
+      return NextResponse.json(
+        { error: 'Teams are locked. Unlock to make changes.' },
+        { status: 400 }
+      )
+    }
+
     // Validate early for clear API errors
     parseDraftGroup(body.draftGroup)
 
@@ -102,7 +109,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             message.includes('Pairing') ||
             message.includes('Cannot pair') ||
             message.includes('already paired') ||
-            message.includes('captain')
+            message.includes('captain') ||
+            message.includes('locked')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

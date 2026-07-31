@@ -54,6 +54,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       gender?: string | null
       notes?: string | null
       pairingEnabled?: boolean
+      teamNames?: string[]
+      teamsLocked?: boolean
+      finalizeTeams?: boolean
     }
 
     if (
@@ -84,6 +87,33 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     ) {
       return NextResponse.json(
         { error: 'pairingEnabled must be a boolean' },
+        { status: 400 }
+      )
+    }
+
+    if (body.teamNames !== undefined && !Array.isArray(body.teamNames)) {
+      return NextResponse.json(
+        { error: 'teamNames must be an array of strings' },
+        { status: 400 }
+      )
+    }
+
+    if (
+      body.teamsLocked !== undefined &&
+      typeof body.teamsLocked !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { error: 'teamsLocked must be a boolean' },
+        { status: 400 }
+      )
+    }
+
+    if (
+      body.finalizeTeams !== undefined &&
+      typeof body.finalizeTeams !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { error: 'finalizeTeams must be a boolean' },
         { status: 400 }
       )
     }

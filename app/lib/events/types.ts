@@ -36,6 +36,9 @@ export type EventRecord = {
   gender: string
   notes: string | null
   pairingEnabled: boolean
+  teamNames: string[]
+  teamsLocked: boolean
+  teamsFinalizedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
