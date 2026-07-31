@@ -37,6 +37,7 @@ import {
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import { ContactPlayersDialog } from '@/app/components/contact/ContactPlayersDialog'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
@@ -154,6 +155,7 @@ function EventTrackerPageContent() {
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
 
   const [draftPhase, setDraftPhase] = useState<DraftPhase>('off')
   const [draftTeamCount, setDraftTeamCount] = useState(1)
@@ -822,6 +824,14 @@ function EventTrackerPageContent() {
           ) : null}
           <button
             type="button"
+            className={`rounded border border-teal-600 px-3 py-2 text-sm text-teal-800 ${FOCUS_RING}`}
+            disabled={registrations.length === 0}
+            onClick={() => setContactOpen(true)}
+          >
+            Contact registered players
+          </button>
+          <button
+            type="button"
             className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
             onClick={() => {
               setImportOpen(true)
@@ -1477,6 +1487,18 @@ function EventTrackerPageContent() {
           </div>
         </div>
       </Dialog>
+
+      {contactOpen && event ? (
+        <ContactPlayersDialog
+          open={contactOpen}
+          onClose={() => setContactOpen(false)}
+          audience={{
+            mode: 'filter',
+            filters: { eventId },
+            label: `${registrations.length} registered for ${event.name}`,
+          }}
+        />
+      ) : null}
     </div>
   )
 }

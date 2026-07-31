@@ -6,6 +6,8 @@ import {
   playerChanges,
   playerEmails,
   playerHomeLeagues,
+  playerMessagingPrefs,
+  playerPhones,
   players,
 } from '@/app/db/schema'
 import {
@@ -96,6 +98,11 @@ export async function listPlayers(opts: {
     .from(playerEmails)
     .where(inArray(playerEmails.playerId, ids))
 
+  const phones = await db
+    .select()
+    .from(playerPhones)
+    .where(inArray(playerPhones.playerId, ids))
+
   const homeLeagueRows = await db
     .select()
     .from(playerHomeLeagues)
@@ -111,6 +118,18 @@ export async function listPlayers(opts: {
   for (const e of emails) {
     if (!primaryByPlayer.has(e.playerId)) {
       primaryByPlayer.set(e.playerId, e.email)
+    }
+  }
+
+  const primaryPhoneByPlayer = new Map<string, string>()
+  for (const p of phones) {
+    if (p.isPrimary && !primaryPhoneByPlayer.has(p.playerId)) {
+      primaryPhoneByPlayer.set(p.playerId, p.phoneE164)
+    }
+  }
+  for (const p of phones) {
+    if (!primaryPhoneByPlayer.has(p.playerId)) {
+      primaryPhoneByPlayer.set(p.playerId, p.phoneE164)
     }
   }
 
@@ -145,6 +164,7 @@ export async function listPlayers(opts: {
     genderGroupLabel: genderGroupLabel(r.gender),
     photoUrl: r.photoUrl ?? null,
     primaryEmail: primaryByPlayer.get(r.id) ?? null,
+    primaryPhone: primaryPhoneByPlayer.get(r.id) ?? null,
     isMerged: r.isMerged,
     hasStrongPersonality: r.hasStrongPersonality,
     strongPersonalityNotes: r.strongPersonalityNotes,
@@ -162,6 +182,18 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     .from(playerEmails)
     .where(eq(playerEmails.playerId, playerId))
     .orderBy(desc(playerEmails.isPrimary), asc(playerEmails.email))
+
+  const phones = await db
+    .select()
+    .from(playerPhones)
+    .where(eq(playerPhones.playerId, playerId))
+    .orderBy(desc(playerPhones.isPrimary), asc(playerPhones.phoneE164))
+
+  const [prefs] = await db
+    .select()
+    .from(playerMessagingPrefs)
+    .where(eq(playerMessagingPrefs.playerId, playerId))
+    .limit(1)
 
   const aliases = await db
     .select()
@@ -199,6 +231,11 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     hasStrongPersonality: player.hasStrongPersonality,
     strongPersonalityNotes: player.strongPersonalityNotes,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
+    phones: phones.map((p) => ({
+      id: p.id,
+      phoneE164: p.phoneE164,
+      isPrimary: p.isPrimary,
+    })),
     aliases: aliases.map((a) => ({ id: a.id, alias: a.alias })),
     homeLeagues: homeLeagues.map((h) => ({
       id: h.id,
@@ -207,6 +244,15 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
       logoUrl: homeLeagueLogoUrl(h.homeLeague),
       sortOrder: h.sortOrder,
     })),
+    messagingPrefs: prefs
+      ? {
+          emailOptOutAt: prefs.emailOptOutAt?.toISOString() ?? null,
+          smsOptInAt: prefs.smsOptInAt?.toISOString() ?? null,
+          smsOptOutAt: prefs.smsOptOutAt?.toISOString() ?? null,
+          whatsappOptInAt: prefs.whatsappOptInAt?.toISOString() ?? null,
+          whatsappOptOutAt: prefs.whatsappOptOutAt?.toISOString() ?? null,
+        }
+      : null,
   }
 }
 
@@ -232,8 +278,10 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     hasStrongPersonality: snapshot.hasStrongPersonality,
     strongPersonalityNotes: snapshot.strongPersonalityNotes,
     emails: snapshot.emails,
+    phones: snapshot.phones,
     aliases: snapshot.aliases,
     homeLeagues: snapshot.homeLeagues,
+    messagingPrefs: snapshot.messagingPrefs,
   }
 }
 

@@ -14,6 +14,20 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the 
 
 # Neon Postgres (also auto-provisioned via `vercel integration add neon`)
 DATABASE_URL=postgresql://...
+
+# Contact players (email via Resend; SMS/WhatsApp via Twilio)
+RESEND_API_KEY=
+CONTACT_EMAIL_FROM="BDL Events <events@bostondodgeballleague.com>"
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_MESSAGING_SERVICE_SID=          # preferred over a raw from-number
+TWILIO_FROM_NUMBER=                    # fallback SMS from (E.164)
+TWILIO_WHATSAPP_FROM=whatsapp:+1...    # WhatsApp sender if not using Messaging Service alone
+TWILIO_WA_TEMPLATE_EVENT_REMINDER=HX…  # Twilio Content SIDs
+TWILIO_WA_TEMPLATE_SCHEDULE_CHANGE=HX…
+TWILIO_WA_TEMPLATE_ANNOUNCEMENT=HX…
+# CONTACT_DRY_RUN=1                    # log sends without calling providers
+# TWILIO_SKIP_SIGNATURE_VALIDATE=1     # local webhook testing only
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
@@ -73,9 +87,21 @@ SQL migration source: [`drizzle/0000_players.sql`](../drizzle/0000_players.sql).
 - `/api/admin/google/callback`
 - `/api/admin/session`
 - `/api/admin/logout`
+- `/api/video-tools/upload`
+- `/api/video-tools/worker/*`
+- `/api/webhooks/twilio/messaging` (Twilio signature-validated)
 - Next static assets
 
 Sign in at `/login`. TopNav shows the signed-in email and Log out.
+
+## Contact players
+
+Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… / Contact selected) and **Event detail** (Contact registered players).
+
+- Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
+- Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
+- Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0019_contact_players`).
+- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging`.
 
 ## Players
 
