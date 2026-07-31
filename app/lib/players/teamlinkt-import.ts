@@ -7,6 +7,7 @@ import {
   createPlayer,
   ensurePlayerAlias,
   ensurePlayerEmail,
+  ensurePlayerPhone,
   updatePlayer,
 } from '@/app/lib/players/mutations'
 import { getPlayerSnapshot } from '@/app/lib/players/queries'
@@ -23,6 +24,7 @@ export type TeamlinktRow = {
   firstName: string
   lastName: string
   email: string | null
+  phone: string | null
   jerseyNumber: number | null
   skillLevel: number | null
   gender: Gender | null
@@ -114,6 +116,17 @@ const HEADER_ALIASES: Record<string, string[]> = {
   firstName: ['first name', 'firstname', 'first', 'player first name', 'given name'],
   lastName: ['last name', 'lastname', 'last', 'player last name', 'surname', 'family name'],
   email: ['email', 'e-mail', 'email address', 'player email', 'contact email'],
+  phone: [
+    'phone',
+    'phone number',
+    'mobile',
+    'mobile phone',
+    'cell',
+    'cell phone',
+    'telephone',
+    'player phone',
+    'contact phone',
+  ],
   jerseyNumber: [
     'jersey',
     'jersey number',
@@ -144,6 +157,7 @@ function mapHeaders(headers: string[]): {
   firstName?: number
   lastName?: number
   email?: number
+  phone?: number
   jerseyNumber?: number
   skillLevel?: number
   gender?: number
@@ -273,6 +287,10 @@ export function parseTeamlinktCsv(csvText: string): {
       mapping.email !== undefined ? (cells[mapping.email] ?? '').trim() : ''
     const email = emailRaw ? normalizeEmail(emailRaw) : null
 
+    const phoneRaw =
+      mapping.phone !== undefined ? (cells[mapping.phone] ?? '').trim() : ''
+    const phone = phoneRaw || null
+
     let jerseyNumber: number | null = null
     if (mapping.jerseyNumber !== undefined) {
       const j = (cells[mapping.jerseyNumber] ?? '').trim()
@@ -299,6 +317,7 @@ export function parseTeamlinktCsv(csvText: string): {
       firstName,
       lastName,
       email,
+      phone,
       jerseyNumber,
       skillLevel,
       gender,
@@ -642,6 +661,16 @@ export async function commitTeamlinktImport(input: {
           source: 'import',
           importBatchId: batch.id,
         })
+        if (snap?.id && item.row.phone) {
+          try {
+            await ensurePlayerPhone(snap.id, item.row.phone, {
+              actor: input.actor,
+              importBatchId: batch.id,
+            })
+          } catch {
+            // Phone conflicts shouldn't fail the whole create
+          }
+        }
         created++
         if (snap?.id) await registerPlayer(snap.id)
         continue
@@ -680,6 +709,17 @@ export async function commitTeamlinktImport(input: {
           actor: input.actor,
           importBatchId: batch.id,
         })
+      }
+
+      if (item.row.phone) {
+        try {
+          await ensurePlayerPhone(item.playerId, item.row.phone, {
+            actor: input.actor,
+            importBatchId: batch.id,
+          })
+        } catch {
+          // Phone conflicts shouldn't fail the row update
+        }
       }
 
       if (item.row.firstName.toLowerCase() !== snap.firstName.toLowerCase()) {

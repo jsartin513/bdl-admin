@@ -14,6 +14,8 @@ function isPublicPath(pathname: string): boolean {
   // Video Tools: Blob upload completion webhook + secret-gated worker APIs.
   if (pathname === '/api/video-tools/upload') return true
   if (pathname.startsWith('/api/video-tools/worker/')) return true
+  // Twilio delivery status + inbound STOP (signature-validated in route).
+  if (pathname === '/api/webhooks/twilio/messaging') return true
   return false
 }
 

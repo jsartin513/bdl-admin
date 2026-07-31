@@ -23,6 +23,7 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     genderGroupLabel: 'W/NB/O',
     photoUrl: null,
     primaryEmail: null,
+    primaryPhone: null,
     isMerged: false,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
@@ -53,8 +54,10 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
     emails: [],
+    phones: [],
     aliases: [],
     homeLeagues: [],
+    messagingPrefs: null,
     ...overrides,
   }
 }

@@ -148,6 +148,13 @@
       "when": 1753992000000,
       "tag": "0020_event_team_names_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1753984800000,
+      "tag": "0021_contact_players",
+      "breakpoints": true
     }
   ]
 }

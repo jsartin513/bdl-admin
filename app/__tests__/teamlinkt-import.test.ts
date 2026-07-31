@@ -25,6 +25,7 @@ function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
     firstName: 'Jess',
     lastName: 'Sartin',
     email: 'jess@example.com',
+    phone: null,
     jerseyNumber: null,
     skillLevel: null,
     gender: null,
@@ -140,6 +141,16 @@ describe('teamlinkt csv parse', () => {
     })
     expect(parsed.rows[1].email).toBeNull()
     expect(parsed.rows[1].jerseyNumber).toBeNull()
+  })
+
+  it('maps phone columns when present', () => {
+    const csv = [
+      'First Name,Last Name,Email,Phone',
+      'Jess,Sartin,jess@example.com,(617) 555-0100',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].phone).toBe('(617) 555-0100')
   })
 
   it('maps skill level from CSV labels or numbers', () => {
