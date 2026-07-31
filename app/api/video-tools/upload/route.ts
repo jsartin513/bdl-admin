@@ -28,15 +28,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         let setId: string | null = null
         let originalFilename: string | null = null
+        let preReserved = false
         try {
           const payload = clientPayload
             ? (JSON.parse(clientPayload) as {
                 setId?: string
                 originalFilename?: string
+                preReserved?: boolean
               })
             : {}
           setId = payload.setId?.trim() || null
           originalFilename = payload.originalFilename?.trim() || null
+          preReserved = Boolean(payload.preReserved)
         } catch {
           throw new Error('Invalid client payload')
         }
@@ -56,7 +59,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           throw new Error('Invalid upload pathname')
         }
 
-        await beginPendingClipUpload(setId)
+        // Batch uploads reserve pending slots upfront so auto-enqueue does not
+        // fire between sequential files. Skip the per-token increment when reserved.
+        if (!preReserved) {
+          await beginPendingClipUpload(setId)
+        } else if (set.pendingUploadCount < 1) {
+          // Safety: reservation missing — fall back to incrementing.
+          await beginPendingClipUpload(setId)
+        }
 
         return {
           allowedContentTypes: [

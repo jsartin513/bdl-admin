@@ -28,6 +28,9 @@ Deploying the Next.js app alone does **not** start merges. Jobs stay **queued** 
 |----------|---------|
 | `BLOB_READ_WRITE_TOKEN` | Already used for player/event photos; required for client video uploads |
 | `VIDEO_WORKER_SECRET` | Shared bearer secret for `/api/video-tools/worker/*` |
+| `RESEND_API_KEY` | Optional. When set with `NOTIFY_FROM_EMAIL`, email on merge complete/fail |
+| `NOTIFY_FROM_EMAIL` | Optional Resend “from” address for merge notifications |
+| `NEXT_PUBLIC_APP_URL` | Optional absolute site URL used in notification email links |
 
 ## Worker env (Fly secrets)
 
@@ -59,9 +62,13 @@ The Fly worker is pointed at **production** admin. Merges started on [admin-prev
 ## Flow
 
 1. **Video Tools** → New upload set (event name, date, label)
-2. Upload MP4s (multipart client → Vercel Blob)
-3. **Mark ready** → **Start merge** → status `queued`
-4. Fly worker claims job → ffmpeg concat → uploads `_untrimmed.MP4` → `complete`
+2. Upload MP4s (multipart client → Vercel Blob). Details can be edited while uploading.
+3. Optional: enable **When uploads finish, start merge automatically** (use one fully successful batch, or turn this on after every clip is uploaded)
+4. Or manually **Mark ready** → **Start merge** → status `queued`
+5. Fly worker claims job → ffmpeg concat → uploads `_untrimmed.MP4` → `complete`
+6. In-app notification (nav **Alerts**) for the set creator; optional email if Resend is configured
+
+Keep the browser tab open until uploads finish. After enqueue, merge is backgrounded.
 
 ### Stuck on “queued”
 
@@ -120,7 +127,7 @@ node workers/video-merge/index.mjs
 
 4. **Video Tools** → New upload set (e.g. `Demo Event` / `Court 1` / today’s date).
 5. Drop the six clips from `tmp/gopro-demo-clips/` **out of order** (skip `merged_smoke.MP4` and `concat_list.txt`).
-6. **Mark ready** → **Start merge** → wait for `complete`.
+6. **Mark ready** → **Start merge** (or enable auto-start) → wait for `complete`.
 7. Download the `_untrimmed.MP4` and confirm playback shows steps **1 → 2 → 3 → 4 → 5 → 6** (not upload order).
 
 Optional concurrent check: create a second set (`Court 2`) and upload another batch (re-run the script into a second folder, or duplicate/rename with a different session id) so both merges finish independently without mixing clips.
