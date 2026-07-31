@@ -134,6 +134,13 @@
       "when": 1753815600000,
       "tag": "0018_video_tools_pending_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1753992000000,
+      "tag": "0019_event_team_names_lock",
+      "breakpoints": true
     }
   ]
 }
