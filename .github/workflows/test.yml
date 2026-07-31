@@ -24,8 +24,11 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        env:
+          BDL_PACKAGES_READ_TOKEN: ${{ secrets.BDL_PACKAGES_READ_TOKEN }}
+        run: bash scripts/with-bdl-git-auth.sh pnpm install --frozen-lockfile
 
       - name: Run linter
         run: npm run lint
