@@ -1,8 +1,75 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { SKILL_LEVELS, skillLevelLabel } from '@/app/lib/players/skill'
+import {
+  SKILL_LEVELS,
+  defaultJerseyName,
+  defaultNickname,
+  effectiveSkillLabel,
+  effectiveSkillScore,
+  type SkillViewMode,
+} from '@/app/lib/players/skill'
+import {
+  GENDERS,
+  genderGroup,
+  genderGroupSortKey,
+  type GenderGroup,
+} from '@/app/lib/players/gender'
+import {
+  HOME_LEAGUES,
+  HOME_LEAGUE_LOGOS,
+  isValidHomeLeague,
+  type HomeLeague,
+} from '@/app/lib/players/home-league'
+import { shouldPromptForStrongPersonalityNotes } from '@/app/lib/players/strong-personality'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
+import type { EventListItem } from '@/app/lib/events/types'
+import { SkillStyledText } from '@/app/components/SkillStyledText'
+import {
+  SkillFieldsEditor,
+  emptySkillFieldsValue,
+  skillFieldsFromPlayer,
+  skillFieldsToPatch,
+  type SkillFieldsValue,
+} from '@/app/components/players/SkillFieldsEditor'
+import {
+  SkillViewModeToggle,
+  useSkillViewMode,
+} from '@/app/hooks/useSkillViewMode'
+import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+
+function PlayerAvatar(props: {
+  photoUrl: string | null | undefined
+  name: string
+  size?: 'sm' | 'md'
+}) {
+  const sizeClass = props.size === 'md' ? 'h-16 w-16' : 'h-8 w-8'
+  if (props.photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={props.photoUrl}
+        alt=""
+        title={props.name}
+        className={`${sizeClass} shrink-0 rounded-full object-cover bg-gray-100`}
+      />
+    )
+  }
+  const initials = props.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('')
+  return (
+    <span
+      aria-hidden
+      className={`${sizeClass} shrink-0 inline-flex items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600`}
+    >
+      {initials || '?'}
+    </span>
+  )
+}
 
 type HistoryRow = {
   id: string
@@ -29,6 +96,54 @@ type ImportAction = {
   playerId?: string
 }
 
+type QuickFillDraft = {
+  skillLevel: string
+  gender: string
+}
+
+/** Empty string = leave field unchanged on apply. */
+type BulkEditDraft = {
+  gender: string
+  skillLevel: string
+  strongPersonality: '' | 'on' | 'off'
+  strongPersonalityNotes: string
+  addHomeLeague: string
+  removeHomeLeague: string
+}
+
+const EMPTY_BULK_EDIT_DRAFT: BulkEditDraft = {
+  gender: '',
+  skillLevel: '',
+  strongPersonality: '',
+  strongPersonalityNotes: '',
+  addHomeLeague: '',
+  removeHomeLeague: '',
+}
+
+function buildBulkEditPatch(draft: BulkEditDraft): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {}
+  if (draft.gender !== '') {
+    patch.gender = draft.gender === '__clear__' ? null : draft.gender
+  }
+  if (draft.skillLevel !== '') {
+    patch.skillLevel = draft.skillLevel === '__clear__' ? null : Number(draft.skillLevel)
+  }
+  if (draft.strongPersonality === 'on') {
+    patch.hasStrongPersonality = true
+    patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim() || null
+  } else if (draft.strongPersonality === 'off') {
+    patch.hasStrongPersonality = false
+    if (draft.strongPersonalityNotes.trim()) {
+      patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim()
+    }
+  } else if (draft.strongPersonalityNotes.trim()) {
+    patch.strongPersonalityNotes = draft.strongPersonalityNotes.trim()
+  }
+  if (draft.addHomeLeague) patch.addHomeLeague = draft.addHomeLeague
+  if (draft.removeHomeLeague) patch.removeHomeLeague = draft.removeHomeLeague
+  return Object.keys(patch).length > 0 ? patch : null
+}
+
 type SavedImportBatch = {
   id: string
   filename: string
@@ -46,13 +161,329 @@ function parseJerseyNumber(value: string): number | null {
   return Number.isNaN(n) ? null : n
 }
 
+function hasMissingSkill(player: { skillLevel: number | null }): boolean {
+  return player.skillLevel === null
+}
+
+function hasMissingGender(player: { gender: string | null }): boolean {
+  return player.gender === null
+}
+
+function hasMissingInfo(player: { skillLevel: number | null; gender: string | null }): boolean {
+  return hasMissingSkill(player) || hasMissingGender(player)
+}
+
+function countMissingFields(player: { skillLevel: number | null; gender: string | null }): number {
+  return Number(hasMissingSkill(player)) + Number(hasMissingGender(player))
+}
+
+function quickFillDraftForPlayer(player: PlayerListItem): QuickFillDraft {
+  return {
+    skillLevel: player.skillLevel != null ? String(player.skillLevel) : '',
+    gender: player.gender ?? '',
+  }
+}
+
+function buildQuickFillPatch(
+  player: PlayerListItem,
+  draft: QuickFillDraft
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {}
+  if (hasMissingSkill(player) && draft.skillLevel !== '') {
+    patch.skillLevel = Number(draft.skillLevel)
+  }
+  if (hasMissingGender(player) && draft.gender !== '') {
+    patch.gender = draft.gender
+  }
+  return patch
+}
+
+/** True when every currently-missing field has a value ready to save. */
+function isQuickFillReady(player: PlayerListItem, draft: QuickFillDraft): boolean {
+  if (hasMissingSkill(player) && draft.skillLevel === '') return false
+  if (hasMissingGender(player) && draft.gender === '') return false
+  return hasMissingInfo(player)
+}
+
+/** Skill cues: beginner italic+parens, intermediate normal, advanced bold, worlds bold+underline. */
+function HomeLeagueMark(props: {
+  label: string
+  logoUrl?: string | null
+  size?: 'sm' | 'md'
+}) {
+  const sizeClass = props.size === 'md' ? 'h-7 w-7' : 'h-5 w-5'
+  return (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      {props.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={props.logoUrl}
+          alt=""
+          className={`${sizeClass} rounded-sm object-contain bg-white shrink-0`}
+        />
+      ) : null}
+      <span className="truncate">{props.label}</span>
+    </span>
+  )
+}
+
+function genderRowClass(gender: string | null, isMerged: boolean): string {
+  if (isMerged) return 'bg-gray-50 text-gray-500'
+  const group = genderGroup(gender)
+  if (group === 'w_nb_o') return 'bg-rose-50/70 text-gray-900'
+  if (group === 'men') return 'bg-sky-50/70 text-gray-900'
+  return 'text-gray-900'
+}
+
+function sortIndicator(active: boolean, dir: 'asc' | 'desc'): string {
+  if (!active) return '↕'
+  return dir === 'asc' ? '↑' : '↓'
+}
+
+function SortableHeaderButton(props: {
+  label: string
+  active: boolean
+  dir: 'asc' | 'desc'
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={`inline-flex items-center gap-1 font-medium hover:text-gray-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+        props.active ? 'text-gray-900' : 'text-gray-700'
+      }`}
+    >
+      {props.label}
+      <span className="text-xs text-gray-500" aria-hidden>
+        {sortIndicator(props.active, props.dir)}
+      </span>
+    </button>
+  )
+}
+
+function sortAriaValue(active: boolean, dir: 'asc' | 'desc'): 'none' | 'ascending' | 'descending' {
+  if (!active) return 'none'
+  return dir === 'asc' ? 'ascending' : 'descending'
+}
+
+function SortableHeader(props: {
+  label: string
+  active: boolean
+  dir: 'asc' | 'desc'
+  onClick: () => void
+}) {
+  return (
+    <th className="px-3 py-2" scope="col" aria-sort={sortAriaValue(props.active, props.dir)}>
+      <SortableHeaderButton {...props} />
+    </th>
+  )
+}
+
+type SortKey = 'first' | 'last' | 'jersey' | 'jerseyName' | 'gender' | 'skill'
+
+type ColumnKey =
+  | 'fullName'
+  | 'roster'
+  | 'nickname'
+  | 'jerseyNumber'
+  | 'jerseyName'
+  | 'gender'
+  | 'skill'
+  | 'email'
+  | 'homeLeagues'
+
+const COLUMN_OPTIONS: { key: ColumnKey; label: string }[] = [
+  { key: 'fullName', label: 'Full name' },
+  { key: 'roster', label: 'Roster name' },
+  { key: 'nickname', label: 'Nickname' },
+  { key: 'jerseyNumber', label: 'Jersey #' },
+  { key: 'jerseyName', label: 'Jersey name' },
+  { key: 'gender', label: 'Gender' },
+  { key: 'skill', label: 'Skill' },
+  { key: 'email', label: 'Email' },
+  { key: 'homeLeagues', label: 'Home leagues' },
+]
+
+const DEFAULT_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
+  fullName: true,
+  roster: true,
+  nickname: true,
+  jerseyNumber: false,
+  jerseyName: false,
+  gender: true,
+  skill: true,
+  email: true,
+  homeLeagues: false,
+}
+
+/** Compact roster view for drafting teams. */
+const MINIMAL_VISIBLE_COLUMNS: Record<ColumnKey, boolean> = {
+  ...DEFAULT_VISIBLE_COLUMNS,
+  fullName: false,
+  roster: false,
+  email: false,
+}
+
+const COLUMNS_STORAGE_KEY = 'bdl-admin.players.visibleColumns'
+
+function loadVisibleColumns(): Record<ColumnKey, boolean> {
+  if (typeof window === 'undefined') return { ...DEFAULT_VISIBLE_COLUMNS }
+  try {
+    const raw = window.localStorage.getItem(COLUMNS_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_VISIBLE_COLUMNS }
+    const parsed = JSON.parse(raw) as Partial<Record<ColumnKey, boolean>>
+    return {
+      ...DEFAULT_VISIBLE_COLUMNS,
+      ...parsed,
+    }
+  } catch {
+    return { ...DEFAULT_VISIBLE_COLUMNS }
+  }
+}
+
+function compareByLastName(a: PlayerListItem, b: PlayerListItem): number {
+  const last = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
+  if (last !== 0) return last
+  return a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
+}
+
+function compareByFirstName(a: PlayerListItem, b: PlayerListItem): number {
+  const first = a.firstName.localeCompare(b.firstName, undefined, { sensitivity: 'base' })
+  if (first !== 0) return first
+  return a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
+}
+
+function compareJersey(a: PlayerListItem, b: PlayerListItem): number {
+  if (a.jerseyNumber == null && b.jerseyNumber == null) return 0
+  if (a.jerseyNumber == null) return 1
+  if (b.jerseyNumber == null) return -1
+  return a.jerseyNumber - b.jerseyNumber
+}
+
+function compareJerseyName(a: PlayerListItem, b: PlayerListItem): number {
+  const cmp = a.jerseyName.localeCompare(b.jerseyName, undefined, { sensitivity: 'base' })
+  if (cmp !== 0) return cmp
+  return compareByLastName(a, b)
+}
+
+function compareSkill(
+  a: PlayerListItem,
+  b: PlayerListItem,
+  mode: SkillViewMode
+): number {
+  const sa = effectiveSkillScore(a, mode)
+  const sb = effectiveSkillScore(b, mode)
+  if (sa == null && sb == null) return 0
+  if (sa == null) return 1
+  if (sb == null) return -1
+  return sa - sb
+}
+
+function comparePlayers(
+  a: PlayerListItem,
+  b: PlayerListItem,
+  key: SortKey,
+  mode: SkillViewMode
+): number {
+  if (key === 'first') return compareByFirstName(a, b)
+  if (key === 'last') return compareByLastName(a, b)
+  if (key === 'jersey') return compareJersey(a, b)
+  if (key === 'jerseyName') return compareJerseyName(a, b)
+  if (key === 'gender') {
+    const g = genderGroupSortKey(a.gender) - genderGroupSortKey(b.gender)
+    if (g !== 0) return g
+    return compareByLastName(a, b)
+  }
+  const s = compareSkill(a, b, mode)
+  if (s !== 0) return s
+  return compareByLastName(a, b)
+}
+
 export default function PlayersPage() {
+  const [skillViewMode, setSkillViewMode] = useSkillViewMode()
   const [players, setPlayers] = useState<PlayerListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [skillFilter, setSkillFilter] = useState('')
+  const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | 'unset' | HomeLeague>('')
+  const [eventFilter, setEventFilter] = useState('')
+  const [events, setEvents] = useState<EventListItem[]>([])
+  const [eventsStatus, setEventsStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
+    'idle'
+  )
+  const [genderFilter, setGenderFilter] = useState<'' | GenderGroup>('')
+  const [sortKey, setSortKey] = useState<SortKey>('last')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [includeMerged, setIncludeMerged] = useState(false)
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>(
+    DEFAULT_VISIBLE_COLUMNS
+  )
+  const [columnsOpen, setColumnsOpen] = useState(false)
+  const [quickFillMode, setQuickFillMode] = useState(false)
+  const [quickFillDrafts, setQuickFillDrafts] = useState<Record<string, QuickFillDraft>>({})
+  const [quickFillSavingId, setQuickFillSavingId] = useState<string | null>(null)
+  const [bulkEditMode, setBulkEditMode] = useState(false)
+  const [bulkEditDraft, setBulkEditDraft] = useState<BulkEditDraft>(EMPTY_BULK_EDIT_DRAFT)
+  const [bulkEditBusy, setBulkEditBusy] = useState(false)
+  const [bulkEditMessage, setBulkEditMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    setVisibleColumns(loadVisibleColumns())
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns))
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [visibleColumns])
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDir('asc')
+  }
+
+  function toggleColumn(key: ColumnKey) {
+    setVisibleColumns((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const showFullNameColumns = visibleColumns.fullName
+  const showGenderColumn = visibleColumns.gender || quickFillMode
+  const showSkillColumn = visibleColumns.skill || quickFillMode
+  const showHomeLeaguesColumn = visibleColumns.homeLeagues || bulkEditMode
+
+  const visibleColumnCount =
+    (showFullNameColumns ? 2 : 0) +
+    COLUMN_OPTIONS.filter((c) => {
+      if (c.key === 'fullName') return false
+      if (c.key === 'gender') return showGenderColumn
+      if (c.key === 'skill') return showSkillColumn
+      if (c.key === 'homeLeagues') return showHomeLeaguesColumn
+      return visibleColumns[c.key]
+    }).length +
+    (bulkEditMode ? 1 : 0) + // checkbox
+    1 // actions
+
+  const loadEvents = useCallback(async () => {
+    if (eventsStatus === 'loading' || eventsStatus === 'loaded') return
+    setEventsStatus('loading')
+    try {
+      const res = await fetch('/api/events')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load events')
+      setEvents(data.events ?? [])
+      setEventsStatus('loaded')
+    } catch {
+      setEventsStatus('error')
+    }
+  }, [eventsStatus])
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<PlayerSnapshot | null>(null)
@@ -64,7 +495,12 @@ export default function PlayersPage() {
 
   const [importOpen, setImportOpen] = useState(false)
   const [importCsv, setImportCsv] = useState('')
-  const [importFilename, setImportFilename] = useState('teamlinkt.csv')
+  const [importFilename, setImportFilename] = useState('pasted.csv')
+  const [importScope, setImportScope] = useState<'generic' | 'event'>('generic')
+  const [importEventId, setImportEventId] = useState('')
+  const [importProfileFields, setImportProfileFields] = useState<
+    'skip' | 'fill_blank' | 'overwrite'
+  >('skip')
   const [importPreview, setImportPreview] = useState<{
     actions: ImportAction[]
     summary: Record<string, number>
@@ -85,6 +521,8 @@ export default function PlayersPage() {
       const params = new URLSearchParams()
       if (q.trim()) params.set('q', q.trim())
       if (skillFilter) params.set('skill', skillFilter)
+      if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
+      if (eventFilter) params.set('eventId', eventFilter)
       if (includeMerged) params.set('includeMerged', '1')
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
@@ -95,16 +533,66 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, includeMerged])
+  }, [q, skillFilter, homeLeagueFilter, eventFilter, includeMerged])
 
   useEffect(() => {
     void loadPlayers()
   }, [loadPlayers])
 
-  const selectedPlayers = useMemo(
-    () => players.filter((p) => selectedIds.has(p.id)),
-    [players, selectedIds]
+  const missingPlayersCount = useMemo(
+    () => players.filter((player) => !player.isMerged && hasMissingInfo(player)).length,
+    [players]
   )
+
+  const displayedPlayers = useMemo(() => {
+    const filtered = genderFilter
+      ? players.filter((p) => genderGroup(p.gender) === genderFilter)
+      : players
+    const quickFillFiltered = quickFillMode
+      ? filtered.filter((p) => !p.isMerged && hasMissingInfo(p))
+      : filtered
+    const sorted = [...quickFillFiltered]
+    sorted.sort((a, b) => {
+      if (quickFillMode) {
+        const missingCmp = countMissingFields(b) - countMissingFields(a)
+        if (missingCmp !== 0) return missingCmp
+      }
+      const cmp = comparePlayers(a, b, sortKey, skillViewMode)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [players, genderFilter, sortKey, sortDir, quickFillMode, skillViewMode])
+
+  // One player at a time in quick fill; queue length stays on displayedPlayers.
+  const quickFillRows = useMemo(
+    () => (quickFillMode ? displayedPlayers.slice(0, 1) : displayedPlayers),
+    [displayedPlayers, quickFillMode]
+  )
+
+  useEffect(() => {
+    if (!quickFillMode || quickFillSavingId) return
+    const focusEl = document.querySelector<HTMLSelectElement>(
+      'select[data-quick-fill-focus="true"]'
+    )
+    focusEl?.focus()
+  }, [quickFillMode, quickFillSavingId, quickFillRows[0]?.id, quickFillDrafts])
+
+  const selectedPlayers = useMemo(
+    () => displayedPlayers.filter((p) => selectedIds.has(p.id)),
+    [displayedPlayers, selectedIds]
+  )
+
+  const selectableVisibleIds = useMemo(
+    () => displayedPlayers.filter((p) => !p.isMerged).map((p) => p.id),
+    [displayedPlayers]
+  )
+
+  const allVisibleSelected =
+    selectableVisibleIds.length > 0 &&
+    selectableVisibleIds.every((id) => selectedIds.has(id))
+
+  const someVisibleSelected =
+    selectableVisibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -113,6 +601,73 @@ export default function PlayersPage() {
       else next.add(id)
       return next
     })
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        for (const id of selectableVisibleIds) next.delete(id)
+      } else {
+        for (const id of selectableVisibleIds) next.add(id)
+      }
+      return next
+    })
+  }
+
+  function enterBulkEditMode() {
+    setQuickFillMode(false)
+    setBulkEditMode(true)
+    setBulkEditMessage(null)
+    setFormError(null)
+  }
+
+  function exitBulkEditMode() {
+    setBulkEditMode(false)
+    setSelectedIds(new Set())
+    setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+    setBulkEditMessage(null)
+    setFormError(null)
+  }
+
+  async function applyBulkEdit() {
+    if (selectedIds.size === 0 || bulkEditBusy) return
+    const patch = buildBulkEditPatch(bulkEditDraft)
+    if (!patch) {
+      setFormError('Choose at least one field to update')
+      return
+    }
+    if (
+      bulkEditDraft.strongPersonality === 'on' &&
+      shouldPromptForStrongPersonalityNotes(true, bulkEditDraft.strongPersonalityNotes)
+    ) {
+      setFormError('Add strong personality notes when enabling the flag')
+      return
+    }
+
+    setBulkEditBusy(true)
+    setFormError(null)
+    setBulkEditMessage(null)
+    try {
+      const res = await fetch('/api/players/bulk', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerIds: [...selectedIds],
+          patch,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Bulk update failed')
+      const updated = typeof data.updated === 'number' ? data.updated : selectedIds.size
+      setBulkEditMessage(`Updated ${updated} player${updated === 1 ? '' : 's'}`)
+      setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Bulk update failed')
+    } finally {
+      setBulkEditBusy(false)
+    }
   }
 
   async function openEdit(id: string) {
@@ -157,7 +712,10 @@ export default function PlayersPage() {
     }
   }
 
-  async function saveEdit(patch: Record<string, unknown>) {
+  async function saveEdit(
+    patch: Record<string, unknown>,
+    options?: { closeOnSuccess?: boolean }
+  ) {
     if (!editing) return
     setSaving(true)
     setFormError(null)
@@ -169,8 +727,13 @@ export default function PlayersPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
-      setEditing(data.player)
-      await loadPlayers()
+      if (options?.closeOnSuccess) {
+        await loadPlayers()
+        setEditing(null)
+      } else {
+        setEditing(data.player)
+        await loadPlayers()
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -178,12 +741,106 @@ export default function PlayersPage() {
     }
   }
 
+  async function uploadEditPhoto(file: File) {
+    if (!editing) return
+    setSaving(true)
+    setFormError(null)
+    try {
+      const formData = new FormData()
+      formData.set('file', file)
+      const res = await fetch(`/api/players/${editing.id}/photo`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Photo upload failed')
+      setEditing(data.player)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Photo upload failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function clearEditPhoto() {
+    if (!editing) return
+    setSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/players/${editing.id}/photo`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to clear photo')
+      setEditing(data.player)
+      await loadPlayers()
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to clear photo')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function getQuickFillDraft(player: PlayerListItem): QuickFillDraft {
+    return quickFillDrafts[player.id] ?? quickFillDraftForPlayer(player)
+  }
+
+  async function saveQuickFill(player: PlayerListItem, draft: QuickFillDraft) {
+    const patch = buildQuickFillPatch(player, draft)
+    if (Object.keys(patch).length === 0) return
+
+    setQuickFillSavingId(player.id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/players/${player.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Save failed')
+      setQuickFillDrafts((prev) => {
+        const next = { ...prev }
+        delete next[player.id]
+        return next
+      })
+      await loadPlayers()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setQuickFillSavingId(null)
+    }
+  }
+
+  function applyQuickFillDraft(player: PlayerListItem, patch: Partial<QuickFillDraft>) {
+    if (quickFillSavingId) return
+    const next = { ...getQuickFillDraft(player), ...patch }
+    setQuickFillDrafts((prev) => ({
+      ...prev,
+      [player.id]: next,
+    }))
+    if (isQuickFillReady(player, next)) {
+      void saveQuickFill(player, next)
+    }
+  }
+
   async function createPlayer(payload: {
     firstName: string
     lastName: string
     rosterName?: string
+    nickname?: string | null
     jerseyNumber?: number | null
+    jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: {
+      offense: number | null
+      defense: number | null
+      stayingAlive: number | null
+      courtPresence: number | null
+    } | null
+    gender?: string | null
     email?: string
   }) {
     setSaving(true)
@@ -231,6 +888,27 @@ export default function PlayersPage() {
     }
   }
 
+  async function runUnmerge(playerId: string) {
+    setSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/unmerge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Unmerge failed')
+      await loadPlayers()
+      if (data.player) setEditing(data.player)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Unmerge failed')
+      setError(err instanceof Error ? err.message : 'Unmerge failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function readApiJson(res: Response): Promise<Record<string, unknown>> {
     const text = await res.text()
     try {
@@ -245,6 +923,27 @@ export default function PlayersPage() {
     }
   }
 
+  function importRequestBody(dryRun: boolean) {
+    const body: Record<string, unknown> = {
+      csv: importCsv,
+      filename: importFilename.trim() || 'pasted.csv',
+      dryRun,
+      profileFields: importProfileFields,
+    }
+    if (importScope === 'event' && importEventId) {
+      body.eventId = importEventId
+    }
+    return body
+  }
+
+  function validateImportScope(): string | null {
+    if (importScope === 'event' && !importEventId) {
+      return 'Select an event for this import'
+    }
+    return null
+  }
+
+
   async function loadSavedImports() {
     setSavedImportsLoading(true)
     try {
@@ -256,29 +955,6 @@ export default function PlayersPage() {
       setFormError(err instanceof Error ? err.message : 'Failed to load saved imports')
     } finally {
       setSavedImportsLoading(false)
-    }
-  }
-
-  async function previewImport() {
-    setImportBusy(true)
-    setFormError(null)
-    try {
-      const res = await fetch('/api/players/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csv: importCsv, filename: importFilename, dryRun: true }),
-      })
-      const data = await readApiJson(res)
-      if (!res.ok) throw new Error(String(data.error || 'Preview failed'))
-      setImportPreview({
-        actions: data.actions as ImportAction[],
-        summary: data.summary as Record<string, number>,
-        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
-      })
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Preview failed')
-    } finally {
-      setImportBusy(false)
     }
   }
 
@@ -300,9 +976,7 @@ export default function PlayersPage() {
       await loadSavedImports()
       const warnings = Array.isArray(data.warnings) ? (data.warnings as string[]) : []
       setImportPreview((prev) =>
-        prev
-          ? { ...prev, warnings }
-          : { actions: [], summary: {}, warnings }
+        prev ? { ...prev, warnings } : { actions: [], summary: {}, warnings }
       )
       alert(`Saved "${importFilename}" for later (${String(data.rowCount ?? 0)} rows).`)
     } catch (err) {
@@ -350,7 +1024,12 @@ export default function PlayersPage() {
       const res = await fetch('/api/players/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batchId, dryRun: false }),
+        body: JSON.stringify({
+          batchId,
+          dryRun: false,
+          profileFields: importProfileFields,
+          ...(importScope === 'event' && importEventId ? { eventId: importEventId } : {}),
+        }),
       })
       const data = await readApiJson(res)
       if (!res.ok) throw new Error(String(data.error || 'Re-apply failed'))
@@ -364,6 +1043,7 @@ export default function PlayersPage() {
       setImportCsv('')
       setImportPreview(null)
       await loadPlayers()
+      await loadSavedImports()
       alert(
         `Re-apply done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
       )
@@ -374,18 +1054,60 @@ export default function PlayersPage() {
     }
   }
 
-  async function commitImport() {
+  async function previewImport() {
+    const scopeError = validateImportScope()
+    if (scopeError) {
+      setFormError(scopeError)
+      return
+    }
     setImportBusy(true)
     setFormError(null)
     try {
       const res = await fetch('/api/players/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          csv: importCsv,
-          filename: importFilename,
-          dryRun: false,
-        }),
+        body: JSON.stringify(importRequestBody(true)),
+      })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Preview failed'))
+      setImportPreview({
+        actions: data.actions as ImportAction[],
+        summary: data.summary as Record<string, number>,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+      })
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Preview failed')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function commitImport(opts?: { skipDryRunConfirm?: boolean }) {
+    const scopeError = validateImportScope()
+    if (scopeError) {
+      setFormError(scopeError)
+      return
+    }
+    if (!importPreview && opts?.skipDryRunConfirm !== false) {
+      const scopeLabel =
+        importScope === 'event'
+          ? `and register them for the selected event`
+          : 'without attaching an event'
+      if (
+        !window.confirm(
+          `Import without a dry run? This will create/update players ${scopeLabel}.`
+        )
+      ) {
+        return
+      }
+    }
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(importRequestBody(false)),
       })
       const data = await readApiJson(res)
       if (!res.ok) throw new Error(String(data.error || 'Import failed'))
@@ -394,13 +1116,23 @@ export default function PlayersPage() {
         updated: number
         skipped: number
         ambiguous: number
+        register?: number
+        alreadyRegistered?: number
       }
       setImportOpen(false)
       setImportCsv('')
+      setImportFilename('pasted.csv')
       setImportPreview(null)
+      setImportProfileFields('skip')
+      setImportScope('generic')
+      setImportEventId('')
       await loadPlayers()
+      const eventPart =
+        typeof summary.register === 'number'
+          ? `, ${summary.register} registered, ${summary.alreadyRegistered ?? 0} already registered`
+          : ''
       alert(
-        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
+        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous${eventPart}`
       )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Import failed')
@@ -415,8 +1147,15 @@ export default function PlayersPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Players</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Roster names, jersey numbers, skill levels, aliases, and emails.
+            Roster names, jersey numbers, skill levels, gender, home leagues, aliases, and
+            emails.
           </p>
+          <FieldHelp id="players-modes-help" className="mt-1">
+            <strong>Quick fill</strong> walks through players missing gender or skill one at a
+            time and auto-saves when you pick a value. <strong>Bulk edit</strong> lets you
+            filter, select many players, and apply shared updates (leave a field blank to skip
+            it).
+          </FieldHelp>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -425,34 +1164,82 @@ export default function PlayersPage() {
               setCreateOpen(true)
               setFormError(null)
             }}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Add player
           </button>
           <button
             type="button"
             onClick={() => {
-              setImportOpen(true)
-              setImportPreview(null)
-              setFormError(null)
-              void loadSavedImports()
+              if (!quickFillMode) {
+                // Entering quick fill — leave bulk edit
+                setBulkEditMode(false)
+                setSelectedIds(new Set())
+                setBulkEditDraft(EMPTY_BULK_EDIT_DRAFT)
+                setBulkEditMessage(null)
+                setSkillFilter('')
+                setHomeLeagueFilter('')
+                setGenderFilter('')
+              }
+              setQuickFillMode((value) => !value)
             }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+            className={`rounded px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+              quickFillMode
+                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                : 'border border-amber-300 bg-white text-amber-900 hover:bg-amber-50'
+            }`}
           >
-            Import TeamLinkt CSV
+            {quickFillMode ? 'Exit quick fill' : `Quick fill missing info (${missingPlayersCount})`}
           </button>
           <button
             type="button"
-            disabled={selectedIds.size < 2}
             onClick={() => {
-              setMergeOpen(true)
-              setSurvivorId([...selectedIds][0] ?? '')
-              setFormError(null)
+              if (bulkEditMode) {
+                exitBulkEditMode()
+              } else {
+                enterBulkEditMode()
+              }
             }}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40"
+            className={`rounded px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+              bulkEditMode
+                ? 'bg-violet-100 text-violet-900 hover:bg-violet-200'
+                : 'border border-violet-300 bg-white text-violet-900 hover:bg-violet-50'
+            }`}
           >
-            Merge selected ({selectedIds.size})
+            {bulkEditMode ? 'Exit bulk edit' : 'Bulk edit'}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setImportOpen(true)
+              setImportPreview(null)
+              setImportProfileFields('skip')
+              setImportScope('generic')
+              setImportEventId('')
+              setImportFilename('pasted.csv')
+              setImportCsv('')
+              setFormError(null)
+              void loadEvents()
+              void loadSavedImports()
+            }}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Import TeamLinkt CSV
+          </button>
+          {bulkEditMode ? (
+            <button
+              type="button"
+              disabled={selectedIds.size < 2}
+              onClick={() => {
+                setMergeOpen(true)
+                setSurvivorId([...selectedIds][0] ?? '')
+                setFormError(null)
+              }}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40"
+            >
+              Merge selected ({selectedIds.size})
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -467,17 +1254,47 @@ export default function PlayersPage() {
           />
         </label>
         <label className="text-sm text-gray-900">
-          <span className="block text-gray-600 mb-1">Skill</span>
+          <span className="block text-gray-600 mb-1">Event</span>
           <select
-            value={skillFilter}
-            onChange={(e) => setSkillFilter(e.target.value)}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+            aria-label="Filter by event"
+            value={eventFilter}
+            onFocus={() => void loadEvents()}
+            onChange={(e) => setEventFilter(e.target.value)}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[16rem]"
+          >
+            <option value="">All events</option>
+            {eventsStatus === 'loading' ? (
+              <option value="" disabled>
+                Loading…
+              </option>
+            ) : null}
+            {eventsStatus === 'error' ? (
+              <option value="" disabled>
+                Failed to load events
+              </option>
+            ) : null}
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.name} ({event.eventDate})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-gray-900">
+          <span className="block text-gray-600 mb-1">Home league</span>
+          <select
+            aria-label="Filter by home league"
+            value={homeLeagueFilter}
+            onChange={(e) =>
+              setHomeLeagueFilter(e.target.value as '' | 'unset' | HomeLeague)
+            }
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[14rem]"
           >
             <option value="">All</option>
-            <option value="unset">Unset</option>
-            {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+            <option value="unset">None set</option>
+            {Object.entries(HOME_LEAGUES).map(([value, label]) => (
               <option key={value} value={value}>
-                {value}: {label}
+                {label}
               </option>
             ))}
           </select>
@@ -489,7 +1306,52 @@ export default function PlayersPage() {
             onChange={(e) => setIncludeMerged(e.target.checked)}
           />
           Show merged
+          <Tooltip
+            label="Show merged players"
+            content="Include players that were merged into another record. Merged rows are read-only and shown grayed out."
+          />
         </label>
+        <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} className="pb-2" />
+        <div className="relative pb-0.5">
+          <button
+            type="button"
+            onClick={() => setColumnsOpen((open) => !open)}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Columns
+          </button>
+          {columnsOpen ? (
+            <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded border border-gray-200 bg-white p-2 shadow-lg">
+              {COLUMN_OPTIONS.map((col) => (
+                <label
+                  key={col.key}
+                  className="flex items-center gap-2 rounded px-1 py-1 text-sm text-gray-900 hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns[col.key]}
+                    onChange={() => toggleColumn(col.key)}
+                  />
+                  {col.label}
+                </label>
+              ))}
+              <button
+                type="button"
+                className="mt-1 w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
+                onClick={() => setVisibleColumns({ ...MINIMAL_VISIBLE_COLUMNS })}
+              >
+                Minimal view
+              </button>
+              <button
+                type="button"
+                className="w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
+                onClick={() => setVisibleColumns({ ...DEFAULT_VISIBLE_COLUMNS })}
+              >
+                Reset defaults
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => void loadPlayers()}
@@ -499,52 +1361,620 @@ export default function PlayersPage() {
         </button>
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      <p className="text-xs text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
+        <span>
+          <span className="inline-block w-3 h-3 rounded-sm bg-rose-50/70 border border-rose-200 align-middle mr-1" />
+          W/NB/O
+        </span>
+        <span>
+          <span className="inline-block w-3 h-3 rounded-sm bg-sky-50/70 border border-sky-200 align-middle mr-1" />
+          Men
+        </span>
+        <span>
+          Skill:{' '}
+          <span className="italic">(beginner)</span>
+          {' · '}
+          intermediate
+          {' · '}
+          <span className="font-bold">advanced</span>
+          {' · '}
+          <span className="font-bold underline">worlds</span>
+        </span>
+      </p>
+
+      {quickFillMode ? (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p>
+            Quick fill mode: one player at a time
+            {displayedPlayers.length > 0
+              ? ` (${displayedPlayers.length} remaining)`
+              : ''}
+            .
+          </p>
+          <FieldHelp id="quick-fill-auto-save-help" className="text-amber-800">
+            Select missing gender or skill for the shown player — each choice saves
+            automatically and advances to the next player in the queue.
+          </FieldHelp>
+        </div>
+      ) : null}
+
+      {bulkEditMode ? (
+        <div className="rounded border border-violet-200 bg-violet-50 px-3 py-3 space-y-3 text-violet-950">
+          <p className="text-sm">
+            Bulk edit mode: filter the list (gender, skill, home league, search), select
+            players, then apply shared updates.
+          </p>
+          <FieldHelp id="bulk-edit-unchanged-help" className="text-violet-800">
+            Leave any bulk field at &ldquo;No change&rdquo; (or blank) to leave that property
+            unchanged on selected players.
+          </FieldHelp>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={selectableVisibleIds.length === 0}
+              className="rounded border border-violet-300 bg-white px-2.5 py-1.5 text-violet-900 hover:bg-violet-100 disabled:opacity-40"
+            >
+              {allVisibleSelected ? 'Deselect all visible' : 'Select all visible'}
+              {selectableVisibleIds.length > 0
+                ? ` (${selectableVisibleIds.length})`
+                : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={selectedIds.size === 0}
+              className="rounded border border-violet-300 bg-white px-2.5 py-1.5 text-violet-900 hover:bg-violet-100 disabled:opacity-40"
+            >
+              Clear selection
+            </button>
+            <span className="text-violet-800">
+              {selectedIds.size} selected
+            </span>
+          </div>
+
+          {selectedIds.size > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 rounded border border-violet-200 bg-white p-3 text-gray-900">
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Gender</span>
+                <select
+                  aria-label="Bulk set gender"
+                  value={bulkEditDraft.gender}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, gender: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(GENDERS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                  <option value="__clear__">Clear</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Skill</span>
+                <select
+                  aria-label="Bulk set skill"
+                  value={bulkEditDraft.skillLevel}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, skillLevel: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {value}: {label}
+                    </option>
+                  ))}
+                  <option value="__clear__">Clear</option>
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Strong personality</span>
+                <select
+                  aria-label="Bulk set strong personality"
+                  value={bulkEditDraft.strongPersonality}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({
+                      ...d,
+                      strongPersonality: e.target.value as BulkEditDraft['strongPersonality'],
+                    }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  <option value="on">Turn on</option>
+                  <option value="off">Turn off</option>
+                </select>
+              </label>
+              {bulkEditDraft.strongPersonality === 'on' ||
+              bulkEditDraft.strongPersonalityNotes ? (
+                <label className="text-sm sm:col-span-2 lg:col-span-1">
+                  <span className="block text-gray-600 mb-1">Strong personality notes</span>
+                  <input
+                    aria-label="Bulk strong personality notes"
+                    value={bulkEditDraft.strongPersonalityNotes}
+                    onChange={(e) =>
+                      setBulkEditDraft((d) => ({
+                        ...d,
+                        strongPersonalityNotes: e.target.value,
+                      }))
+                    }
+                    placeholder={
+                      bulkEditDraft.strongPersonality === 'on'
+                        ? 'Required when turning on'
+                        : 'Optional'
+                    }
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                  />
+                </label>
+              ) : null}
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Add home league</span>
+                <select
+                  aria-label="Bulk add home league"
+                  value={bulkEditDraft.addHomeLeague}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, addHomeLeague: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="block text-gray-600 mb-1">Remove home league</span>
+                <select
+                  aria-label="Bulk remove home league"
+                  value={bulkEditDraft.removeHomeLeague}
+                  onChange={(e) =>
+                    setBulkEditDraft((d) => ({ ...d, removeHomeLeague: e.target.value }))
+                  }
+                  className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">No change</option>
+                  {Object.entries(HOME_LEAGUES).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex items-end sm:col-span-2 lg:col-span-3 xl:col-span-4">
+                <button
+                  type="button"
+                  disabled={bulkEditBusy || !buildBulkEditPatch(bulkEditDraft)}
+                  onClick={() => void applyBulkEdit()}
+                  className="rounded bg-violet-700 px-3 py-2 text-sm text-white hover:bg-violet-800 disabled:opacity-40"
+                >
+                  {bulkEditBusy
+                    ? 'Applying…'
+                    : `Apply to ${selectedIds.size} player${selectedIds.size === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {bulkEditMessage ? (
+            <LiveMessage variant="status" className="text-sm text-violet-900">
+              {bulkEditMessage}
+            </LiveMessage>
+          ) : null}
+          {formError && bulkEditMode ? (
+            <LiveMessage variant="alert" className="text-sm text-red-700">
+              {formError}
+            </LiveMessage>
+          ) : null}
+        </div>
+      ) : null}
+
+      {error ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {error}
+        </LiveMessage>
+      ) : null}
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}
 
       {!loading && (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white text-gray-900">
+        <div className="space-y-2">
+          <p className="text-sm text-gray-600">
+            {quickFillMode
+              ? `${displayedPlayers.length} player${displayedPlayers.length === 1 ? '' : 's'} remaining`
+              : `${displayedPlayers.length} player${displayedPlayers.length === 1 ? '' : 's'}`}
+          </p>
+          <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white text-gray-900">
           <table className="min-w-full text-sm text-gray-900">
+            <caption className="sr-only">
+              Players roster with sortable columns and row actions
+            </caption>
             <thead className="bg-gray-50 text-left text-gray-700">
               <tr>
-                <th className="px-3 py-2 w-10" />
-                <th className="px-3 py-2">First</th>
-                <th className="px-3 py-2">Last</th>
-                <th className="px-3 py-2">Roster name</th>
-                <th className="px-3 py-2">Jersey</th>
-                <th className="px-3 py-2">Skill</th>
-                <th className="px-3 py-2">Email</th>
-                <th className="px-3 py-2">Actions</th>
+                {bulkEditMode ? (
+                  <th className="px-3 py-2 w-10" scope="col">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible players"
+                      checked={allVisibleSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someVisibleSelected
+                      }}
+                      disabled={selectableVisibleIds.length === 0}
+                      onChange={toggleSelectAllVisible}
+                    />
+                  </th>
+                ) : null}
+                {showFullNameColumns ? (
+                  <SortableHeader
+                    label="First"
+                    active={sortKey === 'first'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('first')}
+                  />
+                ) : null}
+                {showFullNameColumns ? (
+                  <SortableHeader
+                    label="Last"
+                    active={sortKey === 'last'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('last')}
+                  />
+                ) : null}
+                {visibleColumns.roster ? (
+                  <th className="px-3 py-2" scope="col">
+                    Roster name
+                  </th>
+                ) : null}
+                {visibleColumns.nickname ? (
+                  <th className="px-3 py-2" scope="col">
+                    Nickname
+                  </th>
+                ) : null}
+                {visibleColumns.jerseyNumber ? (
+                  <SortableHeader
+                    label="Jersey #"
+                    active={sortKey === 'jersey'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('jersey')}
+                  />
+                ) : null}
+                {visibleColumns.jerseyName ? (
+                  <SortableHeader
+                    label="Jersey name"
+                    active={sortKey === 'jerseyName'}
+                    dir={sortDir}
+                    onClick={() => toggleSort('jerseyName')}
+                  />
+                ) : null}
+                {showGenderColumn ? (
+                  <th
+                    className="px-3 py-2 align-bottom"
+                    scope="col"
+                    aria-sort={sortAriaValue(sortKey === 'gender', sortDir)}
+                  >
+                    <div className="space-y-1">
+                      <SortableHeaderButton
+                        label="Gender"
+                        active={sortKey === 'gender'}
+                        dir={sortDir}
+                        onClick={() => toggleSort('gender')}
+                      />
+                      <select
+                        aria-label="Filter by gender"
+                        value={genderFilter}
+                        onChange={(e) => setGenderFilter(e.target.value as '' | GenderGroup)}
+                        className="block w-full max-w-[8.5rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900"
+                      >
+                        <option value="">All</option>
+                        <option value="w_nb_o">W/NB/O</option>
+                        <option value="men">Men</option>
+                        <option value="unset">Unset</option>
+                      </select>
+                    </div>
+                  </th>
+                ) : null}
+                {showSkillColumn ? (
+                  <th
+                    className="px-3 py-2 align-bottom"
+                    scope="col"
+                    aria-sort={sortAriaValue(sortKey === 'skill', sortDir)}
+                  >
+                    <div className="space-y-1">
+                      <SortableHeaderButton
+                        label="Skill"
+                        active={sortKey === 'skill'}
+                        dir={sortDir}
+                        onClick={() => toggleSort('skill')}
+                      />
+                      <select
+                        aria-label="Filter by skill"
+                        value={skillFilter}
+                        onChange={(e) => setSkillFilter(e.target.value)}
+                        className="block w-full max-w-[9.5rem] rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-gray-900"
+                      >
+                        <option value="">All</option>
+                        <option value="unset">Unset</option>
+                        {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {value}: {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </th>
+                ) : null}
+                {visibleColumns.email ? (
+                  <th className="px-3 py-2" scope="col">
+                    Email
+                  </th>
+                ) : null}
+                {showHomeLeaguesColumn ? (
+                  <th className="px-3 py-2" scope="col">
+                    Home leagues
+                  </th>
+                ) : null}
+                <th className="px-3 py-2" scope="col">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="text-gray-900">
-              {players.map((p) => (
+              {quickFillRows.map((p) => (
                 <tr
                   key={p.id}
-                  className={`border-t border-gray-100 ${p.isMerged ? 'bg-gray-50 text-gray-500' : 'text-gray-900'}`}
+                  className={`border-t border-gray-100 ${genderRowClass(p.gender, p.isMerged)}`}
                 >
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(p.id)}
-                      disabled={p.isMerged}
-                      onChange={() => toggleSelect(p.id)}
-                    />
-                  </td>
-                  <td className="px-3 py-2">{p.firstName}</td>
-                  <td className="px-3 py-2">{p.lastName}</td>
-                  <td className="px-3 py-2">{p.rosterName}</td>
-                  <td className="px-3 py-2">{p.jerseyNumber ?? '—'}</td>
-                  <td className="px-3 py-2">{p.skillLabel}</td>
-                  <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
+                  {bulkEditMode ? (
+                    <td className="px-3 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${p.rosterName}`}
+                        checked={selectedIds.has(p.id)}
+                        disabled={p.isMerged}
+                        onChange={() => toggleSelect(p.id)}
+                      />
+                    </td>
+                  ) : null}
+                  {showFullNameColumns ? (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} />
+                        <span>
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {p.firstName}
+                          </SkillStyledText>
+                          {p.hasStrongPersonality ? (
+                            <Tooltip
+                              label="Strong personality"
+                              content={
+                                p.strongPersonalityNotes || 'Flagged as strong personality'
+                              }
+                            >
+                              <span className="ml-1 text-amber-500">⚡</span>
+                            </Tooltip>
+                          ) : null}
+                        </span>
+                      </div>
+                    </td>
+                  ) : null}
+                  {showFullNameColumns ? (
+                    <td className="px-3 py-2">
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.lastName}
+                      </SkillStyledText>
+                    </td>
+                  ) : null}
+                  {visibleColumns.roster ? (
+                    <td className="px-3 py-2">
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.rosterName}
+                      </SkillStyledText>
+                    </td>
+                  ) : null}
+                  {visibleColumns.nickname ? (
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        {!showFullNameColumns ? (
+                          <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} />
+                        ) : null}
+                        <span>
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {p.nickname}
+                          </SkillStyledText>
+                          {!showFullNameColumns && p.hasStrongPersonality ? (
+                            <Tooltip
+                              label="Strong personality"
+                              content={
+                                p.strongPersonalityNotes || 'Flagged as strong personality'
+                              }
+                            >
+                              <span className="ml-1 text-amber-500">⚡</span>
+                            </Tooltip>
+                          ) : null}
+                        </span>
+                      </div>
+                    </td>
+                  ) : null}
+                  {visibleColumns.jerseyNumber ? (
+                    <td className="px-3 py-2">{p.jerseyNumber ?? '—'}</td>
+                  ) : null}
+                  {visibleColumns.jerseyName ? (
+                    <td className="px-3 py-2">
+                      <SkillStyledText
+                        score={effectiveSkillScore(p, skillViewMode)}
+                        mode={skillViewMode}
+                      >
+                        {p.jerseyName}
+                      </SkillStyledText>
+                    </td>
+                  ) : null}
+                  {showGenderColumn ? (
+                    <td className="px-3 py-2">
+                      {quickFillMode && !p.isMerged && hasMissingGender(p) ? (
+                        <>
+                          <span id={`quick-fill-gender-help-${p.id}`} className="sr-only">
+                            Gender is missing for {p.rosterName}. Select a gender to save
+                            automatically.
+                          </span>
+                          <select
+                            aria-label={`Set gender for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-gender-help-${p.id}`}
+                            data-quick-fill-focus={
+                              getQuickFillDraft(p).gender === '' ? 'true' : undefined
+                            }
+                            disabled={quickFillSavingId === p.id}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).gender}
+                            onChange={(e) => applyQuickFillDraft(p, { gender: e.target.value })}
+                          >
+                            <option value="" disabled>
+                              Select gender (required)
+                            </option>
+                            {Object.entries(GENDERS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <span
+                          className={
+                            genderGroup(p.gender) === 'w_nb_o'
+                              ? 'font-medium text-rose-800'
+                              : genderGroup(p.gender) === 'men'
+                                ? 'font-medium text-sky-900'
+                                : 'text-gray-500'
+                          }
+                        >
+                          {genderGroup(p.gender) === 'w_nb_o' ||
+                          genderGroup(p.gender) === 'men' ? (
+                            <>
+                              {p.genderGroupLabel}
+                              <span className="ml-1 font-normal text-gray-600">
+                                ({p.genderLabel})
+                              </span>
+                            </>
+                          ) : (
+                            p.genderLabel
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  ) : null}
+                  {showSkillColumn ? (
+                    <td className="px-3 py-2">
+                      {quickFillMode && !p.isMerged && hasMissingSkill(p) ? (
+                        <>
+                          <span id={`quick-fill-skill-help-${p.id}`} className="sr-only">
+                            Skill is missing for {p.rosterName}. Select a skill level to save
+                            automatically.
+                          </span>
+                          <select
+                            aria-label={`Set skill for ${p.rosterName}`}
+                            aria-describedby={`quick-fill-skill-help-${p.id}`}
+                            data-quick-fill-focus={
+                              (!hasMissingGender(p) || getQuickFillDraft(p).gender !== '') &&
+                              getQuickFillDraft(p).skillLevel === ''
+                                ? 'true'
+                                : undefined
+                            }
+                            disabled={quickFillSavingId === p.id}
+                            className="w-full rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-gray-900"
+                            value={getQuickFillDraft(p).skillLevel}
+                            onChange={(e) =>
+                              applyQuickFillDraft(p, { skillLevel: e.target.value })
+                            }
+                          >
+                            <option value="" disabled>
+                              Select skill (required)
+                            </option>
+                            {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {value}: {label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <SkillStyledText
+                          score={effectiveSkillScore(p, skillViewMode)}
+                          mode={skillViewMode}
+                        >
+                          {effectiveSkillLabel(p, skillViewMode)}
+                        </SkillStyledText>
+                      )}
+                    </td>
+                  ) : null}
+                  {visibleColumns.email ? (
+                    <td className="px-3 py-2">{p.primaryEmail ?? '—'}</td>
+                  ) : null}
+                  {showHomeLeaguesColumn ? (
+                    <td className="px-3 py-2">
+                      {p.homeLeagues.length > 0 ? (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {p.homeLeagues.map((h) => (
+                            <HomeLeagueMark
+                              key={h.homeLeague}
+                              label={h.label}
+                              logoUrl={h.logoUrl}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 space-x-2 whitespace-nowrap">
+                    {quickFillMode && quickFillSavingId === p.id ? (
+                      <span className="text-amber-800">Saving…</span>
+                    ) : null}
                     <button
                       type="button"
                       className="text-blue-600 hover:underline"
                       onClick={() => void openEdit(p.id)}
                     >
-                      Edit
+                      {p.isMerged ? 'View' : 'Edit'}
                     </button>
+                    {p.isMerged ? (
+                      <button
+                        type="button"
+                        className="text-amber-700 hover:underline"
+                        disabled={saving}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Unmerge ${p.rosterName}? Emails and aliases that still sit on the survivor will move back.`
+                            )
+                          ) {
+                            void runUnmerge(p.id)
+                          }
+                        }}
+                      >
+                        Unmerge
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="text-blue-600 hover:underline"
@@ -555,15 +1985,21 @@ export default function PlayersPage() {
                   </td>
                 </tr>
               ))}
-              {players.length === 0 ? (
+              {displayedPlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-gray-500">
-                    No players yet. Import a TeamLinkt CSV or add one manually.
+                  <td
+                    colSpan={visibleColumnCount}
+                    className="px-3 py-8 text-center text-gray-500"
+                  >
+                    {quickFillMode
+                      ? 'Everyone currently has gender and skill filled in.'
+                      : 'No players yet. Import a TeamLinkt CSV or add one manually.'}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -573,12 +2009,18 @@ export default function PlayersPage() {
           saving={saving}
           formError={formError}
           onClose={() => setEditing(null)}
-          onSaveCore={(fields) => void saveEdit(fields)}
+          onSaveCore={(fields) => void saveEdit(fields, { closeOnSuccess: true })}
           onAddEmail={(email) => void saveEdit({ addEmail: email })}
           onRemoveEmail={(id) => void saveEdit({ removeEmailId: id })}
           onSetPrimary={(id) => void saveEdit({ setPrimaryEmailId: id })}
           onAddAlias={(alias) => void saveEdit({ addAlias: alias })}
           onRemoveAlias={(id) => void saveEdit({ removeAliasId: id })}
+          onAddHomeLeague={(homeLeague) => void saveEdit({ addHomeLeague: homeLeague })}
+          onRemoveHomeLeague={(id) => void saveEdit({ removeHomeLeagueId: id })}
+          onReorderHomeLeagues={(ids) => void saveEdit({ reorderHomeLeagueIds: ids })}
+          onUploadPhoto={(file) => void uploadEditPhoto(file)}
+          onClearPhoto={() => void clearEditPhoto()}
+          onUnmerge={() => void runUnmerge(editing.id)}
         />
       ) : null}
 
@@ -602,19 +2044,25 @@ export default function PlayersPage() {
       ) : null}
 
       {mergeOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 space-y-4 text-gray-900">
-            <h2 className="text-lg font-semibold text-gray-900">Merge players</h2>
-            <p className="text-sm text-gray-600">
-              Choose the survivor. Emails and aliases from the others will move onto them;
-              the other records will be marked merged.
-            </p>
+        <Dialog
+          open={mergeOpen}
+          onClose={() => setMergeOpen(false)}
+          title="Merge players"
+          className="max-w-lg"
+        >
+          <div className="space-y-4 text-gray-900">
+            <FieldHelp id="merge-survivor-help">
+              The survivor keeps their profile; emails, aliases, and home leagues from the
+              other selected players move onto them. The other records are marked merged and
+              hidden from the default list.
+            </FieldHelp>
             <label className="block text-sm">
               <span className="text-gray-600">Survivor</span>
               <select
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 value={survivorId}
                 onChange={(e) => setSurvivorId(e.target.value)}
+                aria-describedby="merge-survivor-help"
               >
                 {selectedPlayers.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -623,11 +2071,15 @@ export default function PlayersPage() {
                 ))}
               </select>
             </label>
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+            {formError ? (
+              <LiveMessage variant="alert" className="text-sm text-red-600">
+                {formError}
+              </LiveMessage>
+            ) : null}
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border px-3 py-2 text-sm"
+                className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setMergeOpen(false)}
               >
                 Cancel
@@ -635,27 +2087,114 @@ export default function PlayersPage() {
               <button
                 type="button"
                 disabled={saving || !survivorId}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void runMerge()}
               >
                 Confirm merge
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       ) : null}
 
       {importOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-            <h2 className="text-lg font-semibold text-gray-900">Import TeamLinkt CSV</h2>
+        <Dialog
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          title="Import TeamLinkt CSV"
+          className="max-w-3xl"
+        >
+          <div className="space-y-4 text-gray-900">
+            <p className="text-sm text-gray-600">
+              New players always get skill, gender, and jersey from the CSV. For existing
+              players, those fields are left alone by default so manual edits are preserved.
+            </p>
+            <fieldset className="space-y-2 text-sm" aria-describedby="import-scope-help">
+              <legend className="text-gray-600">Import type</legend>
+              <FieldHelp id="import-scope-help">
+                <strong>Generic</strong> updates the player roster only.{' '}
+                <strong>For an event</strong> also registers matched players for the selected
+                event (useful after importing a TeamLinkt roster for a tournament).
+              </FieldHelp>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="importScope"
+                  checked={importScope === 'generic'}
+                  onChange={() => {
+                    setImportScope('generic')
+                    setImportEventId('')
+                    setImportPreview(null)
+                  }}
+                />
+                Generic import (players only)
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="importScope"
+                  checked={importScope === 'event'}
+                  onChange={() => {
+                    setImportScope('event')
+                    setImportPreview(null)
+                    void loadEvents()
+                  }}
+                />
+                For an event (also register players)
+              </label>
+              {importScope === 'event' ? (
+                <label className="block text-sm pl-6">
+                  <span className="text-gray-600">Event</span>
+                  <select
+                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                    value={importEventId}
+                    onChange={(e) => {
+                      setImportEventId(e.target.value)
+                      setImportPreview(null)
+                    }}
+                  >
+                    <option value="">Select an event…</option>
+                    {eventsStatus === 'loading' ? (
+                      <option value="" disabled>
+                        Loading…
+                      </option>
+                    ) : null}
+                    {eventsStatus === 'error' ? (
+                      <option value="" disabled>
+                        Failed to load events
+                      </option>
+                    ) : null}
+                    {events.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name} ({event.eventDate})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </fieldset>
             <label className="block text-sm">
-              <span className="text-gray-600">Filename</span>
-              <input
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                value={importFilename}
-                onChange={(e) => setImportFilename(e.target.value)}
-              />
+              <span className="text-gray-600">Existing players: skill / gender / jersey</span>
+              <select
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                value={importProfileFields}
+                onChange={(e) => {
+                  setImportProfileFields(
+                    e.target.value as 'skip' | 'fill_blank' | 'overwrite'
+                  )
+                  setImportPreview(null)
+                }}
+                aria-describedby="import-profile-fields-help"
+              >
+                <option value="skip">Skip (keep current values)</option>
+                <option value="fill_blank">Fill blanks only</option>
+                <option value="overwrite">Overwrite from CSV</option>
+              </select>
+              <FieldHelp id="import-profile-fields-help">
+                <strong>Skip</strong> never changes existing skill, gender, or jersey on matched
+                players. <strong>Fill blanks only</strong> sets those fields when empty.
+                <strong> Overwrite</strong> replaces them with CSV values.
+              </FieldHelp>
             </label>
             <label className="block text-sm">
               <span className="text-gray-600">CSV file</span>
@@ -673,12 +2212,25 @@ export default function PlayersPage() {
                   })
                 }}
               />
+              {importFilename && importFilename !== 'pasted.csv' ? (
+                <span className="mt-1 block text-xs text-gray-500">
+                  Using file: {importFilename}
+                </span>
+              ) : null}
             </label>
             <textarea
               className="w-full h-40 rounded border border-gray-300 px-3 py-2 font-mono text-xs"
               value={importCsv}
               onChange={(e) => {
                 setImportCsv(e.target.value)
+                if (importFilename !== 'pasted.csv' && !e.target.value) {
+                  setImportFilename('pasted.csv')
+                } else if (
+                  importFilename === 'pasted.csv' ||
+                  importFilename === 'teamlinkt.csv'
+                ) {
+                  setImportFilename('pasted.csv')
+                }
                 setImportPreview(null)
               }}
               placeholder="Or paste CSV contents here…"
@@ -762,7 +2314,11 @@ export default function PlayersPage() {
                 </div>
               )}
             </div>
-            {formError ? <p className="text-sm text-red-600">{formError}</p> : null}
+            {formError ? (
+              <LiveMessage variant="alert" className="text-sm text-red-600">
+                {formError}
+              </LiveMessage>
+            ) : null}
             {importPreview ? (
               <div className="space-y-2 text-sm">
                 {importPreview.warnings.length > 0 ? (
@@ -772,48 +2328,49 @@ export default function PlayersPage() {
                     ))}
                   </ul>
                 ) : null}
-                {importPreview.actions.length > 0 ? (
-                  <>
-                    <p>
-                      Preview: {importPreview.summary.create ?? 0} create,{' '}
-                      {importPreview.summary.update ?? 0} update,{' '}
-                      {importPreview.summary.skip ?? 0} skip,{' '}
-                      {importPreview.summary.ambiguous ?? 0} ambiguous
-                    </p>
-                    <div className="max-h-48 overflow-y-auto border rounded">
-                      <table className="min-w-full text-xs">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-2 py-1 text-left">Row</th>
-                            <th className="px-2 py-1 text-left">Action</th>
-                            <th className="px-2 py-1 text-left">Name</th>
-                            <th className="px-2 py-1 text-left">Detail</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {importPreview.actions.map((a, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="px-2 py-1">{a.row.rowNumber}</td>
-                              <td className="px-2 py-1">{a.action}</td>
-                              <td className="px-2 py-1">
-                                {a.row.firstName} {a.row.lastName}
-                              </td>
-                              <td className="px-2 py-1">
-                                {a.notes?.join('; ') || a.reason || '—'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : null}
+                <p>
+                  Preview: {importPreview.summary.create} create,{' '}
+                  {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
+                  {importPreview.summary.ambiguous} ambiguous
+                  {typeof importPreview.summary.register === 'number' ? (
+                    <>
+                      ; {importPreview.summary.register} will register,{' '}
+                      {importPreview.summary.alreadyRegistered ?? 0} already registered
+                    </>
+                  ) : null}
+                </p>
+                <div className="max-h-48 overflow-y-auto border rounded">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1 text-left">Row</th>
+                        <th className="px-2 py-1 text-left">Action</th>
+                        <th className="px-2 py-1 text-left">Name</th>
+                        <th className="px-2 py-1 text-left">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.actions.map((a, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-2 py-1">{a.row.rowNumber}</td>
+                          <td className="px-2 py-1">{a.action}</td>
+                          <td className="px-2 py-1">
+                            {a.row.firstName} {a.row.lastName}
+                          </td>
+                          <td className="px-2 py-1">
+                            {a.notes?.join('; ') || a.reason || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : null}
             <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                className="rounded border px-3 py-2 text-sm"
+                className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setImportOpen(false)}
               >
                 Close
@@ -821,7 +2378,7 @@ export default function PlayersPage() {
               <button
                 type="button"
                 disabled={importBusy || !importCsv.trim()}
-                className="rounded border px-3 py-2 text-sm disabled:opacity-40"
+                className="rounded border px-3 py-2 text-sm disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void saveImportForLater()}
               >
                 Save for later
@@ -829,22 +2386,26 @@ export default function PlayersPage() {
               <button
                 type="button"
                 disabled={importBusy || !importCsv.trim()}
-                className="rounded border px-3 py-2 text-sm disabled:opacity-40"
+                className="rounded border px-3 py-2 text-sm disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void previewImport()}
               >
                 Dry run
               </button>
               <button
                 type="button"
-                disabled={importBusy || !importPreview || importPreview.actions.length === 0}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
+                disabled={
+                  importBusy ||
+                  !importCsv.trim() ||
+                  (importScope === 'event' && !importEventId)
+                }
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => void commitImport()}
               >
-                Commit import
+                {importPreview ? 'Commit import' : 'Import now'}
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       ) : null}
     </div>
   )
@@ -861,97 +2422,299 @@ function EditPanel(props: {
   onSetPrimary: (id: string) => void
   onAddAlias: (alias: string) => void
   onRemoveAlias: (id: string) => void
+  onAddHomeLeague: (homeLeague: string) => void
+  onRemoveHomeLeague: (id: string) => void
+  onReorderHomeLeagues: (ids: string[]) => void
+  onUploadPhoto: (file: File) => void
+  onClearPhoto: () => void
+  onUnmerge: () => void
 }) {
   const p = props.player
   const [firstName, setFirstName] = useState(p.firstName)
   const [lastName, setLastName] = useState(p.lastName)
   const [rosterName, setRosterName] = useState(p.rosterName)
+  const [nickname, setNickname] = useState(p.nickname)
   const [jerseyNumber, setJerseyNumber] = useState(
     p.jerseyNumber != null ? String(p.jerseyNumber) : ''
   )
-  const [skillLevel, setSkillLevel] = useState(
-    p.skillLevel != null ? String(p.skillLevel) : ''
+  const [jerseyName, setJerseyName] = useState(p.jerseyName)
+  const [skillFields, setSkillFields] = useState<SkillFieldsValue>(() =>
+    skillFieldsFromPlayer(p)
+  )
+  const [gender, setGender] = useState(p.gender ?? '')
+  const [hasStrongPersonality, setHasStrongPersonality] = useState(p.hasStrongPersonality)
+  const [strongPersonalityNotes, setStrongPersonalityNotes] = useState(p.strongPersonalityNotes ?? '')
+  const showStrongPersonalityNotesPrompt = shouldPromptForStrongPersonalityNotes(
+    hasStrongPersonality,
+    strongPersonalityNotes
   )
   const [newEmail, setNewEmail] = useState('')
   const [newAlias, setNewAlias] = useState('')
+  const [newHomeLeague, setNewHomeLeague] = useState('')
 
   useEffect(() => {
     setFirstName(p.firstName)
     setLastName(p.lastName)
     setRosterName(p.rosterName)
+    setNickname(p.nickname)
     setJerseyNumber(p.jerseyNumber != null ? String(p.jerseyNumber) : '')
-    setSkillLevel(p.skillLevel != null ? String(p.skillLevel) : '')
+    setJerseyName(p.jerseyName)
+    setSkillFields(skillFieldsFromPlayer(p))
+    setGender(p.gender ?? '')
+    setHasStrongPersonality(p.hasStrongPersonality)
+    setStrongPersonalityNotes(p.strongPersonalityNotes ?? '')
   }, [p])
 
+  const nicknameDefault = defaultNickname(firstName, lastName)
+  const jerseyNameDefault = defaultJerseyName(lastName)
+  const availableHomeLeagues = Object.entries(HOME_LEAGUES).filter(
+    ([code]) => !p.homeLeagues.some((h) => h.homeLeague === code)
+  )
+
+  function moveHomeLeague(id: string, direction: -1 | 1) {
+    const ids = p.homeLeagues.map((h) => h.id)
+    const index = ids.indexOf(id)
+    if (index < 0) return
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= ids.length) return
+    const next = [...ids]
+    const [moved] = next.splice(index, 1)
+    next.splice(nextIndex, 0, moved)
+    props.onReorderHomeLeagues(next)
+  }
+
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-        <div className="flex justify-between items-start gap-4">
-          <h2 className="text-lg font-semibold text-gray-900">Edit player</h2>
-          <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
+    <Dialog open onClose={props.onClose} title="Edit player" className="max-w-xl">
+      <div className="space-y-4 text-gray-900">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Close
           </button>
         </div>
 
         {p.isMerged ? (
-          <p className="text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
-            This player was merged into another record and cannot be edited.
-          </p>
+          <div className="space-y-2 rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <p>
+              This player was merged
+              {p.mergedIntoPlayerId ? ' into another record' : ''} and cannot be
+              edited until unmerged.
+            </p>
+            <p className="text-amber-700/90">
+              Unmerge reactivates this player and moves emails/aliases/home leagues that
+              still belong on the survivor back here. It does not undo jersey/skill/gender
+              fills on the survivor.
+            </p>
+            <button
+              type="button"
+              disabled={props.saving}
+              className="rounded border border-amber-700/40 bg-white px-3 py-1.5 text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Unmerge ${p.rosterName}? Emails and aliases that still sit on the survivor will move back.`
+                  )
+                ) {
+                  props.onUnmerge()
+                }
+              }}
+            >
+              Unmerge player
+            </button>
+          </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm col-span-1">
-            First name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={firstName}
-              disabled={p.isMerged}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Last name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={lastName}
-              disabled={p.isMerged}
-              onChange={(e) => setLastName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm col-span-2">
-            Roster name
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={rosterName}
-              disabled={p.isMerged}
-              onChange={(e) => setRosterName(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Jersey #
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={jerseyNumber}
-              disabled={p.isMerged}
-              onChange={(e) => setJerseyNumber(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            Skill
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={skillLevel}
-              disabled={p.isMerged}
-              onChange={(e) => setSkillLevel(e.target.value)}
-            >
-              <option value="">Unset</option>
-              {Object.entries(SKILL_LEVELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {value}: {label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm">Skill systems</h3>
+          <SkillFieldsEditor
+            value={skillFields}
+            onChange={setSkillFields}
+            disabled={p.isMerged}
+            idPrefix="edit-skill"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm">Roster</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm">
+              Gender
+              <select
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={gender}
+                disabled={p.isMerged}
+                onChange={(e) => setGender(e.target.value)}
+              >
+                <option value="">Unset</option>
+                {Object.entries(GENDERS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              Jersey #
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={jerseyNumber}
+                disabled={p.isMerged}
+                onChange={(e) => setJerseyNumber(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Jersey name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                value={jerseyName}
+                disabled={p.isMerged}
+                onChange={(e) => setJerseyName(e.target.value)}
+                placeholder={jerseyNameDefault}
+                aria-describedby="edit-jersey-name-help"
+              />
+              <FieldHelp id="edit-jersey-name-help">
+                Defaults to last name ({jerseyNameDefault}
+                {p.jerseyNameCustom ? '' : ' — currently using default'}
+                ).
+              </FieldHelp>
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Photo</h3>
+          <div className="flex items-center gap-4">
+            <PlayerAvatar photoUrl={p.photoUrl} name={p.rosterName} size="md" />
+            <div className="flex flex-wrap gap-2">
+              <label className="rounded border px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 disabled:opacity-40">
+                {p.photoUrl ? 'Replace photo' : 'Upload photo'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+                  className="hidden"
+                  disabled={p.isMerged || props.saving}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) props.onUploadPhoto(file)
+                  }}
+                />
+              </label>
+              {p.photoUrl ? (
+                <button
+                  type="button"
+                  disabled={p.isMerged || props.saving}
+                  className="rounded border px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"
+                  onClick={() => {
+                    if (window.confirm('Remove this player photo?')) {
+                      props.onClearPhoto()
+                    }
+                  }}
+                >
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Name</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm col-span-1">
+              First name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={firstName}
+                disabled={p.isMerged}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Last name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={lastName}
+                disabled={p.isMerged}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm col-span-2">
+              Roster name
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={rosterName}
+                disabled={p.isMerged}
+                onChange={(e) => setRosterName(e.target.value)}
+              />
+            </label>
+            <label className="text-sm col-span-2">
+              Nickname
+              <input
+                className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                value={nickname}
+                disabled={p.isMerged}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder={nicknameDefault}
+                aria-describedby="edit-nickname-help"
+              />
+              <FieldHelp id="edit-nickname-help">
+                Defaults to first name + last initial ({nicknameDefault}
+                {p.nicknameCustom ? '' : ' — currently using default'}
+                ). Clear or match the default to keep it automatic.
+              </FieldHelp>
+            </label>
+          </div>
+        </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Flags</h3>
+          <div className="rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
+            <label className="text-sm flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={hasStrongPersonality}
+                disabled={p.isMerged}
+                onChange={(e) => {
+                  setHasStrongPersonality(e.target.checked)
+                }}
+                aria-describedby="edit-strong-personality-help"
+              />
+              <span className="flex items-center gap-1">
+                Strong personality
+                <Tooltip
+                  label="Strong personality"
+                  content="Flags players who may need extra care in team building. Notes appear on hover in the roster and draft board."
+                />
+              </span>
+            </label>
+            <FieldHelp id="edit-strong-personality-help" className="pl-6">
+              Mark players whose communication style or intensity may affect team dynamics.
+            </FieldHelp>
+            {showStrongPersonalityNotesPrompt ? (
+              <LiveMessage variant="alert" className="mt-2 text-xs text-amber-900">
+                Add a note describing the player&apos;s strong personality and communication
+                considerations.
+              </LiveMessage>
+            ) : null}
+          </div>
+          {hasStrongPersonality ? (
+            <label className="text-sm block">
+              Strong personality notes
+              <textarea
+                className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                rows={3}
+                value={strongPersonalityNotes}
+                disabled={p.isMerged}
+                onChange={(e) => setStrongPersonalityNotes(e.target.value)}
+                placeholder="Notes about this player's personality (shown on hover in team builder)"
+              />
+            </label>
+          ) : null}
         </div>
 
         {!p.isMerged ? (
@@ -959,15 +2722,23 @@ function EditPanel(props: {
             type="button"
             disabled={props.saving}
             className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-            onClick={() =>
+            onClick={() => {
+              const skillPatch = skillFieldsToPatch(skillFields)
               props.onSaveCore({
                 firstName,
                 lastName,
                 rosterName,
+                nickname,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
-                skillLevel: skillLevel ? Number(skillLevel) : null,
+                jerseyName,
+                skillLevel: skillPatch.skillLevel,
+                skillLevelFib: skillPatch.skillLevelFib,
+                skillAreas: skillPatch.skillAreas,
+                gender: gender || null,
+                hasStrongPersonality,
+                strongPersonalityNotes: strongPersonalityNotes.trim() || null,
               })
-            }
+            }}
           >
             Save details
           </button>
@@ -1074,12 +2845,101 @@ function EditPanel(props: {
           ) : null}
         </div>
 
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Home leagues</h3>
+          <FieldHelp id="edit-home-leagues-help">
+            Ordered preference — first is primary home league.
+          </FieldHelp>
+          <ul className="space-y-1 text-sm">
+            {p.homeLeagues.map((h, index) => (
+              <li key={h.id} className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-gray-400 shrink-0">{index + 1}.</span>
+                  <HomeLeagueMark label={h.label} logoUrl={h.logoUrl} size="md" />
+                </span>
+                {!p.isMerged ? (
+                  <span className="space-x-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline disabled:opacity-40"
+                      disabled={index === 0}
+                      onClick={() => moveHomeLeague(h.id, -1)}
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline disabled:opacity-40"
+                      disabled={index === p.homeLeagues.length - 1}
+                      onClick={() => moveHomeLeague(h.id, 1)}
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-600 hover:underline"
+                      onClick={() => props.onRemoveHomeLeague(h.id)}
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+            {p.homeLeagues.length === 0 ? (
+              <li className="text-gray-500">No home leagues yet</li>
+            ) : null}
+          </ul>
+          {!p.isMerged && availableHomeLeagues.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <select
+                  className="flex-1 rounded border px-3 py-2 text-sm"
+                  value={newHomeLeague}
+                  onChange={(e) => setNewHomeLeague(e.target.value)}
+                >
+                  <option value="">Select home league</option>
+                  {availableHomeLeagues.map(([code, label]) => (
+                    <option key={code} value={code}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="rounded border px-3 py-2 text-sm"
+                  onClick={() => {
+                    if (!newHomeLeague) return
+                    props.onAddHomeLeague(newHomeLeague)
+                    setNewHomeLeague('')
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              {newHomeLeague && isValidHomeLeague(newHomeLeague) ? (
+                <HomeLeagueMark
+                  label={HOME_LEAGUES[newHomeLeague]}
+                  logoUrl={HOME_LEAGUE_LOGOS[newHomeLeague]}
+                  size="md"
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
         <p className="text-xs text-gray-500">
-          Current skill label: {skillLevelLabel(p.skillLevel)}
+          Linear: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
+          {effectiveSkillLabel(p, 'fibonacci')} · Areas:{' '}
+          {effectiveSkillLabel(p, 'areas')}
         </p>
-        {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
+        {props.formError ? (
+          <LiveMessage variant="alert" className="text-sm text-red-600">
+            {props.formError}
+          </LiveMessage>
+        ) : null}
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -1091,27 +2951,43 @@ function CreatePanel(props: {
     firstName: string
     lastName: string
     rosterName?: string
+    nickname?: string | null
     jerseyNumber?: number | null
+    jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: {
+      offense: number | null
+      defense: number | null
+      stayingAlive: number | null
+      courtPresence: number | null
+    } | null
+    gender?: string | null
     email?: string
   }) => void
 }) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [rosterName, setRosterName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [jerseyNumber, setJerseyNumber] = useState('')
-  const [skillLevel, setSkillLevel] = useState('')
+  const [jerseyName, setJerseyName] = useState('')
+  const [skillFields, setSkillFields] = useState<SkillFieldsValue>(() =>
+    emptySkillFieldsValue()
+  )
+  const [gender, setGender] = useState('')
   const [email, setEmail] = useState('')
+  const nicknameDefault = defaultNickname(firstName, lastName)
+  const jerseyNameDefault = defaultJerseyName(lastName)
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4 text-gray-900">
-        <h2 className="text-lg font-semibold text-gray-900">Add player</h2>
+    <Dialog open onClose={props.onClose} title="Add player" className="max-w-lg">
+      <div className="space-y-4 text-gray-900">
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
             First name
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
             />
@@ -1119,7 +2995,7 @@ function CreatePanel(props: {
           <label className="text-sm">
             Last name
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
             />
@@ -1127,30 +3003,56 @@ function CreatePanel(props: {
           <label className="text-sm col-span-2">
             Roster name (optional)
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={rosterName}
               onChange={(e) => setRosterName(e.target.value)}
             />
           </label>
+          <label className="text-sm col-span-2">
+            Nickname (optional)
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder={nicknameDefault || 'First L'}
+              aria-describedby="create-nickname-help"
+            />
+            <FieldHelp id="create-nickname-help">
+              Leave blank to use {nicknameDefault || 'first name + last initial'}.
+            </FieldHelp>
+          </label>
           <label className="text-sm">
             Jersey #
             <input
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               value={jerseyNumber}
               onChange={(e) => setJerseyNumber(e.target.value)}
             />
           </label>
           <label className="text-sm">
-            Skill
+            Jersey name (optional)
+            <input
+              className="mt-1 w-full rounded border px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              value={jerseyName}
+              onChange={(e) => setJerseyName(e.target.value)}
+              placeholder={jerseyNameDefault || 'Last name'}
+              aria-describedby="create-jersey-name-help"
+            />
+            <FieldHelp id="create-jersey-name-help">
+              Leave blank to use {jerseyNameDefault || 'last name'}.
+            </FieldHelp>
+          </label>
+          <label className="text-sm">
+            Gender
             <select
               className="mt-1 w-full rounded border px-3 py-2"
-              value={skillLevel}
-              onChange={(e) => setSkillLevel(e.target.value)}
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
             >
               <option value="">Unset</option>
-              {Object.entries(SKILL_LEVELS).map(([value, label]) => (
+              {Object.entries(GENDERS).map(([value, label]) => (
                 <option key={value} value={value}>
-                  {value}: {label}
+                  {label}
                 </option>
               ))}
             </select>
@@ -1164,41 +3066,63 @@ function CreatePanel(props: {
             />
           </label>
         </div>
-        {props.formError ? <p className="text-sm text-red-600">{props.formError}</p> : null}
+        <SkillFieldsEditor
+          value={skillFields}
+          onChange={setSkillFields}
+          idPrefix="create-skill"
+        />
+        {props.formError ? (
+          <LiveMessage variant="alert" className="text-sm text-red-600">
+            {props.formError}
+          </LiveMessage>
+        ) : null}
         <div className="flex justify-end gap-2">
-          <button type="button" className="rounded border px-3 py-2 text-sm" onClick={props.onClose}>
+          <button
+            type="button"
+            className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Cancel
           </button>
           <button
             type="button"
             disabled={props.saving || !firstName.trim() || !lastName.trim()}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-            onClick={() =>
+            className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={() => {
+              const skillPatch = skillFieldsToPatch(skillFields)
               props.onCreate({
                 firstName,
                 lastName,
                 rosterName: rosterName.trim() || undefined,
+                nickname: nickname.trim() || null,
                 jerseyNumber: parseJerseyNumber(jerseyNumber),
-                skillLevel: skillLevel ? Number(skillLevel) : null,
+                jerseyName: jerseyName.trim() || null,
+                skillLevel: skillPatch.skillLevel,
+                skillLevelFib: skillPatch.skillLevelFib,
+                skillAreas: skillPatch.skillAreas,
+                gender: gender || null,
                 email: email.trim() || undefined,
               })
-            }
+            }}
           >
             Create
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
 function HistoryPanel(props: { history: HistoryRow[]; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 text-gray-900">
-        <div className="flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-900">Change history</h2>
-          <button type="button" className="text-sm text-gray-500" onClick={props.onClose}>
+    <Dialog open onClose={props.onClose} title="Change history" className="max-w-2xl">
+      <div className="space-y-4 text-gray-900">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            onClick={props.onClose}
+          >
             Close
           </button>
         </div>
@@ -1228,6 +3152,6 @@ function HistoryPanel(props: { history: HistoryRow[]; onClose: () => void }) {
           </ul>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

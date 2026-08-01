@@ -11,6 +11,15 @@ export type AdminSessionPayload = {
   exp: number
 }
 
+/** Local `next dev` only — never active when NODE_ENV is production. */
+export function getDevBypassAdminSession(): AdminSessionPayload | null {
+  if (process.env.NODE_ENV !== 'development') return null
+  return {
+    email: process.env.ADMIN_DEV_EMAIL?.trim().toLowerCase() || 'dev@localhost',
+    exp: Math.floor(Date.now() / 1000) + ADMIN_SESSION_TTL_SECONDS,
+  }
+}
+
 function getAdminSessionSecret(): string | null {
   const secret = process.env.ADMIN_SESSION_SECRET?.trim()
   return secret ? secret : null
@@ -66,7 +75,10 @@ export function readAdminSession(token: string | null | undefined): AdminSession
 }
 
 export function getAdminSessionFromRequest(request: NextRequest): AdminSessionPayload | null {
-  return readAdminSession(request.cookies.get(ADMIN_SESSION_COOKIE)?.value)
+  return (
+    getDevBypassAdminSession() ??
+    readAdminSession(request.cookies.get(ADMIN_SESSION_COOKIE)?.value)
+  )
 }
 
 export function verifyAdminSession(request: NextRequest): boolean {

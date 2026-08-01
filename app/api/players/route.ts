@@ -6,6 +6,8 @@ import {
 import { listPlayers } from '@/app/lib/players/queries'
 import { createPlayer } from '@/app/lib/players/mutations'
 import { isValidSkillLevel } from '@/app/lib/players/skill'
+import { isValidGender } from '@/app/lib/players/gender'
+import { isValidHomeLeague } from '@/app/lib/players/home-league'
 
 export async function GET(request: NextRequest) {
   const session = getAdminSessionFromRequest(request)
@@ -15,6 +17,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const q = searchParams.get('q') ?? undefined
     const skillParam = searchParams.get('skill')
+    const homeLeagueParam = searchParams.get('homeLeague')
+    const eventIdParam = searchParams.get('eventId')
     const includeMerged = searchParams.get('includeMerged') === '1'
 
     let skill: number | 'unset' | null = null
@@ -24,7 +28,21 @@ export async function GET(request: NextRequest) {
       if (isValidSkillLevel(n)) skill = n
     }
 
-    const players = await listPlayers({ q, skill, includeMerged })
+    let homeLeague: string | 'unset' | null = null
+    if (homeLeagueParam === 'unset') homeLeague = 'unset'
+    else if (homeLeagueParam && isValidHomeLeague(homeLeagueParam)) {
+      homeLeague = homeLeagueParam
+    }
+
+    const eventId =
+      eventIdParam &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        eventIdParam
+      )
+        ? eventIdParam
+        : null
+
+    const players = await listPlayers({ q, skill, homeLeague, eventId, includeMerged })
     return NextResponse.json({ players })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list players'
@@ -41,8 +59,18 @@ export async function POST(request: NextRequest) {
       firstName?: string
       lastName?: string
       rosterName?: string
+      nickname?: string | null
       jerseyNumber?: number | null
+      jerseyName?: string | null
       skillLevel?: number | null
+      skillLevelFib?: number | null
+      skillAreas?: {
+        offense?: number | null
+        defense?: number | null
+        stayingAlive?: number | null
+        courtPresence?: number | null
+      } | null
+      gender?: string | null
       email?: string | null
     }
 
@@ -53,12 +81,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (body.gender != null && body.gender !== '' && !isValidGender(body.gender)) {
+      return NextResponse.json({ error: 'Invalid gender' }, { status: 400 })
+    }
+
     const player = await createPlayer({
       firstName: body.firstName,
       lastName: body.lastName,
       rosterName: body.rosterName,
+      nickname: body.nickname,
       jerseyNumber: body.jerseyNumber ?? null,
+      jerseyName: body.jerseyName,
       skillLevel: body.skillLevel ?? null,
+      skillLevelFib: body.skillLevelFib ?? null,
+      skillAreas: body.skillAreas ?? null,
+      gender: body.gender || null,
       email: body.email,
       actor: session.email,
       source: 'admin',

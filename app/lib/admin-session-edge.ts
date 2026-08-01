@@ -10,6 +10,15 @@ export type AdminSessionPayload = {
   exp: number
 }
 
+/** Local `next dev` only — never active when NODE_ENV is production. */
+function getDevBypassAdminSession(): AdminSessionPayload | null {
+  if (process.env.NODE_ENV !== 'development') return null
+  return {
+    email: process.env.ADMIN_DEV_EMAIL?.trim().toLowerCase() || 'dev@localhost',
+    exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12,
+  }
+}
+
 function adminEmailAllowlist(): Set<string> | null {
   const allowed = process.env.ADMIN_ALLOWED_EMAILS?.trim()
   if (!allowed) {
@@ -45,6 +54,9 @@ function safeEqual(a: string, b: string): boolean {
 export async function readAdminSessionEdge(
   token: string | null | undefined
 ): Promise<AdminSessionPayload | null> {
+  const bypass = getDevBypassAdminSession()
+  if (bypass) return bypass
+
   if (!token) return null
   const [encodedPayload, signature] = token.split('.')
   if (!encodedPayload || !signature) return null

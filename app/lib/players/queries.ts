@@ -1,17 +1,27 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import {
+  eventRegistrations,
   playerAliases,
   playerChanges,
   playerEmails,
+  playerHomeLeagues,
   players,
 } from '@/app/db/schema'
-import { skillLevelLabel } from '@/app/lib/players/skill'
+import {
+  resolveJerseyName,
+  resolveNickname,
+  skillLevelLabel,
+} from '@/app/lib/players/skill'
+import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
+import { homeLeagueLabel, homeLeagueLogoUrl, isValidHomeLeague } from '@/app/lib/players/home-league'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
 export async function listPlayers(opts: {
   q?: string
   skill?: number | 'unset' | null
+  homeLeague?: string | 'unset' | null
+  eventId?: string | null
   includeMerged?: boolean
 }): Promise<PlayerListItem[]> {
   const db = getDb()
@@ -25,6 +35,27 @@ export async function listPlayers(opts: {
     conditions.push(isNull(players.skillLevel))
   } else if (typeof opts.skill === 'number') {
     conditions.push(eq(players.skillLevel, opts.skill))
+  }
+
+  if (opts.homeLeague === 'unset') {
+    const playersWithHomeLeague = db
+      .select({ playerId: playerHomeLeagues.playerId })
+      .from(playerHomeLeagues)
+    conditions.push(notInArray(players.id, playersWithHomeLeague))
+  } else if (opts.homeLeague && isValidHomeLeague(opts.homeLeague)) {
+    const matchingHomeLeagueIds = db
+      .select({ playerId: playerHomeLeagues.playerId })
+      .from(playerHomeLeagues)
+      .where(eq(playerHomeLeagues.homeLeague, opts.homeLeague))
+    conditions.push(inArray(players.id, matchingHomeLeagueIds))
+  }
+
+  if (opts.eventId) {
+    const registeredIds = db
+      .select({ playerId: eventRegistrations.playerId })
+      .from(eventRegistrations)
+      .where(eq(eventRegistrations.eventId, opts.eventId))
+    conditions.push(inArray(players.id, registeredIds))
   }
 
   if (opts.q?.trim()) {
@@ -43,6 +74,8 @@ export async function listPlayers(opts: {
         ilike(players.firstName, term),
         ilike(players.lastName, term),
         ilike(players.rosterName, term),
+        ilike(players.nickname, term),
+        ilike(players.jerseyName, term),
         inArray(players.id, matchingEmailIds),
         inArray(players.id, matchingAliasIds)
       )
@@ -63,6 +96,12 @@ export async function listPlayers(opts: {
     .from(playerEmails)
     .where(inArray(playerEmails.playerId, ids))
 
+  const homeLeagueRows = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(inArray(playerHomeLeagues.playerId, ids))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
   const primaryByPlayer = new Map<string, string>()
   for (const e of emails) {
     if (e.isPrimary && !primaryByPlayer.has(e.playerId)) {
@@ -75,16 +114,41 @@ export async function listPlayers(opts: {
     }
   }
 
+  const homeLeaguesByPlayer = new Map<
+    string,
+    { homeLeague: string; label: string; logoUrl: string | null }[]
+  >()
+  for (const row of homeLeagueRows) {
+    const list = homeLeaguesByPlayer.get(row.playerId) ?? []
+    list.push({
+      homeLeague: row.homeLeague,
+      label: homeLeagueLabel(row.homeLeague),
+      logoUrl: homeLeagueLogoUrl(row.homeLeague),
+    })
+    homeLeaguesByPlayer.set(row.playerId, list)
+  }
+
   return rows.map((r) => ({
     id: r.id,
     firstName: r.firstName,
     lastName: r.lastName,
     rosterName: r.rosterName,
+    nickname: resolveNickname(r.nickname, r.firstName, r.lastName),
     jerseyNumber: r.jerseyNumber,
+    jerseyName: resolveJerseyName(r.jerseyName, r.lastName),
     skillLevel: r.skillLevel,
+    skillLevelFib: r.skillLevelFib,
+    skillAreas: r.skillAreas ?? null,
     skillLabel: skillLevelLabel(r.skillLevel),
+    gender: r.gender,
+    genderLabel: genderLabel(r.gender),
+    genderGroupLabel: genderGroupLabel(r.gender),
+    photoUrl: r.photoUrl ?? null,
     primaryEmail: primaryByPlayer.get(r.id) ?? null,
     isMerged: r.isMerged,
+    hasStrongPersonality: r.hasStrongPersonality,
+    strongPersonalityNotes: r.strongPersonalityNotes,
+    homeLeagues: homeLeaguesByPlayer.get(r.id) ?? [],
   }))
 }
 
@@ -105,17 +169,44 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     .where(eq(playerAliases.playerId, playerId))
     .orderBy(asc(playerAliases.alias))
 
+  const homeLeagues = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
+  const nicknameCustom = player.nickname?.trim() ? player.nickname.trim() : null
+  const jerseyNameCustom = player.jerseyName?.trim() ? player.jerseyName.trim() : null
+
   return {
     id: player.id,
     firstName: player.firstName,
     lastName: player.lastName,
     rosterName: player.rosterName,
+    nickname: resolveNickname(nicknameCustom, player.firstName, player.lastName),
+    nicknameCustom,
     jerseyNumber: player.jerseyNumber,
+    jerseyName: resolveJerseyName(jerseyNameCustom, player.lastName),
+    jerseyNameCustom,
     skillLevel: player.skillLevel,
+    skillLevelFib: player.skillLevelFib,
+    skillAreas: player.skillAreas ?? null,
+    gender: player.gender,
+    photoUrl: player.photoUrl ?? null,
+    photoPathname: player.photoPathname ?? null,
     isMerged: player.isMerged,
     mergedIntoPlayerId: player.mergedIntoPlayerId,
+    hasStrongPersonality: player.hasStrongPersonality,
+    strongPersonalityNotes: player.strongPersonalityNotes,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
     aliases: aliases.map((a) => ({ id: a.id, alias: a.alias })),
+    homeLeagues: homeLeagues.map((h) => ({
+      id: h.id,
+      homeLeague: h.homeLeague,
+      label: homeLeagueLabel(h.homeLeague),
+      logoUrl: homeLeagueLogoUrl(h.homeLeague),
+      sortOrder: h.sortOrder,
+    })),
   }
 }
 
@@ -125,12 +216,24 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
     firstName: snapshot.firstName,
     lastName: snapshot.lastName,
     rosterName: snapshot.rosterName,
+    nickname: snapshot.nickname,
+    nicknameCustom: snapshot.nicknameCustom,
     jerseyNumber: snapshot.jerseyNumber,
+    jerseyName: snapshot.jerseyName,
+    jerseyNameCustom: snapshot.jerseyNameCustom,
     skillLevel: snapshot.skillLevel,
+    skillLevelFib: snapshot.skillLevelFib,
+    skillAreas: snapshot.skillAreas,
+    gender: snapshot.gender,
+    photoUrl: snapshot.photoUrl,
+    photoPathname: snapshot.photoPathname,
     isMerged: snapshot.isMerged,
     mergedIntoPlayerId: snapshot.mergedIntoPlayerId,
+    hasStrongPersonality: snapshot.hasStrongPersonality,
+    strongPersonalityNotes: snapshot.strongPersonalityNotes,
     emails: snapshot.emails,
     aliases: snapshot.aliases,
+    homeLeagues: snapshot.homeLeagues,
   }
 }
 

@@ -7,8 +7,11 @@ import { getPlayerSnapshot } from '@/app/lib/players/queries'
 import {
   addPlayerAlias,
   addPlayerEmail,
+  addPlayerHomeLeague,
   removePlayerAlias,
   removePlayerEmail,
+  removePlayerHomeLeague,
+  reorderPlayerHomeLeagues,
   setPrimaryEmail,
   updatePlayer,
 } from '@/app/lib/players/mutations'
@@ -42,13 +45,28 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       firstName?: string
       lastName?: string
       rosterName?: string
+      nickname?: string | null
       jerseyNumber?: number | null
+      jerseyName?: string | null
       skillLevel?: number | null
+      skillLevelFib?: number | null
+      skillAreas?: {
+        offense?: number | null
+        defense?: number | null
+        stayingAlive?: number | null
+        courtPresence?: number | null
+      } | null
+      gender?: string | null
+      hasStrongPersonality?: boolean
+      strongPersonalityNotes?: string | null
       addEmail?: string
       removeEmailId?: string
       setPrimaryEmailId?: string
       addAlias?: string
       removeAliasId?: string
+      addHomeLeague?: string
+      removeHomeLeagueId?: string
+      reorderHomeLeagueIds?: string[]
     }
 
     let player = await getPlayerSnapshot(id)
@@ -60,8 +78,15 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       body.firstName !== undefined ||
       body.lastName !== undefined ||
       body.rosterName !== undefined ||
+      body.nickname !== undefined ||
       body.jerseyNumber !== undefined ||
-      body.skillLevel !== undefined
+      body.jerseyName !== undefined ||
+      body.skillLevel !== undefined ||
+      body.skillLevelFib !== undefined ||
+      body.skillAreas !== undefined ||
+      body.gender !== undefined ||
+      body.hasStrongPersonality !== undefined ||
+      body.strongPersonalityNotes !== undefined
 
     if (hasCorePatch) {
       player = await updatePlayer(
@@ -70,8 +95,15 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           firstName: body.firstName,
           lastName: body.lastName,
           rosterName: body.rosterName,
+          nickname: body.nickname,
           jerseyNumber: body.jerseyNumber,
+          jerseyName: body.jerseyName,
           skillLevel: body.skillLevel,
+          skillLevelFib: body.skillLevelFib,
+          skillAreas: body.skillAreas,
+          gender: body.gender,
+          hasStrongPersonality: body.hasStrongPersonality,
+          strongPersonalityNotes: body.strongPersonalityNotes,
         },
         { actor: session.email, source: 'admin' }
       )
@@ -95,6 +127,21 @@ export async function PATCH(request: NextRequest, context: Ctx) {
     }
     if (body.removeAliasId) {
       player = await removePlayerAlias(id, body.removeAliasId, {
+        actor: session.email,
+      })
+    }
+    if (body.addHomeLeague) {
+      player = await addPlayerHomeLeague(id, body.addHomeLeague, {
+        actor: session.email,
+      })
+    }
+    if (body.removeHomeLeagueId) {
+      player = await removePlayerHomeLeague(id, body.removeHomeLeagueId, {
+        actor: session.email,
+      })
+    }
+    if (body.reorderHomeLeagueIds) {
+      player = await reorderPlayerHomeLeagues(id, body.reorderHomeLeagueIds, {
         actor: session.email,
       })
     }

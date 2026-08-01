@@ -1,21 +1,110 @@
-import { and, eq } from 'drizzle-orm'
+import { and, asc, eq, max } from 'drizzle-orm'
+import { del, put } from '@vercel/blob'
 import { getDb } from '@/app/lib/db'
-import { playerAliases, playerEmails, players } from '@/app/db/schema'
+import { playerAliases, playerEmails, playerHomeLeagues, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
-import { defaultRosterName, isValidSkillLevel } from '@/app/lib/players/skill'
+import {
+  bulkPatchHasCoreFields,
+  type BulkPlayerPatch,
+} from '@/app/lib/players/bulk'
+import {
+  defaultRosterName,
+  isValidFibSkillLevel,
+  isValidSkillLevel,
+  mergeSkillAreasPatch,
+  normalizeStoredJerseyName,
+  normalizeStoredNickname,
+  parseSkillAreas,
+  type SkillAreas,
+} from '@/app/lib/players/skill'
+import { isValidGender } from '@/app/lib/players/gender'
+import { isValidHomeLeague } from '@/app/lib/players/home-league'
 import {
   getPlayerSnapshot,
   snapshotToJson,
 } from '@/app/lib/players/queries'
 import { normalizeAlias, normalizeEmail, normalizeNamePart } from '@/app/lib/players/normalize'
-import type { ChangeSource } from '@/app/lib/players/types'
+import type { ChangeSource, PlayerSnapshot } from '@/app/lib/players/types'
+
+export const PLAYER_PHOTO_BLOB_PREFIX = 'player-photos/'
+
+const ALLOWED_BLOB_HOST_SUFFIXES = ['.blob.vercel-storage.com']
+
+function isVercelBlobHost(hostname: string): boolean {
+  return ALLOWED_BLOB_HOST_SUFFIXES.some(
+    (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix)
+  )
+}
+
+function normalizeBlobPathname(pathname: string): string {
+  return pathname.startsWith('/') ? pathname.slice(1) : pathname
+}
+
+function isUnderPlayerPhotoPrefix(pathname: string): boolean {
+  return normalizeBlobPathname(pathname).startsWith(PLAYER_PHOTO_BLOB_PREFIX)
+}
+
+function isImageFile(file: File): boolean {
+  const name = file.name.toLowerCase()
+  const type = file.type.toLowerCase()
+  return (
+    type.startsWith('image/') ||
+    name.endsWith('.jpg') ||
+    name.endsWith('.jpeg') ||
+    name.endsWith('.png') ||
+    name.endsWith('.webp') ||
+    name.endsWith('.gif')
+  )
+}
+
+function imageContentType(file: File): string {
+  if (file.type && file.type.startsWith('image/')) return file.type
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.webp')) return 'image/webp'
+  if (name.endsWith('.gif')) return 'image/gif'
+  return 'image/jpeg'
+}
+
+function extensionForFile(file: File): string {
+  const name = file.name.toLowerCase()
+  const match = name.match(/\.(jpe?g|png|webp|gif)$/)
+  if (match) return match[1] === 'jpeg' ? 'jpg' : match[1]
+  const type = file.type.toLowerCase()
+  if (type.includes('png')) return 'png'
+  if (type.includes('webp')) return 'webp'
+  if (type.includes('gif')) return 'gif'
+  return 'jpg'
+}
+
+async function deletePlayerBlob(photoUrl: string | null, photoPathname: string | null) {
+  try {
+    if (photoPathname && isUnderPlayerPhotoPrefix(photoPathname)) {
+      await del(normalizeBlobPathname(photoPathname))
+      return
+    }
+    if (photoUrl) {
+      const parsed = new URL(photoUrl)
+      if (isVercelBlobHost(parsed.hostname)) {
+        await del(photoUrl)
+      }
+    }
+  } catch {
+    // Best-effort cleanup; DB update should still proceed.
+  }
+}
 
 export async function createPlayer(input: {
   firstName: string
   lastName: string
   rosterName?: string
+  nickname?: string | null
   jerseyNumber?: number | null
+  jerseyName?: string | null
   skillLevel?: number | null
+  skillLevelFib?: number | null
+  skillAreas?: SkillAreas | Partial<SkillAreas> | null
+  gender?: string | null
   email?: string | null
   actor: string
   source?: ChangeSource
@@ -31,11 +120,38 @@ export async function createPlayer(input: {
   const rosterName = input.rosterName?.trim()
     ? normalizeNamePart(input.rosterName)
     : defaultRosterName(firstName, lastName)
+  const nickname =
+    input.nickname !== undefined
+      ? normalizeStoredNickname(input.nickname, firstName, lastName)
+      : null
+  const jerseyName =
+    input.jerseyName !== undefined
+      ? normalizeStoredJerseyName(input.jerseyName, lastName)
+      : null
 
   let skillLevel: number | null = null
   if (input.skillLevel != null) {
     if (!isValidSkillLevel(input.skillLevel)) throw new Error('Invalid skill level')
     skillLevel = input.skillLevel
+  }
+
+  let skillLevelFib: number | null = null
+  if (input.skillLevelFib != null) {
+    if (!isValidFibSkillLevel(input.skillLevelFib)) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    skillLevelFib = input.skillLevelFib
+  }
+
+  let skillAreas: SkillAreas | null = null
+  if (input.skillAreas !== undefined && input.skillAreas !== null) {
+    skillAreas = parseSkillAreas(input.skillAreas)
+  }
+
+  let gender: string | null = null
+  if (input.gender != null) {
+    if (!isValidGender(input.gender)) throw new Error('Invalid gender')
+    gender = input.gender
   }
 
   const [created] = await db
@@ -44,8 +160,13 @@ export async function createPlayer(input: {
       firstName,
       lastName,
       rosterName,
+      nickname,
       jerseyNumber: input.jerseyNumber ?? null,
+      jerseyName,
       skillLevel,
+      skillLevelFib,
+      skillAreas,
+      gender,
     })
     .returning()
 
@@ -78,8 +199,15 @@ export async function updatePlayer(
     firstName?: string
     lastName?: string
     rosterName?: string
+    nickname?: string | null
     jerseyNumber?: number | null
+    jerseyName?: string | null
     skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: SkillAreas | Partial<SkillAreas> | null
+    gender?: string | null
+    hasStrongPersonality?: boolean
+    strongPersonalityNotes?: string | null
   },
   opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
 ) {
@@ -115,6 +243,41 @@ export async function updatePlayer(
       throw new Error('Invalid skill level')
     }
     updates.skillLevel = patch.skillLevel
+  }
+  if (patch.skillLevelFib !== undefined) {
+    if (patch.skillLevelFib !== null && !isValidFibSkillLevel(patch.skillLevelFib)) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    updates.skillLevelFib = patch.skillLevelFib
+  }
+  if (patch.skillAreas !== undefined) {
+    if (patch.skillAreas === null) {
+      updates.skillAreas = null
+    } else {
+      updates.skillAreas = mergeSkillAreasPatch(before.skillAreas, patch.skillAreas)
+    }
+  }
+  if (patch.gender !== undefined) {
+    if (patch.gender !== null && !isValidGender(patch.gender)) {
+      throw new Error('Invalid gender')
+    }
+    updates.gender = patch.gender
+  }
+
+  const nextFirst = updates.firstName ?? before.firstName
+  const nextLast = updates.lastName ?? before.lastName
+  if (patch.nickname !== undefined) {
+    updates.nickname = normalizeStoredNickname(patch.nickname, nextFirst, nextLast)
+  }
+  if (patch.jerseyName !== undefined) {
+    updates.jerseyName = normalizeStoredJerseyName(patch.jerseyName, nextLast)
+  }
+  if (patch.hasStrongPersonality !== undefined) {
+    updates.hasStrongPersonality = patch.hasStrongPersonality
+  }
+  if (patch.strongPersonalityNotes !== undefined) {
+    updates.strongPersonalityNotes =
+      patch.strongPersonalityNotes != null ? patch.strongPersonalityNotes.trim() || null : null
   }
 
   await db.update(players).set(updates).where(eq(players.id, playerId))
@@ -303,6 +466,137 @@ export async function removePlayerAlias(
   return after
 }
 
+export async function addPlayerHomeLeague(
+  playerId: string,
+  homeLeagueRaw: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  if (!isValidHomeLeague(homeLeagueRaw)) {
+    throw new Error('Invalid home league')
+  }
+  if (before.homeLeagues.some((h) => h.homeLeague === homeLeagueRaw)) {
+    throw new Error('Home league already on this player')
+  }
+
+  const db = getDb()
+  const [agg] = await db
+    .select({ maxSort: max(playerHomeLeagues.sortOrder) })
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+  const nextSort = (agg?.maxSort ?? -1) + 1
+
+  await db.insert(playerHomeLeagues).values({
+    playerId,
+    homeLeague: homeLeagueRaw,
+    sortOrder: nextSort,
+  })
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function removePlayerHomeLeague(
+  playerId: string,
+  homeLeagueId: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .delete(playerHomeLeagues)
+    .where(
+      and(eq(playerHomeLeagues.id, homeLeagueId), eq(playerHomeLeagues.playerId, playerId))
+    )
+
+  const remaining = await db
+    .select()
+    .from(playerHomeLeagues)
+    .where(eq(playerHomeLeagues.playerId, playerId))
+    .orderBy(asc(playerHomeLeagues.sortOrder))
+
+  for (let i = 0; i < remaining.length; i++) {
+    if (remaining[i].sortOrder !== i) {
+      await db
+        .update(playerHomeLeagues)
+        .set({ sortOrder: i })
+        .where(eq(playerHomeLeagues.id, remaining[i].id))
+    }
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function reorderPlayerHomeLeagues(
+  playerId: string,
+  homeLeagueIds: string[],
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const existingIds = before.homeLeagues.map((h) => h.id)
+  if (homeLeagueIds.length !== existingIds.length) {
+    throw new Error('Home league reorder must include every current home league')
+  }
+  const existingSet = new Set(existingIds)
+  const seen = new Set<string>()
+  for (const id of homeLeagueIds) {
+    if (!existingSet.has(id)) {
+      throw new Error('Unknown home league id in reorder')
+    }
+    if (seen.has(id)) {
+      throw new Error('Duplicate home league id in reorder')
+    }
+    seen.add(id)
+  }
+
+  const db = getDb()
+  for (let i = 0; i < homeLeagueIds.length; i++) {
+    await db
+      .update(playerHomeLeagues)
+      .set({ sortOrder: i })
+      .where(
+        and(eq(playerHomeLeagues.id, homeLeagueIds[i]), eq(playerHomeLeagues.playerId, playerId))
+      )
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
 async function findEmailOwner(email: string): Promise<string | null> {
   const db = getDb()
   const [row] = await db
@@ -359,4 +653,197 @@ export async function ensurePlayerAlias(
     source: 'import',
     importBatchId: opts.importBatchId,
   })
+}
+
+/**
+ * Apply the same patch to many players. Home-league add is idempotent;
+ * remove-by-code is a no-op when the league is not on the player.
+ */
+export async function bulkUpdatePlayers(
+  playerIds: string[],
+  patch: BulkPlayerPatch,
+  opts: { actor: string }
+): Promise<{ updated: number; players: PlayerSnapshot[] }> {
+  if (playerIds.length === 0) {
+    throw new Error('playerIds must be a non-empty array')
+  }
+  if (
+    !bulkPatchHasCoreFields(patch) &&
+    patch.addHomeLeague === undefined &&
+    patch.removeHomeLeague === undefined
+  ) {
+    throw new Error('patch must include at least one field to update')
+  }
+
+  const results: PlayerSnapshot[] = []
+
+  for (const playerId of playerIds) {
+    let snapshot = await getPlayerSnapshot(playerId)
+    if (!snapshot) {
+      throw new Error(`Player not found: ${playerId}`)
+    }
+    if (snapshot.isMerged) {
+      throw new Error(`Cannot edit a merged player: ${playerId}`)
+    }
+
+    if (bulkPatchHasCoreFields(patch)) {
+      const next = await updatePlayer(
+        playerId,
+        {
+          gender: patch.gender,
+          skillLevel: patch.skillLevel,
+          skillLevelFib: patch.skillLevelFib,
+          skillAreas: patch.skillAreas,
+          hasStrongPersonality: patch.hasStrongPersonality,
+          strongPersonalityNotes: patch.strongPersonalityNotes,
+        },
+        { actor: opts.actor, source: 'admin' }
+      )
+      if (!next) throw new Error(`Player not found: ${playerId}`)
+      snapshot = next
+    }
+
+    if (patch.addHomeLeague) {
+      const already = snapshot.homeLeagues.some((h) => h.homeLeague === patch.addHomeLeague)
+      if (!already) {
+        const next = await addPlayerHomeLeague(playerId, patch.addHomeLeague, {
+          actor: opts.actor,
+        })
+        if (!next) throw new Error(`Player not found: ${playerId}`)
+        snapshot = next
+      }
+    }
+
+    if (patch.removeHomeLeague) {
+      const match = snapshot.homeLeagues.find((h) => h.homeLeague === patch.removeHomeLeague)
+      if (match) {
+        const next = await removePlayerHomeLeague(playerId, match.id, {
+          actor: opts.actor,
+        })
+        if (!next) throw new Error(`Player not found: ${playerId}`)
+        snapshot = next
+      }
+    }
+
+    results.push(snapshot)
+  }
+
+  return { updated: results.length, players: results }
+}
+
+export async function uploadPlayerPhoto(
+  playerId: string,
+  file: File,
+  opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+  if (!isImageFile(file)) {
+    throw new Error('Only image files are supported (jpg, png, webp, gif)')
+  }
+
+  const ext = extensionForFile(file)
+  const pathname = `${PLAYER_PHOTO_BLOB_PREFIX}${playerId}/${crypto.randomUUID()}.${ext}`
+  const blob = await put(pathname, file, {
+    access: 'public',
+    addRandomSuffix: false,
+    contentType: imageContentType(file),
+  })
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: blob.url,
+      photoPathname: blob.pathname,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  await deletePlayerBlob(before.photoUrl, before.photoPathname)
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: opts.source === 'import' ? 'import' : 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+    importBatchId: opts.importBatchId,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
+}
+
+export async function clearPlayerPhoto(
+  playerId: string,
+  opts: { actor: string; source?: ChangeSource }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: null,
+      photoPathname: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  await deletePlayerBlob(before.photoUrl, before.photoPathname)
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
+}
+
+/** Set photo URL/pathname directly (e.g. after an external Blob upload). */
+export async function setPlayerPhotoFields(
+  playerId: string,
+  photo: { photoUrl: string; photoPathname: string },
+  opts: { actor: string; source?: ChangeSource; importBatchId?: string | null }
+): Promise<PlayerSnapshot> {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .update(players)
+    .set({
+      photoUrl: photo.photoUrl,
+      photoPathname: photo.photoPathname,
+      updatedAt: new Date(),
+    })
+    .where(eq(players.id, playerId))
+
+  if (before.photoUrl !== photo.photoUrl || before.photoPathname !== photo.photoPathname) {
+    await deletePlayerBlob(before.photoUrl, before.photoPathname)
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: opts.source ?? 'admin',
+    actor: opts.actor,
+    changeType: opts.source === 'import' ? 'import' : 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+    importBatchId: opts.importBatchId,
+  })
+  if (!after) throw new Error('Player not found')
+  return after
 }

@@ -1,6 +1,10 @@
 'use client';
 
 import { useCallback, useRef, useState, type ChangeEvent } from 'react';
+import { FieldHelp, LiveMessage } from '@/app/components/ui';
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600';
 
 export default function ThrowdownTeamSchedulesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,17 +95,21 @@ export default function ThrowdownTeamSchedulesPage() {
           Upload a Throw Down schedule CSV export to generate an Excel workbook with a summary tab
           plus one sheet per team (group phase rounds, reffing/off status, and playoff blocks).
         </p>
+        <FieldHelp>
+          Export your schedule from Throw Down as CSV, then generate a per-team workbook for
+          coaches and captains.
+        </FieldHelp>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-900">1. Schedule CSV</h2>
-        <p className="text-sm text-gray-600">
+        <FieldHelp>
           Use the CSV export from Throw Down (columns like Date, Court, Phase, Home Team, Away
           Team, Referees).
-        </p>
+        </FieldHelp>
 
         <div className="flex flex-wrap gap-3">
-          <label className="inline-flex cursor-pointer items-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+          <label className={`inline-flex cursor-pointer items-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 ${FOCUS_RING}`}>
             Choose CSV file
             <input
               ref={fileInputRef}
@@ -115,7 +123,7 @@ export default function ThrowdownTeamSchedulesPage() {
             type="button"
             onClick={() => void loadSample()}
             disabled={isLoadingSample}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+            className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 ${FOCUS_RING}`}
           >
             {isLoadingSample ? 'Loading sample…' : 'Load sample CSV'}
           </button>
@@ -139,28 +147,28 @@ export default function ThrowdownTeamSchedulesPage() {
           type="text"
           value={outputName}
           onChange={(e) => setOutputName(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className={`w-full rounded-md border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
           placeholder="Throw_Down_Team_Schedules"
         />
-        <p className="text-xs text-gray-500">.xlsx will be appended automatically if missing.</p>
+        <FieldHelp>.xlsx will be appended automatically if missing.</FieldHelp>
       </section>
 
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <LiveMessage variant="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
-        </div>
+        </LiveMessage>
       ) : null}
 
       <button
         type="button"
         onClick={() => void generate()}
         disabled={isGenerating || !csv.trim()}
-        className="rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className={`rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
       >
         {isGenerating ? 'Generating…' : 'Generate & download XLSX'}
       </button>
 
-      <p className="text-sm text-gray-500">
+      <FieldHelp>
         Same logic as{' '}
         <code className="rounded bg-gray-100 px-1">schedule_data/build_team_schedules.py</code> —
         run locally with{' '}
@@ -168,7 +176,7 @@ export default function ThrowdownTeamSchedulesPage() {
           python3 schedule_data/build_team_schedules.py --csv your.csv --out out.xlsx
         </code>{' '}
         for styled Excel output with color-coded rows.
-      </p>
+      </FieldHelp>
     </div>
   );
 }

@@ -1,25 +1,121 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv, parseTeamlinktCsv } from '@/app/lib/players/teamlinkt-import'
-import { parseSkillLevel } from '@/app/lib/players/skill'
+import {
+  parseCsv,
+  parseTeamlinktCsv,
+  playerIdForRegistration,
+  shouldApplyProfileField,
+  summarizeRegistrationPreview,
+  type ImportPreviewAction,
+  type TeamlinktRow,
+} from '@/app/lib/players/teamlinkt-import'
+import {
+  defaultJerseyName,
+  defaultNickname,
+  normalizeStoredJerseyName,
+  normalizeStoredNickname,
+  parseSkillLevel,
+  resolveJerseyName,
+  resolveNickname,
+} from '@/app/lib/players/skill'
+import { genderGroup, parseGender } from '@/app/lib/players/gender'
+
+function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
+  return {
+    rowNumber: 2,
+    firstName: 'Jess',
+    lastName: 'Sartin',
+    email: 'jess@example.com',
+    jerseyNumber: null,
+    skillLevel: null,
+    gender: null,
+    raw: {},
+    ...overrides,
+  }
+}
 
 describe('parseSkillLevel', () => {
-  it('maps intermediate/advanced and numeric levels', () => {
-    expect(parseSkillLevel('2')).toBe(2)
-    expect(parseSkillLevel('Intermediate')).toBe(2)
-    expect(parseSkillLevel('3')).toBe(3)
-    expect(parseSkillLevel('advanced')).toBe(3)
-    expect(parseSkillLevel('Beginner')).toBe(1)
-    expect(parseSkillLevel('Worlds level')).toBe(4)
+  it('maps intermediate/advanced and numeric levels onto the ×20 scale', () => {
+    expect(parseSkillLevel('2')).toBe(40)
+    expect(parseSkillLevel('Intermediate')).toBe(40)
+    expect(parseSkillLevel('3')).toBe(60)
+    expect(parseSkillLevel('advanced')).toBe(60)
+    expect(parseSkillLevel('Beginner')).toBe(20)
+    expect(parseSkillLevel('Worlds level')).toBe(80)
+    expect(parseSkillLevel('40')).toBe(40)
+    expect(parseSkillLevel('30')).toBe(30)
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
   })
 
   it('parses Excel floats and composite labels', () => {
-    expect(parseSkillLevel('2.0')).toBe(2)
-    expect(parseSkillLevel('3.0')).toBe(3)
-    expect(parseSkillLevel('2 - Intermediate')).toBe(2)
-    expect(parseSkillLevel('Intermediate (2)')).toBe(2)
-    expect(parseSkillLevel('Level 3')).toBe(3)
+    expect(parseSkillLevel('2.0')).toBe(40)
+    expect(parseSkillLevel('3.0')).toBe(60)
+    expect(parseSkillLevel('2 - Intermediate')).toBe(40)
+    expect(parseSkillLevel('Intermediate (2)')).toBe(40)
+    expect(parseSkillLevel('Level 3')).toBe(60)
+  })
+})
+
+describe('nickname defaults', () => {
+  it('builds first name + last initial', () => {
+    expect(defaultNickname('Jess', 'Sartin')).toBe('Jess S')
+    expect(defaultNickname('alex', 'player')).toBe('alex P')
+  })
+
+  it('uses custom nickname until cleared back to default', () => {
+    expect(resolveNickname(null, 'Jess', 'Sartin')).toBe('Jess S')
+    expect(resolveNickname('JC', 'Jess', 'Sartin')).toBe('JC')
+    expect(normalizeStoredNickname('Jess S', 'Jess', 'Sartin')).toBeNull()
+    expect(normalizeStoredNickname('JC', 'Jess', 'Sartin')).toBe('JC')
+    expect(normalizeStoredNickname('', 'Jess', 'Sartin')).toBeNull()
+  })
+})
+
+describe('jersey name defaults', () => {
+  it('defaults to last name and stores custom overrides', () => {
+    expect(defaultJerseyName('Sartin')).toBe('Sartin')
+    expect(resolveJerseyName(null, 'Sartin')).toBe('Sartin')
+    expect(resolveJerseyName('Jet', 'Sartin')).toBe('Jet')
+    expect(normalizeStoredJerseyName('Sartin', 'Sartin')).toBeNull()
+    expect(normalizeStoredJerseyName('Jet', 'Sartin')).toBe('Jet')
+  })
+})
+
+describe('parseGender', () => {
+  it('maps TeamLinkt gender labels', () => {
+    expect(parseGender('Female')).toBe('female')
+    expect(parseGender('Male')).toBe('male')
+    expect(parseGender('Other')).toBe('other')
+    expect(parseGender('Cisgender Woman')).toBe('female')
+    expect(parseGender('Non-binary')).toBe('nonbinary')
+    expect(parseGender('')).toBeNull()
+  })
+
+  it('groups female/nonbinary/other together', () => {
+    expect(genderGroup('female')).toBe('w_nb_o')
+    expect(genderGroup('nonbinary')).toBe('w_nb_o')
+    expect(genderGroup('other')).toBe('w_nb_o')
+    expect(genderGroup('male')).toBe('men')
+    expect(genderGroup(null)).toBe('unset')
+  })
+})
+
+describe('shouldApplyProfileField', () => {
+  it('skips profile fields by default mode', () => {
+    expect(shouldApplyProfileField(3, null, 'skip')).toBe(false)
+    expect(shouldApplyProfileField(3, 2, 'skip')).toBe(false)
+  })
+
+  it('fill_blank only applies when existing is unset', () => {
+    expect(shouldApplyProfileField(3, null, 'fill_blank')).toBe(true)
+    expect(shouldApplyProfileField(3, 2, 'fill_blank')).toBe(false)
+    expect(shouldApplyProfileField(null, null, 'fill_blank')).toBe(false)
+  })
+
+  it('overwrite replaces differing existing values', () => {
+    expect(shouldApplyProfileField(3, null, 'overwrite')).toBe(true)
+    expect(shouldApplyProfileField(3, 2, 'overwrite')).toBe(true)
+    expect(shouldApplyProfileField(3, 3, 'overwrite')).toBe(false)
   })
 })
 
@@ -48,22 +144,12 @@ describe('teamlinkt csv parse', () => {
       email: 'jess@example.com',
       jerseyNumber: 7,
       skillLevel: null,
+      gender: null,
     })
     expect(parsed.rows[1].email).toBeNull()
     expect(parsed.rows[1].jerseyNumber).toBeNull()
     expect(parsed.warnings.some((w) => /Skill/.test(w))).toBe(true)
     expect(parsed.warnings.some((w) => /Jersey/.test(w))).toBe(false)
-  })
-
-  it('maps alternate jersey headers', () => {
-    const csv = [
-      'First Name,Last Name,Email,Uniform Number',
-      'Jess,Sartin,jess@example.com,#12',
-    ].join('\n')
-    const parsed = parseTeamlinktCsv(csv)
-    expect(parsed.error).toBeUndefined()
-    expect(parsed.rows[0].jerseyNumber).toBe(12)
-    expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(false)
   })
 
   it('maps skill level from CSV labels or numbers', () => {
@@ -77,11 +163,22 @@ describe('teamlinkt csv parse', () => {
     const parsed = parseTeamlinktCsv(csv)
     expect(parsed.error).toBeUndefined()
     expect(parsed.rows).toHaveLength(3)
-    expect(parsed.rows[0].skillLevel).toBe(2)
-    expect(parsed.rows[1].skillLevel).toBe(3)
-    expect(parsed.rows[2].skillLevel).toBe(2)
+    expect(parsed.rows[0].skillLevel).toBe(40)
+    expect(parsed.rows[1].skillLevel).toBe(60)
+    expect(parsed.rows[2].skillLevel).toBe(40)
     expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(true)
     expect(parsed.warnings.some((w) => /No Skill/.test(w))).toBe(false)
+  })
+
+  it('maps alternate jersey headers', () => {
+    const csv = [
+      'First Name,Last Name,Email,Uniform Number',
+      'Jess,Sartin,jess@example.com,#12',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].jerseyNumber).toBe(12)
+    expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(false)
   })
 
   it('errors when name columns are missing', () => {
@@ -104,16 +201,12 @@ describe('teamlinkt csv parse', () => {
       firstName: 'Abby',
       lastName: 'Lee',
       email: 'lee@example.com',
+      gender: 'female',
     })
+    // Birthdate is in raw CSV but not mapped onto the player row
+    expect(parsed.rows[0]).not.toHaveProperty('birthdate')
     expect(parsed.warnings.some((w) => /No Skill/.test(w))).toBe(true)
     expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(true)
-  })
-
-  it('strips a UTF-8 BOM from TeamLinkt exports', () => {
-    const csv = '\uFEFFFirst Name,Last Name,Email\nJess,Sartin,jess@example.com\n'
-    const parsed = parseTeamlinktCsv(csv)
-    expect(parsed.error).toBeUndefined()
-    expect(parsed.rows[0].firstName).toBe('Jess')
   })
 
   it('warns when jersey values cannot be parsed', () => {
@@ -124,5 +217,109 @@ describe('teamlinkt csv parse', () => {
     const parsed = parseTeamlinktCsv(csv)
     expect(parsed.rows[0].jerseyNumber).toBeNull()
     expect(parsed.warnings.some((w) => /no numbers parsed/i.test(w))).toBe(true)
+  })
+
+  it('strips a UTF-8 BOM from TeamLinkt exports', () => {
+    const csv = '\uFEFFFirst Name,Last Name,Email\nJess,Sartin,jess@example.com\n'
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].firstName).toBe('Jess')
+  })
+})
+
+describe('event-scoped registration preview', () => {
+  it('resolves player ids for update and matched skip rows', () => {
+    const update: ImportPreviewAction = {
+      action: 'update',
+      row: sampleRow(),
+      playerId: 'p1',
+      notes: ['Add email'],
+    }
+    const matchedSkip: ImportPreviewAction = {
+      action: 'skip',
+      row: sampleRow({ rowNumber: 3 }),
+      reason: 'Already up to date',
+      playerId: 'p2',
+    }
+    const create: ImportPreviewAction = {
+      action: 'create',
+      row: sampleRow({ rowNumber: 4 }),
+    }
+    const ambiguous: ImportPreviewAction = {
+      action: 'ambiguous',
+      row: sampleRow({ rowNumber: 5 }),
+      reason: 'Multiple players',
+      playerIds: ['a', 'b'],
+    }
+
+    expect(playerIdForRegistration(update)).toBe('p1')
+    expect(playerIdForRegistration(matchedSkip)).toBe('p2')
+    expect(playerIdForRegistration(create)).toBeNull()
+    expect(playerIdForRegistration(ambiguous)).toBeNull()
+    expect(
+      playerIdForRegistration({
+        action: 'skip',
+        row: sampleRow({ rowNumber: 8 }),
+        reason: 'Matched a merged player record',
+        playerId: 'merged-p',
+        excludeFromRegistration: true,
+      })
+    ).toBeNull()
+  })
+
+  it('counts new vs already-registered players for event imports', () => {
+    const actions: ImportPreviewAction[] = [
+      { action: 'create', row: sampleRow() },
+      {
+        action: 'update',
+        row: sampleRow({ rowNumber: 3, firstName: 'Alex' }),
+        playerId: 'existing-new',
+        notes: ['Add email'],
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 4, firstName: 'Sam' }),
+        reason: 'Already up to date',
+        playerId: 'already-on-event',
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 5, firstName: 'Pat' }),
+        reason: 'Already up to date',
+        playerId: 'already-on-event',
+      },
+      {
+        action: 'ambiguous',
+        row: sampleRow({ rowNumber: 6 }),
+        reason: 'dup',
+        playerIds: ['x', 'y'],
+      },
+      {
+        action: 'skip',
+        row: sampleRow({ rowNumber: 7 }),
+        reason: 'Missing first or last name',
+      },
+    ]
+
+    const summary = summarizeRegistrationPreview(
+      actions,
+      new Set(['already-on-event'])
+    )
+    expect(summary).toEqual({ register: 2, alreadyRegistered: 1 })
+  })
+
+  it('without event-linked players treats matched skips as new registrations', () => {
+    const actions: ImportPreviewAction[] = [
+      {
+        action: 'skip',
+        row: sampleRow(),
+        reason: 'Already up to date',
+        playerId: 'p1',
+      },
+    ]
+    expect(summarizeRegistrationPreview(actions, new Set())).toEqual({
+      register: 1,
+      alreadyRegistered: 0,
+    })
   })
 })

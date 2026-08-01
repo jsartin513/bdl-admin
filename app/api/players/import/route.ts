@@ -9,9 +9,15 @@ import {
   listSavedImportBatches,
   previewTeamlinktImport,
   saveTeamlinktImportCsv,
+  type ImportProfileFieldsMode,
 } from '@/app/lib/players/teamlinkt-import'
 
 export const maxDuration = 60
+
+function parseProfileFieldsMode(value: unknown): ImportProfileFieldsMode {
+  if (value === 'fill_blank' || value === 'overwrite' || value === 'skip') return value
+  return 'skip'
+}
 
 async function readJsonBody(request: NextRequest): Promise<
   | {
@@ -22,6 +28,8 @@ async function readJsonBody(request: NextRequest): Promise<
         dryRun?: boolean
         saveOnly?: boolean
         batchId?: string
+        profileFields?: ImportProfileFieldsMode
+        eventId?: string | null
       }
     }
   | { ok: false; error: string }
@@ -33,6 +41,8 @@ async function readJsonBody(request: NextRequest): Promise<
       dryRun?: boolean
       saveOnly?: boolean
       batchId?: string
+      profileFields?: ImportProfileFieldsMode
+      eventId?: string | null
     }
     return { ok: true, body }
   } catch {
@@ -73,6 +83,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsedBody.error }, { status: 400 })
     }
     const body = parsedBody.body
+    const options = { profileFields: parseProfileFieldsMode(body.profileFields) }
+    const eventId = body.eventId?.trim() || null
 
     let csvText = body.csv?.trim() ? body.csv : ''
     let filename = body.filename?.trim() || 'teamlinkt.csv'
@@ -108,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.dryRun !== false) {
-      const preview = await previewTeamlinktImport(csvText)
+      const preview = await previewTeamlinktImport(csvText, options, eventId)
       if (preview.error) {
         return NextResponse.json({ error: preview.error }, { status: 400 })
       }
@@ -117,11 +129,13 @@ export async function POST(request: NextRequest) {
         headers: preview.headers,
         warnings: preview.warnings,
         actions: preview.actions,
+        options,
         summary: {
           create: preview.actions.filter((a) => a.action === 'create').length,
           update: preview.actions.filter((a) => a.action === 'update').length,
           skip: preview.actions.filter((a) => a.action === 'skip').length,
           ambiguous: preview.actions.filter((a) => a.action === 'ambiguous').length,
+          ...(preview.registrationSummary ?? {}),
         },
       })
     }
@@ -130,6 +144,8 @@ export async function POST(request: NextRequest) {
       csvText,
       filename,
       actor: session.email,
+      options,
+      eventId,
     })
 
     return NextResponse.json({ dryRun: false, ...result })

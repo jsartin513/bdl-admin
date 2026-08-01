@@ -1,0 +1,21 @@
+# fly.toml — example config for the Video Tools merge worker.
+# Deploy from repo root:
+#   fly apps create bdl-video-merge
+#   fly secrets set VIDEO_TOOLS_API_BASE=https://admin.bostondodgeballleague.com \
+#     VIDEO_WORKER_SECRET=... BLOB_READ_WRITE_TOKEN=...
+#   fly deploy -c workers/video-merge/fly.toml
+
+app = "bdl-video-merge"
+primary_region = "bos"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  POLL_INTERVAL_MS = "15000"
+
+# Disk: clip downloads + merged output need headroom (uploads allow up to 20GB/clip).
+# Attach a volume or raise the VM size before large multi-court merges.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"

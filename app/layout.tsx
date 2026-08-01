@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Boston Dodgeball League",
+  title: "BDL Admin",
   description: "League Admin",
 };
 
@@ -29,12 +29,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Suspense fallback={<nav className="bg-gray-800 p-4 h-[52px]" />}>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-gray-900 focus:shadow-lg focus:outline focus:outline-2 focus:outline-blue-600"
+        >
+          Skip to content
+        </a>
+        <Suspense fallback={<nav className="bg-gray-800 p-4 h-[52px]" aria-label="Loading navigation" />}>
           <TopNav />
         </Suspense>
-        <main>{children}</main>
+        <main id="main-content">{children}</main>
       </body>
     </html>
   );
 }
-
