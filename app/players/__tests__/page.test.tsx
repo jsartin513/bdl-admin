@@ -557,6 +557,23 @@ describe('PlayersPage tournament filters and columns', () => {
       ).toBe(true)
     })
 
+    const statusSelect = screen.getByLabelText(
+      'Filter by event registration status'
+    )
+    expect(statusSelect).toHaveValue('registered')
+    await userEvent.selectOptions(statusSelect, 'not_registered')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(
+        urls.some(
+          (url) =>
+            url.includes('eventId=11111111-1111-4111-8111-111111111111') &&
+            url.includes('eventMatch=not_registered')
+        )
+      ).toBe(true)
+    })
+
     await userEvent.selectOptions(screen.getByLabelText('Filter by home league'), 'unset')
 
     await waitFor(() => {

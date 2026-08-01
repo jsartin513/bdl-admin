@@ -19,11 +19,17 @@ import { genderGroupLabel, genderLabel } from '@/app/lib/players/gender'
 import { homeLeagueLabel, homeLeagueLogoUrl, isValidHomeLeague } from '@/app/lib/players/home-league'
 import type { PlayerListItem, PlayerSnapshot } from '@/app/lib/players/types'
 
+export type EventMatch = 'registered' | 'not_registered'
+
 export async function listPlayers(opts: {
   q?: string
   skill?: number | 'unset' | null
   homeLeague?: string | 'unset' | null
+  /** When set (non-empty), OR-match any of these home leagues (overrides singular homeLeague). */
+  homeLeagues?: string[] | null
   eventId?: string | null
+  /** Defaults to `registered` when `eventId` is set. */
+  eventMatch?: EventMatch
   includeMerged?: boolean
 }): Promise<PlayerListItem[]> {
   const db = getDb()
@@ -39,7 +45,14 @@ export async function listPlayers(opts: {
     conditions.push(eq(players.skillLevel, opts.skill))
   }
 
-  if (opts.homeLeague === 'unset') {
+  const multiHomeLeagues = (opts.homeLeagues ?? []).filter(isValidHomeLeague)
+  if (multiHomeLeagues.length > 0) {
+    const matchingHomeLeagueIds = db
+      .select({ playerId: playerHomeLeagues.playerId })
+      .from(playerHomeLeagues)
+      .where(inArray(playerHomeLeagues.homeLeague, multiHomeLeagues))
+    conditions.push(inArray(players.id, matchingHomeLeagueIds))
+  } else if (opts.homeLeague === 'unset') {
     const playersWithHomeLeague = db
       .select({ playerId: playerHomeLeagues.playerId })
       .from(playerHomeLeagues)
@@ -57,7 +70,11 @@ export async function listPlayers(opts: {
       .select({ playerId: eventRegistrations.playerId })
       .from(eventRegistrations)
       .where(eq(eventRegistrations.eventId, opts.eventId))
-    conditions.push(inArray(players.id, registeredIds))
+    if (opts.eventMatch === 'not_registered') {
+      conditions.push(notInArray(players.id, registeredIds))
+    } else {
+      conditions.push(inArray(players.id, registeredIds))
+    }
   }
 
   if (opts.q?.trim()) {
