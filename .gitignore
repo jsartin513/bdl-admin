@@ -49,3 +49,4 @@ test-league-output.xlsx
 # Python
 __pycache__/
 *.py[cod]
+.vendor/
