@@ -19,6 +19,7 @@ import {
   emptySeedDraftGroups,
   playersPerTeamLabel,
 } from '@/app/lib/events/draft-seed'
+import { resolveTeamName } from '@/app/lib/events/dodgeballhub-export'
 import type {
   EventDraftSnapshotListItem,
   EventRegistrationListItem,
@@ -37,6 +38,7 @@ import {
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import { ContactPlayersDialog } from '@/app/components/contact/ContactPlayersDialog'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
@@ -53,6 +55,9 @@ type EventDetail = {
   genderLabel: string
   notes: string | null
   pairingEnabled: boolean
+  teamNames: string[]
+  teamsLocked: boolean
+  teamsFinalizedAt: string | null
 }
 
 type ImportAction = {
@@ -154,6 +159,7 @@ function EventTrackerPageContent() {
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
 
   const [draftPhase, setDraftPhase] = useState<DraftPhase>('off')
   const [draftTeamCount, setDraftTeamCount] = useState(1)
@@ -165,6 +171,9 @@ function EventTrackerPageContent() {
   const [draftError, setDraftError] = useState<string | null>(null)
   const [snapshots, setSnapshots] = useState<EventDraftSnapshotListItem[]>([])
   const [snapshotsBusy, setSnapshotsBusy] = useState(false)
+  const [teamNamesDraft, setTeamNamesDraft] = useState<string[]>([])
+  const [teamNamesSaving, setTeamNamesSaving] = useState(false)
+  const [teamsActionBusy, setTeamsActionBusy] = useState(false)
 
   const load = useCallback(async () => {
     if (!eventId) return
@@ -182,6 +191,11 @@ function EventTrackerPageContent() {
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to load event')
       if (!regRes.ok) throw new Error(regData.error || 'Failed to load roster')
       setEvent(eventData.event)
+      setTeamNamesDraft(
+        Array.isArray(eventData.event.teamNames)
+          ? eventData.event.teamNames.map((n: unknown) => String(n ?? ''))
+          : []
+      )
       setRegistrations(regData.registrations)
       if (snapRes.ok) {
         setSnapshots(snapData.snapshots ?? [])
@@ -346,6 +360,96 @@ function EventTrackerPageContent() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to update pairing')
     }
+  }
+
+  function applyEventTeamsPatch(data: { event: EventDetail }) {
+    setEvent((prev) =>
+      prev
+        ? {
+            ...prev,
+            teamNames: Array.isArray(data.event.teamNames) ? data.event.teamNames : [],
+            teamsLocked: Boolean(data.event.teamsLocked),
+            teamsFinalizedAt: data.event.teamsFinalizedAt ?? null,
+          }
+        : prev
+    )
+    if (Array.isArray(data.event.teamNames)) {
+      setTeamNamesDraft(data.event.teamNames.map((n) => String(n ?? '')))
+    }
+  }
+
+  async function saveTeamNames() {
+    if (!event || event.teamsLocked) return
+    setTeamNamesSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamNames: teamNamesDraft }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save team names')
+      applyEventTeamsPatch(data)
+      setMessage('Team names saved')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save team names')
+    } finally {
+      setTeamNamesSaving(false)
+    }
+  }
+
+  async function finalizeTeams() {
+    if (!event) return
+    if (
+      !window.confirm(
+        'Finalize teams? This locks assignments and unlocks DodgeballHub export. You can unlock later for late registrations.'
+      )
+    ) {
+      return
+    }
+    setTeamsActionBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finalizeTeams: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to finalize teams')
+      applyEventTeamsPatch(data)
+      setMessage('Teams finalized and locked')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to finalize teams')
+    } finally {
+      setTeamsActionBusy(false)
+    }
+  }
+
+  async function setTeamsLocked(teamsLocked: boolean) {
+    if (!event) return
+    setTeamsActionBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamsLocked }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update lock')
+      applyEventTeamsPatch(data)
+      setMessage(teamsLocked ? 'Teams locked' : 'Teams unlocked — you can edit assignments')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update lock')
+    } finally {
+      setTeamsActionBusy(false)
+    }
+  }
+
+  function exportDodgeballHub() {
+    window.location.href = `/api/events/${eventId}/export/dodgeballhub`
   }
 
   async function toggleCaptain(registrationId: string, isCaptain: boolean) {
@@ -813,13 +917,26 @@ function EventTrackerPageContent() {
           {draftPhase === 'off' ? (
             <button
               type="button"
-              className={`rounded border border-blue-600 px-3 py-2 text-sm text-blue-700 ${FOCUS_RING}`}
-              disabled={registrations.length === 0}
+              className={`rounded border border-blue-600 px-3 py-2 text-sm text-blue-700 disabled:opacity-40 ${FOCUS_RING}`}
+              disabled={registrations.length === 0 || event.teamsLocked}
+              title={
+                event.teamsLocked
+                  ? 'Unlock teams to enter draft mode'
+                  : undefined
+              }
               onClick={openDraftSetup}
             >
               Enter draft mode
             </button>
           ) : null}
+          <button
+            type="button"
+            className={`rounded border border-teal-600 px-3 py-2 text-sm text-teal-800 ${FOCUS_RING}`}
+            disabled={registrations.length === 0}
+            onClick={() => setContactOpen(true)}
+          >
+            Contact registered players
+          </button>
           <button
             type="button"
             className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
@@ -858,6 +975,151 @@ function EventTrackerPageContent() {
           {formError}
         </LiveMessage>
       ) : null}
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Teams</h2>
+            <FieldHelp>
+              Add names anytime before lock. Extra names are ignored; missing names fall
+              back to Team 1, Team 2, …
+            </FieldHelp>
+            {event.teamsFinalizedAt ? (
+              <p className="mt-1 text-sm text-gray-600">
+                {event.teamsLocked
+                  ? 'Finalized and locked.'
+                  : 'Finalized (unlocked for late registrations).'}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-gray-600">Not finalized yet.</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!event.teamsFinalizedAt ? (
+              <button
+                type="button"
+                className={`rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={teamsActionBusy || !hasExistingGroups}
+                onClick={() => void finalizeTeams()}
+              >
+                Finalize teams
+              </button>
+            ) : event.teamsLocked ? (
+              <button
+                type="button"
+                className={`rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-950 disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={teamsActionBusy}
+                onClick={() => void setTeamsLocked(false)}
+              >
+                Unlock teams
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={teamsActionBusy}
+                onClick={() => void setTeamsLocked(true)}
+              >
+                Lock teams
+              </button>
+            )}
+            {event.teamsFinalizedAt ? (
+              <button
+                type="button"
+                className={`rounded border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-900 ${FOCUS_RING}`}
+                onClick={exportDodgeballHub}
+              >
+                Export for DodgeballHub
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {teamNamesDraft.map((name, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2">
+              <span className="w-16 shrink-0 text-xs text-gray-500">
+                Team {index + 1}
+              </span>
+              <input
+                type="text"
+                className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40"
+                value={name}
+                disabled={event.teamsLocked || teamNamesSaving}
+                placeholder={`Team ${index + 1}`}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setTeamNamesDraft((prev) =>
+                    prev.map((n, i) => (i === index ? value : n))
+                  )
+                }}
+              />
+              <button
+                type="button"
+                className={`text-xs text-red-700 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={event.teamsLocked || teamNamesSaving}
+                onClick={() =>
+                  setTeamNamesDraft((prev) => prev.filter((_, i) => i !== index))
+                }
+              >
+                Remove
+              </button>
+              <button
+                type="button"
+                className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={event.teamsLocked || teamNamesSaving || index === 0}
+                onClick={() =>
+                  setTeamNamesDraft((prev) => {
+                    if (index === 0) return prev
+                    const next = [...prev]
+                    ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
+                    return next
+                  })
+                }
+              >
+                Up
+              </button>
+              <button
+                type="button"
+                className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={
+                  event.teamsLocked ||
+                  teamNamesSaving ||
+                  index >= teamNamesDraft.length - 1
+                }
+                onClick={() =>
+                  setTeamNamesDraft((prev) => {
+                    if (index >= prev.length - 1) return prev
+                    const next = [...prev]
+                    ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
+                    return next
+                  })
+                }
+              >
+                Down
+              </button>
+            </div>
+          ))}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              className={`rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 ${FOCUS_RING}`}
+              disabled={event.teamsLocked || teamNamesSaving}
+              onClick={() => setTeamNamesDraft((prev) => [...prev, ''])}
+            >
+              Add team name
+            </button>
+            <button
+              type="button"
+              className={`rounded bg-gray-900 px-3 py-1.5 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
+              disabled={event.teamsLocked || teamNamesSaving}
+              onClick={() => void saveTeamNames()}
+            >
+              {teamNamesSaving ? 'Saving…' : 'Save team names'}
+            </button>
+          </div>
+        </div>
+      </section>
 
       {draftPhase !== 'board' && counts.unassigned > 0 ? (
         <div
@@ -988,6 +1250,8 @@ function EventTrackerPageContent() {
           error={draftError}
           pairingEnabled={event.pairingEnabled !== false}
           skillViewMode={skillViewMode}
+          teamNames={event.teamNames ?? []}
+          teamsLocked={event.teamsLocked}
           snapshots={snapshots}
           snapshotsBusy={snapshotsBusy}
           onSaveSnapshot={saveSnapshot}
@@ -1025,7 +1289,10 @@ function EventTrackerPageContent() {
           {groupOptions.length > 0 ? (
             <div className="text-xs mt-1 text-gray-600">
               {groupOptions
-                .map((g) => `G${g}: ${counts.byGroup.get(g) ?? 0}`)
+                .map(
+                  (g) =>
+                    `${resolveTeamName(g, event.teamNames)}: ${counts.byGroup.get(g) ?? 0}`
+                )
                 .join(' · ')}
             </div>
           ) : null}
@@ -1105,7 +1372,7 @@ function EventTrackerPageContent() {
                 <option value="unassigned">Unassigned</option>
                 {groupOptions.map((g) => (
                   <option key={g} value={g}>
-                    Group {g}
+                    {resolveTeamName(g, event.teamNames)}
                   </option>
                 ))}
               </select>
@@ -1114,6 +1381,7 @@ function EventTrackerPageContent() {
               type="button"
               className={`rounded border px-2 py-1 text-sm ${FOCUS_RING}`}
               onClick={() => setMaxGroup((n) => n + 1)}
+              disabled={event.teamsLocked}
             >
               Add group {maxGroup + 1}
             </button>
@@ -1218,7 +1486,12 @@ function EventTrackerPageContent() {
                         <td className="px-3 py-2">
                           <select
                             className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
-                            disabled={savingId === r.id}
+                            disabled={savingId === r.id || event.teamsLocked}
+                            title={
+                              event.teamsLocked
+                                ? 'Unlock teams to change assignments'
+                                : undefined
+                            }
                             value={r.draftGroup == null ? '' : String(r.draftGroup)}
                             onChange={(e) => {
                               const v = e.target.value
@@ -1231,7 +1504,7 @@ function EventTrackerPageContent() {
                             <option value="">Unassigned</option>
                             {groupOptions.map((g) => (
                               <option key={g} value={g}>
-                                Group {g}
+                                {resolveTeamName(g, event.teamNames)}
                               </option>
                             ))}
                           </select>
@@ -1477,6 +1750,18 @@ function EventTrackerPageContent() {
           </div>
         </div>
       </Dialog>
+
+      {contactOpen && event ? (
+        <ContactPlayersDialog
+          open={contactOpen}
+          onClose={() => setContactOpen(false)}
+          audience={{
+            mode: 'filter',
+            filters: { eventId },
+            label: `${registrations.length} registered for ${event.name}`,
+          }}
+        />
+      ) : null}
     </div>
   )
 }

@@ -22,6 +22,7 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     mergedBlobPathname: row.mergedBlobPathname,
     outputFilename: row.outputFilename,
     pendingUploadCount: row.pendingUploadCount,
+    autoEnqueueOnReady: row.autoEnqueueOnReady,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

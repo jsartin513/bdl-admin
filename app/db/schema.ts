@@ -120,6 +120,12 @@ export const events = pgTable(
     notes: text('notes'),
     /** When false, pair UI/behavior is disabled for the event */
     pairingEnabled: boolean('pairing_enabled').notNull().default(true),
+    /** Ordered team names; index i maps to draft group i + 1 */
+    teamNames: jsonb('team_names').$type<string[]>().notNull().default([]),
+    /** When true, draft-group assignment mutations are blocked */
+    teamsLocked: boolean('teams_locked').notNull().default(false),
+    /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
+    teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -402,6 +408,8 @@ export const videoUploadSets = pgTable(
     claimToken: uuid('claim_token'),
     /** In-flight Blob upload tokens; Mark ready / enqueue require zero. */
     pendingUploadCount: integer('pending_upload_count').notNull().default(0),
+    /** When true, mark ready + enqueue once pending uploads hit zero. */
+    autoEnqueueOnReady: boolean('auto_enqueue_on_ready').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -409,6 +417,24 @@ export const videoUploadSets = pgTable(
     index('video_upload_sets_status_idx').on(table.status),
     index('video_upload_sets_event_date_idx').on(table.eventDate),
     index('video_upload_sets_created_at_idx').on(table.createdAt),
+  ]
+)
+
+/** In-app notifications for admins (e.g. video merge complete/fail). */
+export const adminNotifications = pgTable(
+  'admin_notifications',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    recipientEmail: text('recipient_email').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    href: text('href'),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('admin_notifications_recipient_email_idx').on(table.recipientEmail),
+    index('admin_notifications_created_at_idx').on(table.createdAt),
   ]
 )
 
@@ -430,5 +456,101 @@ export const videoUploadClips = pgTable(
   (table) => [
     index('video_upload_clips_set_id_idx').on(table.setId),
     uniqueIndex('video_upload_clips_pathname_uidx').on(table.pathname),
+  ]
+)
+
+/** E.164 phone numbers for SMS / WhatsApp. */
+export const playerPhones = pgTable(
+  'player_phones',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    phoneE164: text('phone_e164').notNull(),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('player_phones_phone_e164_uidx').on(table.phoneE164)]
+)
+
+/** Per-player messaging consent / opt-out timestamps. */
+export const playerMessagingPrefs = pgTable('player_messaging_prefs', {
+  playerId: uuid('player_id')
+    .primaryKey()
+    .references(() => players.id, { onDelete: 'cascade' }),
+  emailOptOutAt: timestamp('email_opt_out_at', { withTimezone: true }),
+  smsOptInAt: timestamp('sms_opt_in_at', { withTimezone: true }),
+  smsOptOutAt: timestamp('sms_opt_out_at', { withTimezone: true }),
+  whatsappOptInAt: timestamp('whatsapp_opt_in_at', { withTimezone: true }),
+  whatsappOptOutAt: timestamp('whatsapp_opt_out_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * Admin outbound contact campaigns.
+ * channel: email | sms | whatsapp
+ * audience_type: filter | player_ids
+ * status: draft | sending | completed | failed | cancelled
+ */
+export const contactJobs = pgTable(
+  'contact_jobs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    createdByAdminEmail: text('created_by_admin_email').notNull(),
+    channel: text('channel').notNull(),
+    audienceType: text('audience_type').notNull(),
+    audienceSnapshot: jsonb('audience_snapshot')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    eventId: uuid('event_id').references(() => events.id, { onDelete: 'set null' }),
+    subject: text('subject'),
+    bodyText: text('body_text'),
+    bodyHtml: text('body_html'),
+    /** WhatsApp Content/Template SID */
+    templateSid: text('template_sid'),
+    /** WhatsApp template variable map */
+    templateVariables: jsonb('template_variables').$type<Record<string, string> | null>(),
+    status: text('status').notNull().default('draft'),
+    errorMessage: text('error_message'),
+    idempotencyKey: text('idempotency_key'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('contact_jobs_created_at_idx').on(table.createdAt),
+    index('contact_jobs_status_idx').on(table.status),
+    uniqueIndex('contact_jobs_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
+/**
+ * Per-recipient send log for a contact job.
+ * status: pending | skipped | queued | sent | delivered | failed | opted_out
+ */
+export const contactJobRecipients = pgTable(
+  'contact_job_recipients',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => contactJobs.id, { onDelete: 'cascade' }),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    address: text('address'),
+    status: text('status').notNull().default('pending'),
+    skipReason: text('skip_reason'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('contact_job_recipients_job_id_idx').on(table.jobId),
+    index('contact_job_recipients_player_id_idx').on(table.playerId),
+    index('contact_job_recipients_provider_message_id_idx').on(table.providerMessageId),
+    uniqueIndex('contact_job_recipients_job_player_uidx').on(table.jobId, table.playerId),
   ]
 )

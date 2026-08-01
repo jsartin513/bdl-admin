@@ -37,6 +37,10 @@ import {
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import {
+  ContactPlayersDialog,
+  type ContactAudienceProp,
+} from '@/app/components/contact/ContactPlayersDialog'
 
 function PlayerAvatar(props: {
   photoUrl: string | null | undefined
@@ -428,6 +432,10 @@ export default function PlayersPage() {
   const [bulkEditDraft, setBulkEditDraft] = useState<BulkEditDraft>(EMPTY_BULK_EDIT_DRAFT)
   const [bulkEditBusy, setBulkEditBusy] = useState(false)
   const [bulkEditMessage, setBulkEditMessage] = useState<string | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactAudience, setContactAudience] = useState<ContactAudienceProp | null>(
+    null
+  )
 
   useEffect(() => {
     setVisibleColumns(loadVisibleColumns())
@@ -1240,6 +1248,46 @@ export default function PlayersPage() {
               Merge selected ({selectedIds.size})
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIds.size > 0) {
+                setContactAudience({
+                  mode: 'player_ids',
+                  playerIds: [...selectedIds],
+                  eventId: eventFilter || null,
+                  label: `${selectedIds.size} selected player${selectedIds.size === 1 ? '' : 's'}`,
+                })
+              } else {
+                const skill =
+                  skillFilter === 'unset'
+                    ? ('unset' as const)
+                    : skillFilter
+                      ? Number.parseInt(skillFilter, 10)
+                      : null
+                setContactAudience({
+                  mode: 'filter',
+                  filters: {
+                    q: q || undefined,
+                    skill: skillFilter ? skill : null,
+                    homeLeague: homeLeagueFilter || null,
+                    eventId: eventFilter || null,
+                  },
+                  label: eventFilter
+                    ? 'Players matching current filters (including event)'
+                    : homeLeagueFilter === 'boston_dodgeball_league'
+                      ? 'Local BDL players (current filters)'
+                      : 'Players matching current filters',
+                })
+              }
+              setContactOpen(true)
+            }}
+            className="rounded border border-teal-300 bg-white px-3 py-2 text-sm text-teal-900 hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {selectedIds.size > 0
+              ? `Contact selected (${selectedIds.size})`
+              : 'Contact filtered…'}
+          </button>
         </div>
       </div>
 
@@ -2013,6 +2061,10 @@ export default function PlayersPage() {
           onAddEmail={(email) => void saveEdit({ addEmail: email })}
           onRemoveEmail={(id) => void saveEdit({ removeEmailId: id })}
           onSetPrimary={(id) => void saveEdit({ setPrimaryEmailId: id })}
+          onAddPhone={(phone) => void saveEdit({ addPhone: phone })}
+          onRemovePhone={(id) => void saveEdit({ removePhoneId: id })}
+          onSetPrimaryPhone={(id) => void saveEdit({ setPrimaryPhoneId: id })}
+          onMessagingPrefs={(prefs) => void saveEdit({ messagingPrefs: prefs })}
           onAddAlias={(alias) => void saveEdit({ addAlias: alias })}
           onRemoveAlias={(id) => void saveEdit({ removeAliasId: id })}
           onAddHomeLeague={(homeLeague) => void saveEdit({ addHomeLeague: homeLeague })}
@@ -2021,6 +2073,17 @@ export default function PlayersPage() {
           onUploadPhoto={(file) => void uploadEditPhoto(file)}
           onClearPhoto={() => void clearEditPhoto()}
           onUnmerge={() => void runUnmerge(editing.id)}
+        />
+      ) : null}
+
+      {contactOpen && contactAudience ? (
+        <ContactPlayersDialog
+          open={contactOpen}
+          audience={contactAudience}
+          onClose={() => {
+            setContactOpen(false)
+            setContactAudience(null)
+          }}
         />
       ) : null}
 
@@ -2420,6 +2483,14 @@ function EditPanel(props: {
   onAddEmail: (email: string) => void
   onRemoveEmail: (id: string) => void
   onSetPrimary: (id: string) => void
+  onAddPhone: (phone: string) => void
+  onRemovePhone: (id: string) => void
+  onSetPrimaryPhone: (id: string) => void
+  onMessagingPrefs: (prefs: {
+    emailOptOut?: boolean
+    smsOptIn?: boolean
+    whatsappOptIn?: boolean
+  }) => void
   onAddAlias: (alias: string) => void
   onRemoveAlias: (id: string) => void
   onAddHomeLeague: (homeLeague: string) => void
@@ -2449,6 +2520,7 @@ function EditPanel(props: {
     strongPersonalityNotes
   )
   const [newEmail, setNewEmail] = useState('')
+  const [newPhone, setNewPhone] = useState('')
   const [newAlias, setNewAlias] = useState('')
   const [newHomeLeague, setNewHomeLeague] = useState('')
 
@@ -2800,6 +2872,110 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Phones</h3>
+          <ul className="space-y-1 text-sm">
+            {(p.phones ?? []).map((ph) => (
+              <li key={ph.id} className="flex items-center justify-between gap-2">
+                <span className="font-mono">
+                  {ph.phoneE164}
+                  {ph.isPrimary ? (
+                    <span className="ml-2 text-xs text-gray-500 font-sans">(primary)</span>
+                  ) : null}
+                </span>
+                {!p.isMerged ? (
+                  <span className="space-x-2">
+                    {!ph.isPrimary ? (
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline"
+                        onClick={() => props.onSetPrimaryPhone(ph.id)}
+                      >
+                        Make primary
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="text-red-600 hover:underline"
+                      onClick={() => props.onRemovePhone(ph.id)}
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {!p.isMerged ? (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded border px-3 py-2 text-sm"
+                placeholder="Add phone (+1…)"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+              />
+              <button
+                type="button"
+                className="rounded border px-3 py-2 text-sm"
+                onClick={() => {
+                  if (!newPhone.trim()) return
+                  props.onAddPhone(newPhone.trim())
+                  setNewPhone('')
+                }}
+              >
+                Add
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {!p.isMerged ? (
+          <div className="border-t pt-4 space-y-2">
+            <h3 className="font-medium text-sm">Messaging prefs</h3>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(p.messagingPrefs?.emailOptOutAt)}
+                onChange={(e) =>
+                  props.onMessagingPrefs({ emailOptOut: e.target.checked })
+                }
+              />
+              Email opted out
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(
+                  p.messagingPrefs?.smsOptInAt &&
+                    !(
+                      p.messagingPrefs.smsOptOutAt &&
+                      p.messagingPrefs.smsOptOutAt >= p.messagingPrefs.smsOptInAt
+                    )
+                )}
+                onChange={(e) => props.onMessagingPrefs({ smsOptIn: e.target.checked })}
+              />
+              SMS opted in
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(
+                  p.messagingPrefs?.whatsappOptInAt &&
+                    !(
+                      p.messagingPrefs.whatsappOptOutAt &&
+                      p.messagingPrefs.whatsappOptOutAt >=
+                        p.messagingPrefs.whatsappOptInAt
+                    )
+                )}
+                onChange={(e) =>
+                  props.onMessagingPrefs({ whatsappOptIn: e.target.checked })
+                }
+              />
+              WhatsApp opted in
+            </label>
+          </div>
+        ) : null}
 
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Alternate names</h3>

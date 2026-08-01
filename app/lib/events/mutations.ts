@@ -6,6 +6,7 @@ import {
   eventRegistrations,
   events,
 } from '@/app/db/schema'
+import { normalizeTeamNames } from '@/app/lib/events/dodgeballhub-export'
 import {
   isValidBallType,
   isValidEventGender,
@@ -17,6 +18,26 @@ import {
   type EventRecord,
   type EventType,
 } from '@/app/lib/events/types'
+
+export async function assertTeamsUnlocked(eventId: string): Promise<void> {
+  const db = getDb()
+  const [event] = await db
+    .select({ teamsLocked: events.teamsLocked })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1)
+  if (!event) throw new Error('Event not found')
+  if (event.teamsLocked) {
+    throw new Error('Teams are locked. Unlock to make changes.')
+  }
+}
+
+function mapEventRecord(row: typeof events.$inferSelect): EventRecord {
+  return {
+    ...row,
+    teamNames: normalizeTeamNames(row.teamNames),
+  }
+}
 
 export function parseEventDate(value: string): string {
   const trimmed = value.trim()
@@ -74,7 +95,7 @@ export async function createEvent(input: {
     .values({ name, eventDate, eventType, ballType, gender, notes, pairingEnabled })
     .returning()
 
-  return created
+  return mapEventRecord(created)
 }
 
 export async function updateEvent(
@@ -87,9 +108,21 @@ export async function updateEvent(
     gender?: string | null
     notes?: string | null
     pairingEnabled?: boolean
+    teamNames?: string[]
+    /** Lock or unlock assignments. Unlock does not clear teamsFinalizedAt. */
+    teamsLocked?: boolean
+    /** Finalize: set teamsFinalizedAt (if null) and lock teams. */
+    finalizeTeams?: boolean
   }
 ): Promise<EventRecord> {
   const db = getDb()
+  const [existing] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, id))
+    .limit(1)
+  if (!existing) throw new Error('Event not found')
+
   const updates: {
     name?: string
     eventDate?: string
@@ -98,6 +131,9 @@ export async function updateEvent(
     gender?: string
     notes?: string | null
     pairingEnabled?: boolean
+    teamNames?: string[]
+    teamsLocked?: boolean
+    teamsFinalizedAt?: Date
     updatedAt: Date
   } = { updatedAt: new Date() }
 
@@ -143,6 +179,36 @@ export async function updateEvent(
     updates.pairingEnabled = Boolean(patch.pairingEnabled)
   }
 
+  if (patch.teamNames !== undefined) {
+    if (!Array.isArray(patch.teamNames)) {
+      throw new Error('teamNames must be an array of strings')
+    }
+    if (existing.teamsLocked) {
+      throw new Error('Teams are locked. Unlock to edit team names.')
+    }
+    for (const name of patch.teamNames) {
+      if (typeof name !== 'string') {
+        throw new Error('teamNames must be an array of strings')
+      }
+    }
+    updates.teamNames = patch.teamNames.map((n) => n.trim())
+  }
+
+  if (patch.finalizeTeams === true) {
+    updates.teamsLocked = true
+    if (existing.teamsFinalizedAt == null) {
+      updates.teamsFinalizedAt = new Date()
+    }
+  } else if (patch.teamsLocked !== undefined) {
+    if (typeof patch.teamsLocked !== 'boolean') {
+      throw new Error('teamsLocked must be a boolean')
+    }
+    if (patch.teamsLocked && existing.teamsFinalizedAt == null) {
+      throw new Error('Finalize teams before locking')
+    }
+    updates.teamsLocked = patch.teamsLocked
+  }
+
   const [updated] = await db
     .update(events)
     .set(updates)
@@ -150,7 +216,7 @@ export async function updateEvent(
     .returning()
 
   if (!updated) throw new Error('Event not found')
-  return updated
+  return mapEventRecord(updated)
 }
 
 export async function deleteEvent(id: string): Promise<void> {
@@ -213,6 +279,8 @@ export async function updateRegistrationDraftGroup(
   registrationId: string,
   draftGroupInput: unknown
 ): Promise<{ id: string; draftGroup: number | null; isCaptain: boolean }> {
+  await assertTeamsUnlocked(eventId)
+
   const draftGroup = parseDraftGroup(draftGroupInput)
   if (draftGroup === undefined) {
     throw new Error('draftGroup is required')
@@ -576,6 +644,8 @@ export async function bulkUpdateRegistrationDraftGroups(
   eventId: string,
   assignments: Array<{ registrationId: string; draftGroup: number | null }>
 ): Promise<Array<{ id: string; draftGroup: number | null }>> {
+  await assertTeamsUnlocked(eventId)
+
   if (assignments.length === 0) return []
 
   const parsed = assignments.map((a) => {

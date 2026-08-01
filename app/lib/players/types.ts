@@ -31,6 +31,7 @@ export type PlayerSnapshot = {
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null
   emails: { id: string; email: string; isPrimary: boolean }[]
+  phones: { id: string; phoneE164: string; isPrimary: boolean }[]
   aliases: { id: string; alias: string }[]
   homeLeagues: {
     id: string
@@ -39,6 +40,13 @@ export type PlayerSnapshot = {
     logoUrl: string | null
     sortOrder: number
   }[]
+  messagingPrefs: {
+    emailOptOutAt: string | null
+    smsOptInAt: string | null
+    smsOptOutAt: string | null
+    whatsappOptInAt: string | null
+    whatsappOptOutAt: string | null
+  } | null
 }
 
 export type PlayerListItem = {
@@ -63,6 +71,7 @@ export type PlayerListItem = {
   genderGroupLabel: string
   photoUrl: string | null
   primaryEmail: string | null
+  primaryPhone: string | null
   isMerged: boolean
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null

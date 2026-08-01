@@ -35,6 +35,8 @@
     "next": "15.2.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "resend": "^6.18.1",
+    "twilio": "^6.0.2",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

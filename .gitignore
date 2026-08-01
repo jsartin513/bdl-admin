@@ -43,6 +43,9 @@ next-env.d.ts
 # test output
 test-league-output.xlsx
 
+# local Video Tools demo clips (ffmpeg-generated)
+/tmp/
+
 # Python
 __pycache__/
 *.py[cod]

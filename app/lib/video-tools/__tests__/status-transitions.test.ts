@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CLIP_LOCKED_STATUSES,
   ENQUEUE_ALLOWED_STATUSES,
+  METADATA_EDITABLE_STATUSES,
   READY_ALLOWED_STATUSES,
   UPLOAD_TOKEN_ALLOWED_STATUSES,
 } from '@/app/lib/video-tools/mutations'
@@ -49,6 +50,18 @@ describe('video tools status transition policy', () => {
     ])
   })
 
+  it('allows metadata edits while collecting clips or after failure', () => {
+    expect([...METADATA_EDITABLE_STATUSES]).toEqual([
+      'draft',
+      'uploading',
+      'ready',
+      'failed',
+    ])
+    for (const status of ['queued', 'processing', 'complete'] as const) {
+      expect(METADATA_EDITABLE_STATUSES).not.toContain(status)
+    }
+  })
+
   it('documents claim-token invalidation on retry', () => {
     // enqueue clears claimToken; complete/fail require matching token + processing.
     expect(ENQUEUE_ALLOWED_STATUSES).toContain('processing')
@@ -59,6 +72,7 @@ describe('video tools status transition policy', () => {
       ...READY_ALLOWED_STATUSES,
       ...CLIP_LOCKED_STATUSES,
       ...ENQUEUE_ALLOWED_STATUSES,
+      ...METADATA_EDITABLE_STATUSES,
       'queued', // claim target
       'complete', // completeVideoUploadSet terminal
     ])
