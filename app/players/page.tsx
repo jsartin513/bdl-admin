@@ -37,6 +37,10 @@ import {
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import {
+  ContactPlayersDialog,
+  type ContactAudienceProp,
+} from '@/app/components/contact/ContactPlayersDialog'
 
 function PlayerAvatar(props: {
   photoUrl: string | null | undefined
@@ -142,6 +146,17 @@ function buildBulkEditPatch(draft: BulkEditDraft): Record<string, unknown> | nul
   if (draft.addHomeLeague) patch.addHomeLeague = draft.addHomeLeague
   if (draft.removeHomeLeague) patch.removeHomeLeague = draft.removeHomeLeague
   return Object.keys(patch).length > 0 ? patch : null
+}
+
+type SavedImportBatch = {
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  hasCsv: boolean
+  createdAt: string
 }
 
 function parseJerseyNumber(value: string): number | null {
@@ -331,6 +346,55 @@ function loadVisibleColumns(): Record<ColumnKey, boolean> {
   }
 }
 
+type ModalFieldKey =
+  | 'skill'
+  | 'roster'
+  | 'photo'
+  | 'name'
+  | 'flags'
+  | 'emails'
+  | 'aliases'
+  | 'homeLeagues'
+
+const MODAL_FIELD_OPTIONS: { key: ModalFieldKey; label: string }[] = [
+  { key: 'skill', label: 'Skill systems' },
+  { key: 'roster', label: 'Roster' },
+  { key: 'photo', label: 'Photo' },
+  { key: 'name', label: 'Name' },
+  { key: 'flags', label: 'Flags' },
+  { key: 'emails', label: 'Emails' },
+  { key: 'aliases', label: 'Alternate names' },
+  { key: 'homeLeagues', label: 'Home leagues' },
+]
+
+const DEFAULT_VISIBLE_MODAL_FIELDS: Record<ModalFieldKey, boolean> = {
+  skill: true,
+  roster: true,
+  photo: false,
+  name: true,
+  flags: true,
+  emails: true,
+  aliases: false,
+  homeLeagues: false,
+}
+
+const MODAL_FIELDS_STORAGE_KEY = 'bdl-admin.players.visibleModalFields'
+
+function loadVisibleModalFields(): Record<ModalFieldKey, boolean> {
+  if (typeof window === 'undefined') return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+  try {
+    const raw = window.localStorage.getItem(MODAL_FIELDS_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+    const parsed = JSON.parse(raw) as Partial<Record<ModalFieldKey, boolean>>
+    return {
+      ...DEFAULT_VISIBLE_MODAL_FIELDS,
+      ...parsed,
+    }
+  } catch {
+    return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+  }
+}
+
 function compareByLastName(a: PlayerListItem, b: PlayerListItem): number {
   const last = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
   if (last !== 0) return last
@@ -398,6 +462,9 @@ export default function PlayersPage() {
   const [skillFilter, setSkillFilter] = useState('')
   const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | 'unset' | HomeLeague>('')
   const [eventFilter, setEventFilter] = useState('')
+  const [eventMatch, setEventMatch] = useState<'registered' | 'not_registered'>(
+    'registered'
+  )
   const [events, setEvents] = useState<EventListItem[]>([])
   const [eventsStatus, setEventsStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
     'idle'
@@ -417,6 +484,10 @@ export default function PlayersPage() {
   const [bulkEditDraft, setBulkEditDraft] = useState<BulkEditDraft>(EMPTY_BULK_EDIT_DRAFT)
   const [bulkEditBusy, setBulkEditBusy] = useState(false)
   const [bulkEditMessage, setBulkEditMessage] = useState<string | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactAudience, setContactAudience] = useState<ContactAudienceProp | null>(
+    null
+  )
 
   useEffect(() => {
     setVisibleColumns(loadVisibleColumns())
@@ -493,8 +564,11 @@ export default function PlayersPage() {
   const [importPreview, setImportPreview] = useState<{
     actions: ImportAction[]
     summary: Record<string, number>
+    warnings: string[]
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
+  const [savedImports, setSavedImports] = useState<SavedImportBatch[]>([])
+  const [savedImportsLoading, setSavedImportsLoading] = useState(false)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -508,7 +582,12 @@ export default function PlayersPage() {
       if (q.trim()) params.set('q', q.trim())
       if (skillFilter) params.set('skill', skillFilter)
       if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
-      if (eventFilter) params.set('eventId', eventFilter)
+      if (eventFilter) {
+        params.set('eventId', eventFilter)
+        if (eventMatch === 'not_registered') {
+          params.set('eventMatch', 'not_registered')
+        }
+      }
       if (includeMerged) params.set('includeMerged', '1')
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
@@ -519,7 +598,7 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, homeLeagueFilter, eventFilter, includeMerged])
+  }, [q, skillFilter, homeLeagueFilter, eventFilter, eventMatch, includeMerged])
 
   useEffect(() => {
     void loadPlayers()
@@ -929,6 +1008,117 @@ export default function PlayersPage() {
     return null
   }
 
+
+  async function loadSavedImports() {
+    setSavedImportsLoading(true)
+    try {
+      const res = await fetch('/api/players/import')
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Failed to load saved imports'))
+      setSavedImports(Array.isArray(data.batches) ? (data.batches as SavedImportBatch[]) : [])
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load saved imports')
+    } finally {
+      setSavedImportsLoading(false)
+    }
+  }
+
+  async function saveImportForLater() {
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csv: importCsv,
+          filename: importFilename,
+          saveOnly: true,
+        }),
+      })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Save failed'))
+      await loadSavedImports()
+      const warnings = Array.isArray(data.warnings) ? (data.warnings as string[]) : []
+      setImportPreview((prev) =>
+        prev ? { ...prev, warnings } : { actions: [], summary: {}, warnings }
+      )
+      alert(`Saved "${importFilename}" for later (${String(data.rowCount ?? 0)} rows).`)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function loadSavedImport(batchId: string) {
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/players/import?id=${encodeURIComponent(batchId)}`)
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Failed to load import'))
+      const batch = data.batch as {
+        filename?: string
+        csvText?: string | null
+      }
+      if (!batch?.csvText?.trim()) {
+        throw new Error('This saved import has no CSV payload')
+      }
+      setImportFilename(batch.filename || 'teamlinkt.csv')
+      setImportCsv(batch.csvText)
+      setImportPreview(null)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load import')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function reapplySavedImport(batchId: string, filename: string) {
+    if (
+      !confirm(
+        `Re-apply "${filename}"? This creates a new import batch and only fills unset jersey/skill (plus emails/aliases).`
+      )
+    ) {
+      return
+    }
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId,
+          dryRun: false,
+          profileFields: importProfileFields,
+          ...(importScope === 'event' && importEventId ? { eventId: importEventId } : {}),
+        }),
+      })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Re-apply failed'))
+      const summary = data.summary as {
+        created: number
+        updated: number
+        skipped: number
+        ambiguous: number
+      }
+      setImportOpen(false)
+      setImportCsv('')
+      setImportPreview(null)
+      await loadPlayers()
+      await loadSavedImports()
+      alert(
+        `Re-apply done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
+      )
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Re-apply failed')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   async function previewImport() {
     const scopeError = validateImportScope()
     if (scopeError) {
@@ -948,6 +1138,7 @@ export default function PlayersPage() {
       setImportPreview({
         actions: data.actions as ImportAction[],
         summary: data.summary as Record<string, number>,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
       })
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Preview failed')
@@ -1094,6 +1285,7 @@ export default function PlayersPage() {
               setImportCsv('')
               setFormError(null)
               void loadEvents()
+              void loadSavedImports()
             }}
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
@@ -1113,6 +1305,46 @@ export default function PlayersPage() {
               Merge selected ({selectedIds.size})
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedIds.size > 0) {
+                setContactAudience({
+                  mode: 'player_ids',
+                  playerIds: [...selectedIds],
+                  eventId: eventFilter || null,
+                  label: `${selectedIds.size} selected player${selectedIds.size === 1 ? '' : 's'}`,
+                })
+              } else {
+                const skill =
+                  skillFilter === 'unset'
+                    ? ('unset' as const)
+                    : skillFilter
+                      ? Number.parseInt(skillFilter, 10)
+                      : null
+                setContactAudience({
+                  mode: 'filter',
+                  filters: {
+                    q: q || undefined,
+                    skill: skillFilter ? skill : null,
+                    homeLeague: homeLeagueFilter || null,
+                    eventId: eventFilter || null,
+                  },
+                  label: eventFilter
+                    ? 'Players matching current filters (including event)'
+                    : homeLeagueFilter === 'boston_dodgeball_league'
+                      ? 'Local BDL players (current filters)'
+                      : 'Players matching current filters',
+                })
+              }
+              setContactOpen(true)
+            }}
+            className="rounded border border-teal-300 bg-white px-3 py-2 text-sm text-teal-900 hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {selectedIds.size > 0
+              ? `Contact selected (${selectedIds.size})`
+              : 'Contact filtered…'}
+          </button>
         </div>
       </div>
 
@@ -1132,7 +1364,10 @@ export default function PlayersPage() {
             aria-label="Filter by event"
             value={eventFilter}
             onFocus={() => void loadEvents()}
-            onChange={(e) => setEventFilter(e.target.value)}
+            onChange={(e) => {
+              setEventFilter(e.target.value)
+              if (!e.target.value) setEventMatch('registered')
+            }}
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[16rem]"
           >
             <option value="">All events</option>
@@ -1153,6 +1388,26 @@ export default function PlayersPage() {
             ))}
           </select>
         </label>
+        {eventFilter ? (
+          <label className="text-sm text-gray-900">
+            <span className="block text-gray-600 mb-1">Event status</span>
+            <select
+              aria-label="Filter by event registration status"
+              value={eventMatch}
+              onChange={(e) =>
+                setEventMatch(
+                  e.target.value === 'not_registered'
+                    ? 'not_registered'
+                    : 'registered'
+                )
+              }
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+            >
+              <option value="registered">Registered</option>
+              <option value="not_registered">Not registered</option>
+            </select>
+          </label>
+        ) : null}
         <label className="text-sm text-gray-900">
           <span className="block text-gray-600 mb-1">Home league</span>
           <select
@@ -1886,6 +2141,10 @@ export default function PlayersPage() {
           onAddEmail={(email) => void saveEdit({ addEmail: email })}
           onRemoveEmail={(id) => void saveEdit({ removeEmailId: id })}
           onSetPrimary={(id) => void saveEdit({ setPrimaryEmailId: id })}
+          onAddPhone={(phone) => void saveEdit({ addPhone: phone })}
+          onRemovePhone={(id) => void saveEdit({ removePhoneId: id })}
+          onSetPrimaryPhone={(id) => void saveEdit({ setPrimaryPhoneId: id })}
+          onMessagingPrefs={(prefs) => void saveEdit({ messagingPrefs: prefs })}
           onAddAlias={(alias) => void saveEdit({ addAlias: alias })}
           onRemoveAlias={(id) => void saveEdit({ removeAliasId: id })}
           onAddHomeLeague={(homeLeague) => void saveEdit({ addHomeLeague: homeLeague })}
@@ -1894,6 +2153,17 @@ export default function PlayersPage() {
           onUploadPhoto={(file) => void uploadEditPhoto(file)}
           onClearPhoto={() => void clearEditPhoto()}
           onUnmerge={() => void runUnmerge(editing.id)}
+        />
+      ) : null}
+
+      {contactOpen && contactAudience ? (
+        <ContactPlayersDialog
+          open={contactOpen}
+          audience={contactAudience}
+          onClose={() => {
+            setContactOpen(false)
+            setContactAudience(null)
+          }}
         />
       ) : null}
 
@@ -2108,6 +2378,85 @@ export default function PlayersPage() {
               }}
               placeholder="Or paste CSV contents here…"
             />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-gray-900">Saved imports</h3>
+                <button
+                  type="button"
+                  className="text-xs text-blue-700 hover:underline disabled:opacity-40"
+                  disabled={importBusy || savedImportsLoading}
+                  onClick={() => void loadSavedImports()}
+                >
+                  {savedImportsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+              {savedImports.length === 0 ? (
+                <p className="text-xs text-gray-600">
+                  No saved CSVs yet. Commit an import or use Save for later.
+                </p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto border rounded">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1 text-left">When</th>
+                        <th className="px-2 py-1 text-left">File</th>
+                        <th className="px-2 py-1 text-left">Rows</th>
+                        <th className="px-2 py-1 text-left">CSV</th>
+                        <th className="px-2 py-1 text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedImports.map((batch) => {
+                        const summary = batch.summary as {
+                          created?: number
+                          updated?: number
+                          savedOnly?: boolean
+                        }
+                        const summaryLabel = summary.savedOnly
+                          ? 'saved only'
+                          : summary.created != null || summary.updated != null
+                            ? `${summary.created ?? 0}c / ${summary.updated ?? 0}u`
+                            : '—'
+                        return (
+                          <tr key={batch.id} className="border-t">
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {new Date(batch.createdAt).toLocaleString()}
+                            </td>
+                            <td className="px-2 py-1">
+                              <div>{batch.filename}</div>
+                              <div className="text-gray-500">{summaryLabel}</div>
+                            </td>
+                            <td className="px-2 py-1">{batch.rowCount}</td>
+                            <td className="px-2 py-1">{batch.hasCsv ? 'yes' : 'no'}</td>
+                            <td className="px-2 py-1">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  className="text-blue-700 hover:underline disabled:opacity-40"
+                                  disabled={importBusy || !batch.hasCsv}
+                                  onClick={() => void loadSavedImport(batch.id)}
+                                >
+                                  Load
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-blue-700 hover:underline disabled:opacity-40"
+                                  disabled={importBusy || !batch.hasCsv}
+                                  onClick={() => void reapplySavedImport(batch.id, batch.filename)}
+                                >
+                                  Re-apply
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
             {formError ? (
               <LiveMessage variant="alert" className="text-sm text-red-600">
                 {formError}
@@ -2115,6 +2464,13 @@ export default function PlayersPage() {
             ) : null}
             {importPreview ? (
               <div className="space-y-2 text-sm">
+                {importPreview.warnings.length > 0 ? (
+                  <ul className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
+                    {importPreview.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <p>
                   Preview: {importPreview.summary.create} create,{' '}
                   {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
@@ -2154,13 +2510,21 @@ export default function PlayersPage() {
                 </div>
               </div>
             ) : null}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setImportOpen(false)}
               >
                 Close
+              </button>
+              <button
+                type="button"
+                disabled={importBusy || !importCsv.trim()}
+                className="rounded border px-3 py-2 text-sm disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                onClick={() => void saveImportForLater()}
+              >
+                Save for later
               </button>
               <button
                 type="button"
@@ -2199,6 +2563,14 @@ function EditPanel(props: {
   onAddEmail: (email: string) => void
   onRemoveEmail: (id: string) => void
   onSetPrimary: (id: string) => void
+  onAddPhone: (phone: string) => void
+  onRemovePhone: (id: string) => void
+  onSetPrimaryPhone: (id: string) => void
+  onMessagingPrefs: (prefs: {
+    emailOptOut?: boolean
+    smsOptIn?: boolean
+    whatsappOptIn?: boolean
+  }) => void
   onAddAlias: (alias: string) => void
   onRemoveAlias: (id: string) => void
   onAddHomeLeague: (homeLeague: string) => void
@@ -2228,8 +2600,29 @@ function EditPanel(props: {
     strongPersonalityNotes
   )
   const [newEmail, setNewEmail] = useState('')
+  const [newPhone, setNewPhone] = useState('')
   const [newAlias, setNewAlias] = useState('')
   const [newHomeLeague, setNewHomeLeague] = useState('')
+  const [visibleFields, setVisibleFields] = useState<Record<ModalFieldKey, boolean>>(
+    DEFAULT_VISIBLE_MODAL_FIELDS
+  )
+  const [fieldsOpen, setFieldsOpen] = useState(false)
+
+  useEffect(() => {
+    setVisibleFields(loadVisibleModalFields())
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MODAL_FIELDS_STORAGE_KEY, JSON.stringify(visibleFields))
+    } catch {
+      // ignore storage errors
+    }
+  }, [visibleFields])
+
+  function toggleModalField(key: ModalFieldKey) {
+    setVisibleFields((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   useEffect(() => {
     setFirstName(p.firstName)
@@ -2265,7 +2658,40 @@ function EditPanel(props: {
   return (
     <Dialog open onClose={props.onClose} title="Edit player" className="max-w-xl">
       <div className="space-y-4 text-gray-900">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFieldsOpen((open) => !open)}
+              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              Fields
+            </button>
+            {fieldsOpen ? (
+              <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded border border-gray-200 bg-white p-2 shadow-lg">
+                {MODAL_FIELD_OPTIONS.map((field) => (
+                  <label
+                    key={field.key}
+                    className="flex items-center gap-2 rounded px-1 py-1 text-sm text-gray-900 hover:bg-gray-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleFields[field.key]}
+                      onChange={() => toggleModalField(field.key)}
+                    />
+                    {field.label}
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  className="mt-1 w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
+                  onClick={() => setVisibleFields({ ...DEFAULT_VISIBLE_MODAL_FIELDS })}
+                >
+                  Reset defaults
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
@@ -2306,6 +2732,7 @@ function EditPanel(props: {
           </div>
         ) : null}
 
+        {visibleFields.skill ? (
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Skill systems</h3>
           <SkillFieldsEditor
@@ -2315,7 +2742,9 @@ function EditPanel(props: {
             idPrefix="edit-skill"
           />
         </div>
+        ) : null}
 
+        {visibleFields.roster ? (
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Roster</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -2362,7 +2791,9 @@ function EditPanel(props: {
             </label>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.photo ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Photo</h3>
           <div className="flex items-center gap-4">
@@ -2399,7 +2830,9 @@ function EditPanel(props: {
             </div>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.name ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Name</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -2448,7 +2881,9 @@ function EditPanel(props: {
             </label>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.flags ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Flags</h3>
           <div className="rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
@@ -2495,6 +2930,7 @@ function EditPanel(props: {
             </label>
           ) : null}
         </div>
+        ) : null}
 
         {!p.isMerged ? (
           <button
@@ -2523,6 +2959,7 @@ function EditPanel(props: {
           </button>
         ) : null}
 
+        {visibleFields.emails ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Emails</h3>
           <ul className="space-y-1 text-sm">
@@ -2579,6 +3016,112 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
+
+        {visibleFields.aliases ? (
+        <div className="border-t pt-4 space-y-2">
+          <h3 className="font-medium text-sm">Phones</h3>
+          <ul className="space-y-1 text-sm">
+            {(p.phones ?? []).map((ph) => (
+              <li key={ph.id} className="flex items-center justify-between gap-2">
+                <span className="font-mono">
+                  {ph.phoneE164}
+                  {ph.isPrimary ? (
+                    <span className="ml-2 text-xs text-gray-500 font-sans">(primary)</span>
+                  ) : null}
+                </span>
+                {!p.isMerged ? (
+                  <span className="space-x-2">
+                    {!ph.isPrimary ? (
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:underline"
+                        onClick={() => props.onSetPrimaryPhone(ph.id)}
+                      >
+                        Make primary
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="text-red-600 hover:underline"
+                      onClick={() => props.onRemovePhone(ph.id)}
+                    >
+                      Remove
+                    </button>
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {!p.isMerged ? (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded border px-3 py-2 text-sm"
+                placeholder="Add phone (+1…)"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+              />
+              <button
+                type="button"
+                className="rounded border px-3 py-2 text-sm"
+                onClick={() => {
+                  if (!newPhone.trim()) return
+                  props.onAddPhone(newPhone.trim())
+                  setNewPhone('')
+                }}
+              >
+                Add
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {!p.isMerged ? (
+          <div className="border-t pt-4 space-y-2">
+            <h3 className="font-medium text-sm">Messaging prefs</h3>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(p.messagingPrefs?.emailOptOutAt)}
+                onChange={(e) =>
+                  props.onMessagingPrefs({ emailOptOut: e.target.checked })
+                }
+              />
+              Email opted out
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(
+                  p.messagingPrefs?.smsOptInAt &&
+                    !(
+                      p.messagingPrefs.smsOptOutAt &&
+                      p.messagingPrefs.smsOptOutAt >= p.messagingPrefs.smsOptInAt
+                    )
+                )}
+                onChange={(e) => props.onMessagingPrefs({ smsOptIn: e.target.checked })}
+              />
+              SMS opted in
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={Boolean(
+                  p.messagingPrefs?.whatsappOptInAt &&
+                    !(
+                      p.messagingPrefs.whatsappOptOutAt &&
+                      p.messagingPrefs.whatsappOptOutAt >=
+                        p.messagingPrefs.whatsappOptInAt
+                    )
+                )}
+                onChange={(e) =>
+                  props.onMessagingPrefs({ whatsappOptIn: e.target.checked })
+                }
+              />
+              WhatsApp opted in
+            </label>
+          </div>
+        ) : null}
 
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Alternate names</h3>
@@ -2623,7 +3166,9 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
 
+        {visibleFields.homeLeagues ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Home leagues</h3>
           <FieldHelp id="edit-home-leagues-help">
@@ -2706,9 +3251,10 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
 
         <p className="text-xs text-gray-500">
-          Linear: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
+          Normal: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
           {effectiveSkillLabel(p, 'fibonacci')} · Areas:{' '}
           {effectiveSkillLabel(p, 'areas')}
         </p>

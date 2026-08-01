@@ -12,3 +12,4 @@
 - [ ] Lint / unit / build CI green
 - [ ] If targeting `preview`: confirm [admin-preview](https://admin-preview.bostondodgeballleague.com) deploys and `/players` + `/events` load (sign in)
 - [ ] If targeting `main`: head branch is `preview` and Preview smoke is green
+- [ ] If changing `workers/video-merge/`: after merge to `main`, confirm Fly deploy workflow succeeds (`bdl-video-merge`); merges stay queued until that worker is healthy

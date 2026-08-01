@@ -59,8 +59,8 @@ function VideoToolsPageContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadSets = useCallback(async () => {
-    setLoading(true)
+  const loadSets = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/video-tools/sets')
@@ -70,13 +70,24 @@ function VideoToolsPageContent() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load upload sets')
     } finally {
-      setLoading(false)
+      if (!opts?.quiet) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void loadSets()
   }, [loadSets])
+
+  useEffect(() => {
+    const hasActive = sets.some((s) =>
+      ['uploading', 'queued', 'processing'].includes(s.status)
+    )
+    if (!hasActive) return
+    const id = setInterval(() => {
+      void loadSets({ quiet: true })
+    }, 8000)
+    return () => clearInterval(id)
+  }, [sets, loadSets])
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -85,7 +96,8 @@ function VideoToolsPageContent() {
           <h1 className="text-2xl font-semibold text-gray-900">Video Tools</h1>
           <p className="mt-1 text-sm text-gray-600">
             Upload GoPro clips per court or session, then merge into one untrimmed
-            video. Multiple sets can run at the same time.
+            video. Turn on auto-start merge to set-and-forget after uploads; you
+            will get an in-app notification when merge finishes.
           </p>
         </div>
         <Link

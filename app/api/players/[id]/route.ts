@@ -8,12 +8,16 @@ import {
   addPlayerAlias,
   addPlayerEmail,
   addPlayerHomeLeague,
+  addPlayerPhone,
   removePlayerAlias,
   removePlayerEmail,
   removePlayerHomeLeague,
+  removePlayerPhone,
   reorderPlayerHomeLeagues,
   setPrimaryEmail,
+  setPrimaryPhone,
   updatePlayer,
+  updatePlayerMessagingPrefs,
 } from '@/app/lib/players/mutations'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -62,11 +66,19 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       addEmail?: string
       removeEmailId?: string
       setPrimaryEmailId?: string
+      addPhone?: string
+      removePhoneId?: string
+      setPrimaryPhoneId?: string
       addAlias?: string
       removeAliasId?: string
       addHomeLeague?: string
       removeHomeLeagueId?: string
       reorderHomeLeagueIds?: string[]
+      messagingPrefs?: {
+        emailOptOut?: boolean
+        smsOptIn?: boolean
+        whatsappOptIn?: boolean
+      }
     }
 
     let player = await getPlayerSnapshot(id)
@@ -122,6 +134,19 @@ export async function PATCH(request: NextRequest, context: Ctx) {
         actor: session.email,
       })
     }
+    if (body.addPhone) {
+      player = await addPlayerPhone(id, body.addPhone, { actor: session.email })
+    }
+    if (body.removePhoneId) {
+      player = await removePlayerPhone(id, body.removePhoneId, {
+        actor: session.email,
+      })
+    }
+    if (body.setPrimaryPhoneId) {
+      player = await setPrimaryPhone(id, body.setPrimaryPhoneId, {
+        actor: session.email,
+      })
+    }
     if (body.addAlias) {
       player = await addPlayerAlias(id, body.addAlias, { actor: session.email })
     }
@@ -142,6 +167,11 @@ export async function PATCH(request: NextRequest, context: Ctx) {
     }
     if (body.reorderHomeLeagueIds) {
       player = await reorderPlayerHomeLeagues(id, body.reorderHomeLeagueIds, {
+        actor: session.email,
+      })
+    }
+    if (body.messagingPrefs) {
+      player = await updatePlayerMessagingPrefs(id, body.messagingPrefs, {
         actor: session.email,
       })
     }

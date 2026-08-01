@@ -53,7 +53,7 @@ export function SkillViewModeToggle(props: {
         Skill view
         <Tooltip
           label="About skill view"
-          content="Controls how skill is shown in lists and drafts: Linear (1–100), Fibonacci, or by skill area when set."
+          content="Controls how skill is shown in lists and drafts: Normal (1–100), Fibonacci, or by skill area when set."
         />
       </span>
       <select

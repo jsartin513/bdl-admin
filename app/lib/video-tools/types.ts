@@ -38,8 +38,19 @@ export type VideoUploadSetRecord = {
   mergedBlobPathname: string | null
   outputFilename: string | null
   pendingUploadCount: number
+  autoEnqueueOnReady: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+export type AdminNotificationRecord = {
+  id: string
+  recipientEmail: string
+  title: string
+  body: string
+  href: string | null
+  readAt: Date | null
+  createdAt: Date
 }
 
 export type VideoUploadSetListItem = VideoUploadSetRecord & {

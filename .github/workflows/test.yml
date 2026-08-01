@@ -23,8 +23,16 @@ jobs:
           cache: 'pnpm'
 
 
+      - name: Checkout bdl-packages
+        uses: actions/checkout@v4
+        with:
+          repository: jsartin513/bdl-packages
+          path: .vendor/bdl-packages
+          token: ${{ secrets.BDL_PACKAGES_READ_TOKEN }}
+
       - name: Install dependencies
         env:
+          BDL_PACKAGES_LOCAL_PATH: ${{ github.workspace }}/.vendor/bdl-packages
           BDL_PACKAGES_READ_TOKEN: ${{ secrets.BDL_PACKAGES_READ_TOKEN }}
         run: bash scripts/with-bdl-git-auth.sh pnpm install --frozen-lockfile
 
