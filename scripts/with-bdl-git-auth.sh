@@ -60,6 +60,30 @@ run_pnpm() {
   exec "${args[@]}"
 }
 
+fetch_bdl_packages() {
+  local dest="$1"
+  local token="$2"
+  rm -rf "${dest}"
+  mkdir -p "${dest}"
+  echo "downloading bdl-packages tarball via GitHub API..."
+  # API tarball avoids git/SSH auth issues on Vercel.
+  if ! curl -fsSL \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/jsartin513/bdl-packages/tarball/main" \
+    | tar -xz --strip-components=1 -C "${dest}"; then
+    echo "error: failed to download jsartin513/bdl-packages with BDL_PACKAGES_READ_TOKEN." >&2
+    echo "Ensure the token has Contents: Read and is set in Vercel Project Env." >&2
+    exit 1
+  fi
+  if [[ ! -f "${dest}/package.json" ]]; then
+    echo "error: bdl-packages tarball did not unpack as expected into ${dest}" >&2
+    ls -la "${dest}" >&2 || true
+    exit 1
+  fi
+}
+
 if [[ -n "${BDL_PACKAGES_LOCAL_PATH:-}" && -d "${BDL_PACKAGES_LOCAL_PATH}" ]]; then
   ABS="$(cd "${BDL_PACKAGES_LOCAL_PATH}" && pwd)"
   echo "using local bdl-packages at ${ABS} (file: deps)"
@@ -79,20 +103,8 @@ fi
 
 TOKEN="$(printf "%s" "${TOKEN}" | tr -d "\r\n")"
 CLONE_DIR="${VERCEL_TMPDIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}}/bdl-packages-src"
-rm -rf "${CLONE_DIR}"
-mkdir -p "$(dirname "${CLONE_DIR}")"
-
-# Same auth shape as actions/checkout (http.extraHeader), then materialize file: deps.
-BASIC="$(printf "x-access-token:%s" "${TOKEN}" | base64 | tr -d "\n")"
-echo "cloning bdl-packages for install..."
-if ! git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${BASIC}" \
-  clone --depth 1 "https://github.com/jsartin513/bdl-packages.git" "${CLONE_DIR}"; then
-  echo "error: failed to clone jsartin513/bdl-packages with BDL_PACKAGES_READ_TOKEN." >&2
-  echo "Ensure the token has Contents: Read on that repo and is set in Vercel env." >&2
-  exit 1
-fi
-
-echo "using cloned bdl-packages at ${CLONE_DIR} (file: deps)"
+fetch_bdl_packages "${CLONE_DIR}" "${TOKEN}"
+echo "using downloaded bdl-packages at ${CLONE_DIR} (file: deps)"
 point_deps_at_vendor "${CLONE_DIR}"
 run_pnpm "$@"
 
