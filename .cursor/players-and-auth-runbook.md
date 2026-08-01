@@ -114,4 +114,8 @@ Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… 
 - Players and event pages share a **Skill view** toggle (`localStorage` key `bdl-admin.skillViewMode`) so display, matrix, sorting, and draft balancing follow Linear / Fibonacci / Skill areas.
 - Gender: male / female / nonbinary / other (imported from TeamLinkt Gender column). List sorts female/nonbinary/other together for drafting. Birthdate from TeamLinkt is not stored or shown.
 - Import fills **linear** skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate` → 40, `3`/`Advanced` → 60, etc.). Creates get the value; updates only set skill when the existing player is unset. Fibonacci and skill areas are not invented by import.
+- Import fills **jersey** the same way when a Jersey Number (or Uniform Number / Shirt Number) column is present.
+- Association members exports usually omit skill and jersey — dry-run preview warns when those columns are missing. Use a roster/participants export (or additional-info columns) to backfill.
+- Committed imports (and **Save for later**) store the full CSV on `import_batches.csv_text` so you can **Load** or **Re-apply** later without re-uploading. Re-apply creates a new batch and still only fills unset jersey/skill.
+- Schema note: after pulling this change, run `npm run db:push` (or apply [`drizzle/0022_import_batches_csv_text.sql`](../drizzle/0022_import_batches_csv_text.sql)) so `source` + `csv_text` exist on `import_batches`.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.

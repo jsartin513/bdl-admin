@@ -141,8 +141,24 @@ export function parseSkillLevel(value: string | null | undefined): number | null
   if (!normalized) return null
   if (normalized in SKILL_LABEL_TO_LEVEL) return SKILL_LABEL_TO_LEVEL[normalized]
 
+  // Excel / Sheets often emit "2.0" for legacy level 2
+  const trailingDotZero = normalized.match(/^([1-4])\.0+$/)
+  if (trailingDotZero) return SKILL_LABEL_TO_LEVEL[trailingDotZero[1]] ?? null
+
   const asNum = Number(normalized)
   if (isValidSkillLevel(asNum)) return asNum
+
+  // "2 - Intermediate", "Intermediate (2)", "Level 3"
+  const digitMatch = normalized.match(/(?:^|[^\d])([1-4])(?:[^\d]|$)/)
+  if (digitMatch && digitMatch[1] in SKILL_LABEL_TO_LEVEL) {
+    return SKILL_LABEL_TO_LEVEL[digitMatch[1]]
+  }
+
+  for (const [label, level] of Object.entries(SKILL_LABEL_TO_LEVEL)) {
+    if (/^\d+$/.test(label)) continue
+    if (normalized.includes(label)) return level
+  }
+
   return null
 }
 

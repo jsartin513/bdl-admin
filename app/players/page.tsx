@@ -148,6 +148,17 @@ function buildBulkEditPatch(draft: BulkEditDraft): Record<string, unknown> | nul
   return Object.keys(patch).length > 0 ? patch : null
 }
 
+type SavedImportBatch = {
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  hasCsv: boolean
+  createdAt: string
+}
+
 function parseJerseyNumber(value: string): number | null {
   if (!value.trim()) return null
   const n = Number.parseInt(value, 10)
@@ -501,8 +512,11 @@ export default function PlayersPage() {
   const [importPreview, setImportPreview] = useState<{
     actions: ImportAction[]
     summary: Record<string, number>
+    warnings: string[]
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
+  const [savedImports, setSavedImports] = useState<SavedImportBatch[]>([])
+  const [savedImportsLoading, setSavedImportsLoading] = useState(false)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -937,6 +951,117 @@ export default function PlayersPage() {
     return null
   }
 
+
+  async function loadSavedImports() {
+    setSavedImportsLoading(true)
+    try {
+      const res = await fetch('/api/players/import')
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Failed to load saved imports'))
+      setSavedImports(Array.isArray(data.batches) ? (data.batches as SavedImportBatch[]) : [])
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load saved imports')
+    } finally {
+      setSavedImportsLoading(false)
+    }
+  }
+
+  async function saveImportForLater() {
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csv: importCsv,
+          filename: importFilename,
+          saveOnly: true,
+        }),
+      })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Save failed'))
+      await loadSavedImports()
+      const warnings = Array.isArray(data.warnings) ? (data.warnings as string[]) : []
+      setImportPreview((prev) =>
+        prev ? { ...prev, warnings } : { actions: [], summary: {}, warnings }
+      )
+      alert(`Saved "${importFilename}" for later (${String(data.rowCount ?? 0)} rows).`)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function loadSavedImport(batchId: string) {
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/players/import?id=${encodeURIComponent(batchId)}`)
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Failed to load import'))
+      const batch = data.batch as {
+        filename?: string
+        csvText?: string | null
+      }
+      if (!batch?.csvText?.trim()) {
+        throw new Error('This saved import has no CSV payload')
+      }
+      setImportFilename(batch.filename || 'teamlinkt.csv')
+      setImportCsv(batch.csvText)
+      setImportPreview(null)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to load import')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function reapplySavedImport(batchId: string, filename: string) {
+    if (
+      !confirm(
+        `Re-apply "${filename}"? This creates a new import batch and only fills unset jersey/skill (plus emails/aliases).`
+      )
+    ) {
+      return
+    }
+    setImportBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch('/api/players/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batchId,
+          dryRun: false,
+          profileFields: importProfileFields,
+          ...(importScope === 'event' && importEventId ? { eventId: importEventId } : {}),
+        }),
+      })
+      const data = await readApiJson(res)
+      if (!res.ok) throw new Error(String(data.error || 'Re-apply failed'))
+      const summary = data.summary as {
+        created: number
+        updated: number
+        skipped: number
+        ambiguous: number
+      }
+      setImportOpen(false)
+      setImportCsv('')
+      setImportPreview(null)
+      await loadPlayers()
+      await loadSavedImports()
+      alert(
+        `Re-apply done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous`
+      )
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Re-apply failed')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   async function previewImport() {
     const scopeError = validateImportScope()
     if (scopeError) {
@@ -956,6 +1081,7 @@ export default function PlayersPage() {
       setImportPreview({
         actions: data.actions as ImportAction[],
         summary: data.summary as Record<string, number>,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
       })
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Preview failed')
@@ -1102,6 +1228,7 @@ export default function PlayersPage() {
               setImportCsv('')
               setFormError(null)
               void loadEvents()
+              void loadSavedImports()
             }}
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
@@ -2171,6 +2298,85 @@ export default function PlayersPage() {
               }}
               placeholder="Or paste CSV contents here…"
             />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-gray-900">Saved imports</h3>
+                <button
+                  type="button"
+                  className="text-xs text-blue-700 hover:underline disabled:opacity-40"
+                  disabled={importBusy || savedImportsLoading}
+                  onClick={() => void loadSavedImports()}
+                >
+                  {savedImportsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+              {savedImports.length === 0 ? (
+                <p className="text-xs text-gray-600">
+                  No saved CSVs yet. Commit an import or use Save for later.
+                </p>
+              ) : (
+                <div className="max-h-40 overflow-y-auto border rounded">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1 text-left">When</th>
+                        <th className="px-2 py-1 text-left">File</th>
+                        <th className="px-2 py-1 text-left">Rows</th>
+                        <th className="px-2 py-1 text-left">CSV</th>
+                        <th className="px-2 py-1 text-left">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {savedImports.map((batch) => {
+                        const summary = batch.summary as {
+                          created?: number
+                          updated?: number
+                          savedOnly?: boolean
+                        }
+                        const summaryLabel = summary.savedOnly
+                          ? 'saved only'
+                          : summary.created != null || summary.updated != null
+                            ? `${summary.created ?? 0}c / ${summary.updated ?? 0}u`
+                            : '—'
+                        return (
+                          <tr key={batch.id} className="border-t">
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {new Date(batch.createdAt).toLocaleString()}
+                            </td>
+                            <td className="px-2 py-1">
+                              <div>{batch.filename}</div>
+                              <div className="text-gray-500">{summaryLabel}</div>
+                            </td>
+                            <td className="px-2 py-1">{batch.rowCount}</td>
+                            <td className="px-2 py-1">{batch.hasCsv ? 'yes' : 'no'}</td>
+                            <td className="px-2 py-1">
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  className="text-blue-700 hover:underline disabled:opacity-40"
+                                  disabled={importBusy || !batch.hasCsv}
+                                  onClick={() => void loadSavedImport(batch.id)}
+                                >
+                                  Load
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-blue-700 hover:underline disabled:opacity-40"
+                                  disabled={importBusy || !batch.hasCsv}
+                                  onClick={() => void reapplySavedImport(batch.id, batch.filename)}
+                                >
+                                  Re-apply
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
             {formError ? (
               <LiveMessage variant="alert" className="text-sm text-red-600">
                 {formError}
@@ -2178,6 +2384,13 @@ export default function PlayersPage() {
             ) : null}
             {importPreview ? (
               <div className="space-y-2 text-sm">
+                {importPreview.warnings.length > 0 ? (
+                  <ul className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 space-y-1">
+                    {importPreview.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <p>
                   Preview: {importPreview.summary.create} create,{' '}
                   {importPreview.summary.update} update, {importPreview.summary.skip} skip,{' '}
@@ -2217,13 +2430,21 @@ export default function PlayersPage() {
                 </div>
               </div>
             ) : null}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 className="rounded border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                 onClick={() => setImportOpen(false)}
               >
                 Close
+              </button>
+              <button
+                type="button"
+                disabled={importBusy || !importCsv.trim()}
+                className="rounded border px-3 py-2 text-sm disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                onClick={() => void saveImportForLater()}
+              >
+                Save for later
               </button>
               <button
                 type="button"
