@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseListPlayersSearchParams } from '@/app/api/players/route'
+import { parseListPlayersSearchParams } from '@/app/lib/players/list-params'
 
 describe('parseListPlayersSearchParams', () => {
   it('defaults eventMatch to registered when eventId is present', () => {
