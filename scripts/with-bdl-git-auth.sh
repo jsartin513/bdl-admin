@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Configure git HTTPS auth so pnpm can clone private jsartin513/bdl-packages.
-# Uses BDL_PACKAGES_READ_TOKEN (preferred). In GitHub Actions, GITHUB_TOKEN cannot
-# read sibling private repos, so a dedicated PAT/secret is required.
+# Configure git so pnpm can clone private jsartin513/bdl-packages.
+# Uses BDL_PACKAGES_READ_TOKEN. Prefer http.extraHeader (same pattern as
+# actions/checkout) so the token is not embedded in a git config key —
+# embedding breaks URL insteadOf matching for some tokens/git versions.
 set -euo pipefail
 
 TOKEN="${BDL_PACKAGES_READ_TOKEN:-}"
@@ -15,14 +16,24 @@ if [[ -z "${TOKEN}" ]]; then
   exec "$@"
 fi
 
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://github.com/"
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "https://git@github.com/"
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "ssh://git@github.com/"
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git@github.com:"
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git+ssh://git@github.com/"
-# pnpm sometimes emits git+https://git@github.com/...
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git+https://git@github.com/"
-git config --global url."https://x-access-token:${TOKEN}@github.com/".insteadOf "git+https://github.com/"
+# Rewrite SSH / scp-like GitHub URLs to HTTPS (lockfile resolves repo as git@github.com:...)
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+git config --global url."https://github.com/".insteadOf "git+ssh://git@github.com/"
+git config --global url."https://github.com/".insteadOf "https://git@github.com/"
+git config --global url."https://github.com/".insteadOf "git+https://git@github.com/"
+git config --global url."https://github.com/".insteadOf "git+https://github.com/"
+
+# Authenticate HTTPS GitHub requests (basic auth with x-access-token)
+BASIC="$(printf "x-access-token:%s" "${TOKEN}" | base64 | tr -d "\n")"
+git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic ${BASIC}"
+
+# Sanity check that rewrite + auth can see the private repo
+if ! git ls-remote "https://github.com/jsartin513/bdl-packages.git" HEAD >/dev/null 2>&1; then
+  echo "error: BDL_PACKAGES_READ_TOKEN cannot read jsartin513/bdl-packages over HTTPS." >&2
+  echo "Recreate a fine-grained PAT with Contents: Read on bdl-packages and re-run grant-consumer-access.sh." >&2
+  exit 1
+fi
 
 exec "$@"
 
