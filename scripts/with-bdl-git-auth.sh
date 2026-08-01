@@ -84,6 +84,11 @@ fetch_bdl_packages() {
   fi
 }
 
+if [[ -z "${BDL_PACKAGES_LOCAL_PATH:-}" && -f "${ROOT}/.vendor/bdl-packages/package.json" ]]; then
+  # Auto-detect CI/submodule checkout
+  BDL_PACKAGES_LOCAL_PATH="${ROOT}/.vendor/bdl-packages"
+fi
+
 if [[ -n "${BDL_PACKAGES_LOCAL_PATH:-}" && -d "${BDL_PACKAGES_LOCAL_PATH}" ]]; then
   ABS="$(cd "${BDL_PACKAGES_LOCAL_PATH}" && pwd)"
   echo "using local bdl-packages at ${ABS} (file: deps)"
