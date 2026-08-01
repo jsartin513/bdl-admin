@@ -26,12 +26,18 @@ import type {
 } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
 import {
+  HOME_LEAGUES,
+  HOME_LEAGUE_CODES,
+  type HomeLeague,
+} from '@/app/lib/players/home-league'
+import {
   effectiveSkillLabel,
   effectiveSkillScore,
   skillMatrixBucketKey,
   skillMatrixColLabel,
   skillMatrixColumns,
 } from '@/app/lib/players/skill'
+import type { PlayerListItem } from '@/app/lib/players/types'
 import { SkillStyledText } from '@/app/components/SkillStyledText'
 import {
   SkillViewModeToggle,
@@ -39,6 +45,8 @@ import {
 } from '@/app/hooks/useSkillViewMode'
 import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
 import { ContactPlayersDialog } from '@/app/components/contact/ContactPlayersDialog'
+
+const DEFAULT_REACH_OUT_LEAGUE: HomeLeague = 'boston_dodgeball_league'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
@@ -175,6 +183,17 @@ function EventTrackerPageContent() {
   const [teamNamesSaving, setTeamNamesSaving] = useState(false)
   const [teamsActionBusy, setTeamsActionBusy] = useState(false)
 
+  const [reachOutLeagues, setReachOutLeagues] = useState<HomeLeague[]>([
+    DEFAULT_REACH_OUT_LEAGUE,
+  ])
+  const [reachOutIncludeOthers, setReachOutIncludeOthers] = useState(false)
+  const [reachOutPlayers, setReachOutPlayers] = useState<PlayerListItem[]>([])
+  const [reachOutLoading, setReachOutLoading] = useState(false)
+  const [reachOutError, setReachOutError] = useState<string | null>(null)
+  const [reachOutCopyMessage, setReachOutCopyMessage] = useState<string | null>(
+    null
+  )
+
   const load = useCallback(async () => {
     if (!eventId) return
     setLoading(true)
@@ -216,6 +235,64 @@ function EventTrackerPageContent() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadReachOut = useCallback(async () => {
+    if (!eventId || reachOutLeagues.length === 0) {
+      setReachOutPlayers([])
+      return
+    }
+    setReachOutLoading(true)
+    setReachOutError(null)
+    try {
+      const params = new URLSearchParams({
+        eventId,
+        eventMatch: 'not_registered',
+        homeLeagues: reachOutLeagues.join(','),
+      })
+      const res = await fetch(`/api/players?${params}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load prospects')
+      setReachOutPlayers(data.players as PlayerListItem[])
+    } catch (err) {
+      setReachOutError(
+        err instanceof Error ? err.message : 'Failed to load prospects'
+      )
+    } finally {
+      setReachOutLoading(false)
+    }
+  }, [eventId, reachOutLeagues])
+
+  useEffect(() => {
+    void loadReachOut()
+  }, [loadReachOut, registrations.length])
+
+  function toggleReachOutLeague(code: HomeLeague) {
+    setReachOutLeagues((prev) => {
+      if (prev.includes(code)) {
+        const next = prev.filter((c) => c !== code)
+        return next.length > 0 ? next : [DEFAULT_REACH_OUT_LEAGUE]
+      }
+      return [...prev, code]
+    })
+  }
+
+  async function copyReachOutEmails() {
+    const emails = reachOutPlayers
+      .map((p) => p.primaryEmail)
+      .filter((e): e is string => Boolean(e?.trim()))
+    if (emails.length === 0) {
+      setReachOutCopyMessage('No emails to copy')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(emails.join(', '))
+      setReachOutCopyMessage(
+        `Copied ${emails.length} email${emails.length === 1 ? '' : 's'}`
+      )
+    } catch {
+      setReachOutCopyMessage('Could not copy to clipboard')
+    }
+  }
 
   const hasExistingGroups = useMemo(
     () => registrations.some((r) => r.draftGroup != null),
@@ -1591,6 +1668,181 @@ function EventTrackerPageContent() {
             </table>
           </div>
         </>
+      ) : null}
+
+      {draftPhase !== 'board' ? (
+        <section className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Reach out</h2>
+              <FieldHelp>
+                Players with selected home leagues who are not registered for this
+                event.
+              </FieldHelp>
+              {!reachOutLoading && !reachOutError ? (
+                <p className="mt-1 text-sm text-gray-600">
+                  {reachOutPlayers.length} not registered
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={`rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40 ${FOCUS_RING}`}
+              disabled={reachOutLoading || reachOutPlayers.length === 0}
+              onClick={() => void copyReachOutEmails()}
+            >
+              Copy emails
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={reachOutIncludeOthers}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setReachOutIncludeOthers(checked)
+                  if (!checked) {
+                    setReachOutLeagues([DEFAULT_REACH_OUT_LEAGUE])
+                  }
+                }}
+              />
+              Include other home leagues
+            </label>
+            {reachOutIncludeOthers ? (
+              <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 ${FOCUS_RING}`}
+                    onClick={() => setReachOutLeagues([...HOME_LEAGUE_CODES])}
+                  >
+                    All leagues
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 ${FOCUS_RING}`}
+                    onClick={() => setReachOutLeagues([DEFAULT_REACH_OUT_LEAGUE])}
+                  >
+                    BDL only
+                  </button>
+                </div>
+                <div className="grid gap-1 sm:grid-cols-2">
+                  {HOME_LEAGUE_CODES.map((code) => (
+                    <label
+                      key={code}
+                      className="flex items-center gap-2 text-sm text-gray-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={reachOutLeagues.includes(code)}
+                        onChange={() => toggleReachOutLeague(code)}
+                      />
+                      {HOME_LEAGUES[code]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {reachOutCopyMessage ? (
+            <LiveMessage variant="status" className="text-sm text-green-700">
+              {reachOutCopyMessage}
+            </LiveMessage>
+          ) : null}
+          {reachOutError ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {reachOutError}
+            </LiveMessage>
+          ) : null}
+
+          <div className="overflow-x-auto rounded border border-gray-200">
+            <table className="min-w-full text-sm">
+              <caption className="sr-only">
+                Unregistered local players for outreach
+              </caption>
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Name
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Skill
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Gender
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Email
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Home leagues
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {reachOutLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-6 text-center text-gray-500"
+                    >
+                      Loading…
+                    </td>
+                  </tr>
+                ) : reachOutPlayers.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-6 text-center text-gray-500"
+                    >
+                      No matching players to reach out to.
+                    </td>
+                  </tr>
+                ) : (
+                  reachOutPlayers.map((p) => {
+                    const label =
+                      p.nickname || `${p.firstName} ${p.lastName}`
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`border-t border-gray-100 ${genderRowClass(p.gender)}`}
+                      >
+                        <td className="px-3 py-2">
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {label}
+                          </SkillStyledText>
+                          <div className="text-xs text-gray-500">
+                            {p.firstName} {p.lastName}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          {effectiveSkillScore(p, skillViewMode) != null
+                            ? effectiveSkillLabel(p, skillViewMode)
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">{p.genderGroupLabel}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {p.primaryEmail ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-700">
+                          {p.homeLeagues.length > 0
+                            ? p.homeLeagues.map((h) => h.label).join(', ')
+                            : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
 
       <Dialog

@@ -402,6 +402,9 @@ export default function PlayersPage() {
   const [skillFilter, setSkillFilter] = useState('')
   const [homeLeagueFilter, setHomeLeagueFilter] = useState<'' | 'unset' | HomeLeague>('')
   const [eventFilter, setEventFilter] = useState('')
+  const [eventMatch, setEventMatch] = useState<'registered' | 'not_registered'>(
+    'registered'
+  )
   const [events, setEvents] = useState<EventListItem[]>([])
   const [eventsStatus, setEventsStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
     'idle'
@@ -516,7 +519,12 @@ export default function PlayersPage() {
       if (q.trim()) params.set('q', q.trim())
       if (skillFilter) params.set('skill', skillFilter)
       if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
-      if (eventFilter) params.set('eventId', eventFilter)
+      if (eventFilter) {
+        params.set('eventId', eventFilter)
+        if (eventMatch === 'not_registered') {
+          params.set('eventMatch', 'not_registered')
+        }
+      }
       if (includeMerged) params.set('includeMerged', '1')
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
@@ -527,7 +535,7 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, homeLeagueFilter, eventFilter, includeMerged])
+  }, [q, skillFilter, homeLeagueFilter, eventFilter, eventMatch, includeMerged])
 
   useEffect(() => {
     void loadPlayers()
@@ -1180,7 +1188,10 @@ export default function PlayersPage() {
             aria-label="Filter by event"
             value={eventFilter}
             onFocus={() => void loadEvents()}
-            onChange={(e) => setEventFilter(e.target.value)}
+            onChange={(e) => {
+              setEventFilter(e.target.value)
+              if (!e.target.value) setEventMatch('registered')
+            }}
             className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 max-w-[16rem]"
           >
             <option value="">All events</option>
@@ -1201,6 +1212,26 @@ export default function PlayersPage() {
             ))}
           </select>
         </label>
+        {eventFilter ? (
+          <label className="text-sm text-gray-900">
+            <span className="block text-gray-600 mb-1">Event status</span>
+            <select
+              aria-label="Filter by event registration status"
+              value={eventMatch}
+              onChange={(e) =>
+                setEventMatch(
+                  e.target.value === 'not_registered'
+                    ? 'not_registered'
+                    : 'registered'
+                )
+              }
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+            >
+              <option value="registered">Registered</option>
+              <option value="not_registered">Not registered</option>
+            </select>
+          </label>
+        ) : null}
         <label className="text-sm text-gray-900">
           <span className="block text-gray-600 mb-1">Home league</span>
           <select
