@@ -46,7 +46,7 @@ export const SKILL_VIEW_MODES: readonly SkillViewMode[] = [
 ] as const
 
 export const SKILL_VIEW_MODE_LABELS: Record<SkillViewMode, string> = {
-  linear: 'Linear',
+  linear: 'Normal',
   fibonacci: 'Fibonacci',
   areas: 'Skill areas',
 }

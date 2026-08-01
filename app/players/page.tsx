@@ -346,6 +346,55 @@ function loadVisibleColumns(): Record<ColumnKey, boolean> {
   }
 }
 
+type ModalFieldKey =
+  | 'skill'
+  | 'roster'
+  | 'photo'
+  | 'name'
+  | 'flags'
+  | 'emails'
+  | 'aliases'
+  | 'homeLeagues'
+
+const MODAL_FIELD_OPTIONS: { key: ModalFieldKey; label: string }[] = [
+  { key: 'skill', label: 'Skill systems' },
+  { key: 'roster', label: 'Roster' },
+  { key: 'photo', label: 'Photo' },
+  { key: 'name', label: 'Name' },
+  { key: 'flags', label: 'Flags' },
+  { key: 'emails', label: 'Emails' },
+  { key: 'aliases', label: 'Alternate names' },
+  { key: 'homeLeagues', label: 'Home leagues' },
+]
+
+const DEFAULT_VISIBLE_MODAL_FIELDS: Record<ModalFieldKey, boolean> = {
+  skill: true,
+  roster: true,
+  photo: false,
+  name: true,
+  flags: true,
+  emails: true,
+  aliases: false,
+  homeLeagues: false,
+}
+
+const MODAL_FIELDS_STORAGE_KEY = 'bdl-admin.players.visibleModalFields'
+
+function loadVisibleModalFields(): Record<ModalFieldKey, boolean> {
+  if (typeof window === 'undefined') return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+  try {
+    const raw = window.localStorage.getItem(MODAL_FIELDS_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+    const parsed = JSON.parse(raw) as Partial<Record<ModalFieldKey, boolean>>
+    return {
+      ...DEFAULT_VISIBLE_MODAL_FIELDS,
+      ...parsed,
+    }
+  } catch {
+    return { ...DEFAULT_VISIBLE_MODAL_FIELDS }
+  }
+}
+
 function compareByLastName(a: PlayerListItem, b: PlayerListItem): number {
   const last = a.lastName.localeCompare(b.lastName, undefined, { sensitivity: 'base' })
   if (last !== 0) return last
@@ -2523,6 +2572,26 @@ function EditPanel(props: {
   const [newPhone, setNewPhone] = useState('')
   const [newAlias, setNewAlias] = useState('')
   const [newHomeLeague, setNewHomeLeague] = useState('')
+  const [visibleFields, setVisibleFields] = useState<Record<ModalFieldKey, boolean>>(
+    DEFAULT_VISIBLE_MODAL_FIELDS
+  )
+  const [fieldsOpen, setFieldsOpen] = useState(false)
+
+  useEffect(() => {
+    setVisibleFields(loadVisibleModalFields())
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MODAL_FIELDS_STORAGE_KEY, JSON.stringify(visibleFields))
+    } catch {
+      // ignore storage errors
+    }
+  }, [visibleFields])
+
+  function toggleModalField(key: ModalFieldKey) {
+    setVisibleFields((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   useEffect(() => {
     setFirstName(p.firstName)
@@ -2558,7 +2627,40 @@ function EditPanel(props: {
   return (
     <Dialog open onClose={props.onClose} title="Edit player" className="max-w-xl">
       <div className="space-y-4 text-gray-900">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFieldsOpen((open) => !open)}
+              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              Fields
+            </button>
+            {fieldsOpen ? (
+              <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded border border-gray-200 bg-white p-2 shadow-lg">
+                {MODAL_FIELD_OPTIONS.map((field) => (
+                  <label
+                    key={field.key}
+                    className="flex items-center gap-2 rounded px-1 py-1 text-sm text-gray-900 hover:bg-gray-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleFields[field.key]}
+                      onChange={() => toggleModalField(field.key)}
+                    />
+                    {field.label}
+                  </label>
+                ))}
+                <button
+                  type="button"
+                  className="mt-1 w-full rounded px-1 py-1 text-left text-xs text-blue-700 hover:bg-blue-50"
+                  onClick={() => setVisibleFields({ ...DEFAULT_VISIBLE_MODAL_FIELDS })}
+                >
+                  Reset defaults
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="text-sm text-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
@@ -2599,6 +2701,7 @@ function EditPanel(props: {
           </div>
         ) : null}
 
+        {visibleFields.skill ? (
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Skill systems</h3>
           <SkillFieldsEditor
@@ -2608,7 +2711,9 @@ function EditPanel(props: {
             idPrefix="edit-skill"
           />
         </div>
+        ) : null}
 
+        {visibleFields.roster ? (
         <div className="space-y-2">
           <h3 className="font-medium text-sm">Roster</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -2655,7 +2760,9 @@ function EditPanel(props: {
             </label>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.photo ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Photo</h3>
           <div className="flex items-center gap-4">
@@ -2692,7 +2799,9 @@ function EditPanel(props: {
             </div>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.name ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Name</h3>
           <div className="grid grid-cols-2 gap-3">
@@ -2741,7 +2850,9 @@ function EditPanel(props: {
             </label>
           </div>
         </div>
+        ) : null}
 
+        {visibleFields.flags ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Flags</h3>
           <div className="rounded border border-amber-200 bg-amber-50/50 px-3 py-2">
@@ -2788,6 +2899,7 @@ function EditPanel(props: {
             </label>
           ) : null}
         </div>
+        ) : null}
 
         {!p.isMerged ? (
           <button
@@ -2816,6 +2928,7 @@ function EditPanel(props: {
           </button>
         ) : null}
 
+        {visibleFields.emails ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Emails</h3>
           <ul className="space-y-1 text-sm">
@@ -2872,7 +2985,9 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
 
+        {visibleFields.aliases ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Phones</h3>
           <ul className="space-y-1 text-sm">
@@ -3020,7 +3135,9 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
 
+        {visibleFields.homeLeagues ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Home leagues</h3>
           <FieldHelp id="edit-home-leagues-help">
@@ -3103,9 +3220,10 @@ function EditPanel(props: {
             </div>
           ) : null}
         </div>
+        ) : null}
 
         <p className="text-xs text-gray-500">
-          Linear: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
+          Normal: {effectiveSkillLabel(p, 'linear')} · Fib:{' '}
           {effectiveSkillLabel(p, 'fibonacci')} · Areas:{' '}
           {effectiveSkillLabel(p, 'areas')}
         </p>

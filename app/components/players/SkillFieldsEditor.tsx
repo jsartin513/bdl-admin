@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   FIB_SKILL_LEVELS,
   LINEAR_SKILL_MAX,
@@ -81,6 +82,11 @@ export function skillFieldsToPatch(fields: SkillFieldsValue): {
   return { skillLevel, skillLevelFib, skillAreas }
 }
 
+function hasAlternateSkillData(value: SkillFieldsValue): boolean {
+  if (value.skillLevelFib !== '') return true
+  return SKILL_AREA_KEYS.some((key) => value.skillAreas[key] !== '')
+}
+
 export function SkillFieldsEditor(props: {
   value: SkillFieldsValue
   onChange: (next: SkillFieldsValue) => void
@@ -89,7 +95,14 @@ export function SkillFieldsEditor(props: {
 }) {
   const { value, onChange, disabled, idPrefix = 'skill' } = props
   const mainHint =
-    value.skillLevel !== '' ? value.skillLevel : 'main linear skill'
+    value.skillLevel !== '' ? value.skillLevel : 'main normal skill'
+  const [moreSystemsOpen, setMoreSystemsOpen] = useState(() =>
+    hasAlternateSkillData(value)
+  )
+
+  useEffect(() => {
+    if (hasAlternateSkillData(value)) setMoreSystemsOpen(true)
+  }, [value])
 
   return (
     <div className="space-y-3">
@@ -98,9 +111,9 @@ export function SkillFieldsEditor(props: {
           htmlFor={`${idPrefix}-linear`}
           className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700"
         >
-          Linear skill (1–100)
+          Normal skill (1–100)
           <Tooltip
-            label="About linear skill"
+            label="About normal skill"
             content="Primary 1–100 rating used for drafting and filters. Presets map common labels (e.g. Intermediate) to a number."
           />
         </label>
@@ -121,7 +134,7 @@ export function SkillFieldsEditor(props: {
             className="rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             value=""
             disabled={disabled}
-            aria-label="Set linear skill preset"
+            aria-label="Set normal skill preset"
             onChange={(e) => {
               if (!e.target.value) return
               onChange({ ...value, skillLevel: e.target.value })
@@ -140,71 +153,82 @@ export function SkillFieldsEditor(props: {
         </FieldHelp>
       </div>
 
-      <div>
-        <label
-          htmlFor={`${idPrefix}-fib`}
-          className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700"
-        >
-          Fibonacci skill
-          <Tooltip
-            label="About Fibonacci skill"
-            content="Optional coarser skill scale (Fibonacci numbers). Used when Skill view is set to Fibonacci."
-          />
-        </label>
-        <select
-          id={`${idPrefix}-fib`}
-          className="rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          value={value.skillLevelFib}
-          disabled={disabled}
-          aria-describedby={`${idPrefix}-fib-help`}
-          onChange={(e) => onChange({ ...value, skillLevelFib: e.target.value })}
-        >
-          <option value="">Unset</option>
-          {FIB_SKILL_LEVELS.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <FieldHelp id={`${idPrefix}-fib-help`}>
-          Leave unset if you only track linear skill.
-        </FieldHelp>
-      </div>
-
-      <fieldset className="rounded border border-gray-200 p-3">
-        <legend className="inline-flex items-center gap-1.5 px-1 text-sm font-medium text-gray-700">
-          Skill areas
-          <Tooltip
-            label="About skill areas"
-            content="Break out offense, defense, staying alive, and court presence. Blank areas fall back to the main linear skill."
-          />
-        </legend>
-        <FieldHelp className="mb-2 mt-0">
-          Leave blank to use the main linear skill ({mainHint}).
-        </FieldHelp>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {SKILL_AREA_KEYS.map((key) => (
-            <label key={key} className="block text-sm text-gray-700">
-              <span className="mb-1 block">{SKILL_AREA_LABELS[key]}</span>
-              <input
-                type="number"
-                min={LINEAR_SKILL_MIN}
-                max={LINEAR_SKILL_MAX}
-                className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                value={value.skillAreas[key]}
-                disabled={disabled}
-                placeholder={`Default: ${mainHint}`}
-                onChange={(e) =>
-                  onChange({
-                    ...value,
-                    skillAreas: { ...value.skillAreas, [key]: e.target.value },
-                  })
-                }
+      <details
+        open={moreSystemsOpen}
+        onToggle={(e) => setMoreSystemsOpen(e.currentTarget.open)}
+        className="rounded border border-gray-200"
+      >
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          More skill systems
+        </summary>
+        <div className="space-y-3 border-t border-gray-200 px-3 py-3">
+          <div>
+            <label
+              htmlFor={`${idPrefix}-fib`}
+              className="mb-1 inline-flex items-center gap-1.5 text-sm font-medium text-gray-700"
+            >
+              Fibonacci skill
+              <Tooltip
+                label="About Fibonacci skill"
+                content="Optional coarser skill scale (Fibonacci numbers). Used when Skill view is set to Fibonacci."
               />
             </label>
-          ))}
+            <select
+              id={`${idPrefix}-fib`}
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              value={value.skillLevelFib}
+              disabled={disabled}
+              aria-describedby={`${idPrefix}-fib-help`}
+              onChange={(e) => onChange({ ...value, skillLevelFib: e.target.value })}
+            >
+              <option value="">Unset</option>
+              {FIB_SKILL_LEVELS.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <FieldHelp id={`${idPrefix}-fib-help`}>
+              Leave unset if you only track normal skill.
+            </FieldHelp>
+          </div>
+
+          <fieldset className="rounded border border-gray-200 p-3">
+            <legend className="inline-flex items-center gap-1.5 px-1 text-sm font-medium text-gray-700">
+              Skill areas
+              <Tooltip
+                label="About skill areas"
+                content="Break out offense, defense, staying alive, and court presence. Blank areas fall back to the main normal skill."
+              />
+            </legend>
+            <FieldHelp className="mb-2 mt-0">
+              Leave blank to use the main normal skill ({mainHint}).
+            </FieldHelp>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {SKILL_AREA_KEYS.map((key) => (
+                <label key={key} className="block text-sm text-gray-700">
+                  <span className="mb-1 block">{SKILL_AREA_LABELS[key]}</span>
+                  <input
+                    type="number"
+                    min={LINEAR_SKILL_MIN}
+                    max={LINEAR_SKILL_MAX}
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    value={value.skillAreas[key]}
+                    disabled={disabled}
+                    placeholder={`Default: ${mainHint}`}
+                    onChange={(e) =>
+                      onChange({
+                        ...value,
+                        skillAreas: { ...value.skillAreas, [key]: e.target.value },
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
-      </fieldset>
+      </details>
     </div>
   )
 }
