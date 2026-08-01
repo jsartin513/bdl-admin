@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const buffer = buildTeamSchedulesBuffer(csv);
     const filename = safeDownloadName(body.outputName);
 
-    return new NextResponse(buffer, {
+    return new NextResponse(Uint8Array.from(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${filename}"`,

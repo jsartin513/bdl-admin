@@ -3018,7 +3018,6 @@ function EditPanel(props: {
         </div>
         ) : null}
 
-        {visibleFields.aliases ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Phones</h3>
           <ul className="space-y-1 text-sm">
@@ -3123,6 +3122,7 @@ function EditPanel(props: {
           </div>
         ) : null}
 
+        {visibleFields.aliases ? (
         <div className="border-t pt-4 space-y-2">
           <h3 className="font-medium text-sm">Alternate names</h3>
           <ul className="space-y-1 text-sm">
