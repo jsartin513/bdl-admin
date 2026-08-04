@@ -21,10 +21,22 @@ import {
 import type { ParsedContactJobRequest } from '@/app/lib/contact/parse'
 import type { ContactChannel } from '@/app/lib/contact/types'
 
+/** Inline send runs in the request cycle; keep campaigns small to avoid timeouts. */
+export const DEFAULT_CONTACT_MAX_RECIPIENTS = 50
+
+export function contactMaxRecipients(): number {
+  const raw = process.env.CONTACT_MAX_RECIPIENTS?.trim()
+  if (!raw) return DEFAULT_CONTACT_MAX_RECIPIENTS
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_CONTACT_MAX_RECIPIENTS
+  return Math.floor(parsed)
+}
+
 function statusCallbackUrl(): string | undefined {
   const base = process.env.NEXT_PUBLIC_APP_URL?.trim()?.replace(/\/$/, '')
   if (!base) return undefined
-  return `${base}/api/webhooks/twilio/messaging`
+  const withScheme = /^https?:\/\//i.test(base) ? base : `https://${base}`
+  return `${withScheme.replace(/\/$/, '')}/api/webhooks/twilio/messaging`
 }
 
 function assertChannelConfigured(channel: ContactChannel) {
@@ -62,6 +74,13 @@ export async function createAndSendContactJob(opts: {
     channel: request.channel,
     audience: request.audience,
   })
+
+  const maxRecipients = contactMaxRecipients()
+  if (preview.reachable > maxRecipients) {
+    throw new Error(
+      `Audience has ${preview.reachable} reachable recipients; max per send is ${maxRecipients}. Narrow the audience or raise CONTACT_MAX_RECIPIENTS.`
+    )
+  }
 
   let templateSid: string | null = null
   if (request.channel === 'whatsapp' && request.whatsappTemplateKey) {

@@ -194,7 +194,6 @@ function NotificationsBell({
         <div
           id={panelId}
           className="absolute right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
-          role="menu"
         >
           <div className="flex items-center justify-between gap-2 border-b border-gray-600 px-3 py-2">
             <span className="text-sm font-medium text-gray-100">Notifications</span>

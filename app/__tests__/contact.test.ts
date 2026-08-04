@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { estimateSmsSegments, normalizePhoneE164 } from '@/app/lib/contact/phone'
 import {
   plainTextToHtml,
@@ -12,6 +12,10 @@ import {
   getWhatsAppTemplate,
   listConfiguredWhatsAppTemplates,
 } from '@/app/lib/contact/whatsapp-templates'
+import {
+  contactMaxRecipients,
+  DEFAULT_CONTACT_MAX_RECIPIENTS,
+} from '@/app/lib/contact/jobs'
 
 describe('normalizePhoneE164', () => {
   it('normalizes US 10-digit numbers', () => {
@@ -139,5 +143,26 @@ describe('whatsapp templates', () => {
   it('exposes known template keys', () => {
     expect(getWhatsAppTemplate('announcement')?.label).toMatch(/announcement/i)
     expect(listConfiguredWhatsAppTemplates().length).toBe(3)
+  })
+})
+
+describe('contactMaxRecipients', () => {
+  const original = process.env.CONTACT_MAX_RECIPIENTS
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.CONTACT_MAX_RECIPIENTS
+    else process.env.CONTACT_MAX_RECIPIENTS = original
+  })
+
+  it('defaults when unset or invalid', () => {
+    delete process.env.CONTACT_MAX_RECIPIENTS
+    expect(contactMaxRecipients()).toBe(DEFAULT_CONTACT_MAX_RECIPIENTS)
+    process.env.CONTACT_MAX_RECIPIENTS = 'nope'
+    expect(contactMaxRecipients()).toBe(DEFAULT_CONTACT_MAX_RECIPIENTS)
+  })
+
+  it('reads CONTACT_MAX_RECIPIENTS', () => {
+    process.env.CONTACT_MAX_RECIPIENTS = '25'
+    expect(contactMaxRecipients()).toBe(25)
   })
 })

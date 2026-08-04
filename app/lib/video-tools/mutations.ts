@@ -864,13 +864,18 @@ async function notifyVideoSetTerminal(
 
   try {
     const { sendNotifyEmail } = await import('@/app/lib/notify-email')
-    const baseUrl =
+    const rawBase =
       process.env.NEXT_PUBLIC_APP_URL?.trim() ||
       process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-      (process.env.VERCEL_URL?.trim()
-        ? `https://${process.env.VERCEL_URL.trim()}`
-        : '')
-    const link = baseUrl ? `${baseUrl.replace(/\/$/, '')}${href}` : href
+      process.env.VERCEL_URL?.trim() ||
+      ''
+    // Vercel host envs are often scheme-less (e.g. my-app.vercel.app).
+    const withScheme = rawBase
+      ? /^https?:\/\//i.test(rawBase)
+        ? rawBase
+        : `https://${rawBase}`
+      : ''
+    const link = withScheme ? `${withScheme.replace(/\/$/, '')}${href}` : href
     await sendNotifyEmail({
       to: set.createdByEmail,
       subject: notifTitle,

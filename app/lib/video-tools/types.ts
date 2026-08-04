@@ -49,8 +49,9 @@ export type AdminNotificationRecord = {
   title: string
   body: string
   href: string | null
-  readAt: Date | null
-  createdAt: Date
+  /** DB returns Date; JSON APIs serialize to ISO strings for the client. */
+  readAt: Date | string | null
+  createdAt: Date | string
 }
 
 export type VideoUploadSetListItem = VideoUploadSetRecord & {
