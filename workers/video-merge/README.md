@@ -30,9 +30,15 @@ Build context is this directory (`workers/video-merge`):
 
 ```bash
 cd workers/video-merge
-docker build -t bdl-video-merge .
-# or from here:
+# first time:
+#   fly apps create bdl-video-merge
+#   fly secrets set VIDEO_TOOLS_API_BASE=https://admin.bostondodgeballleague.com \
+#     VIDEO_WORKER_SECRET=... BLOB_READ_WRITE_TOKEN=...
 fly deploy
 ```
+
+App: **`bdl-video-merge`** (primary region `ewr`). Monitor with `fly status` / `fly logs`.
+
+Pushes to `main` that touch this directory auto-deploy via GitHub Actions (secret `FLY_API_TOKEN`). Manual: `fly deploy` from this directory.
 
 Disk and memory need room for concurrent multi-GB court sets; bump VM size as needed.

@@ -25,6 +25,7 @@ function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
     firstName: 'Jess',
     lastName: 'Sartin',
     email: 'jess@example.com',
+    phone: null,
     jerseyNumber: null,
     skillLevel: null,
     gender: null,
@@ -45,6 +46,14 @@ describe('parseSkillLevel', () => {
     expect(parseSkillLevel('30')).toBe(30)
     expect(parseSkillLevel('')).toBeNull()
     expect(parseSkillLevel('unknown')).toBeNull()
+  })
+
+  it('parses Excel floats and composite labels', () => {
+    expect(parseSkillLevel('2.0')).toBe(40)
+    expect(parseSkillLevel('3.0')).toBe(60)
+    expect(parseSkillLevel('2 - Intermediate')).toBe(40)
+    expect(parseSkillLevel('Intermediate (2)')).toBe(40)
+    expect(parseSkillLevel('Level 3')).toBe(60)
   })
 })
 
@@ -140,6 +149,18 @@ describe('teamlinkt csv parse', () => {
     })
     expect(parsed.rows[1].email).toBeNull()
     expect(parsed.rows[1].jerseyNumber).toBeNull()
+    expect(parsed.warnings.some((w) => /Skill/.test(w))).toBe(true)
+    expect(parsed.warnings.some((w) => /Jersey/.test(w))).toBe(false)
+  })
+
+  it('maps phone columns when present', () => {
+    const csv = [
+      'First Name,Last Name,Email,Phone',
+      'Jess,Sartin,jess@example.com,(617) 555-0100',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].phone).toBe('(617) 555-0100')
   })
 
   it('maps skill level from CSV labels or numbers', () => {
@@ -156,6 +177,19 @@ describe('teamlinkt csv parse', () => {
     expect(parsed.rows[0].skillLevel).toBe(40)
     expect(parsed.rows[1].skillLevel).toBe(60)
     expect(parsed.rows[2].skillLevel).toBe(40)
+    expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(true)
+    expect(parsed.warnings.some((w) => /No Skill/.test(w))).toBe(false)
+  })
+
+  it('maps alternate jersey headers', () => {
+    const csv = [
+      'First Name,Last Name,Email,Uniform Number',
+      'Jess,Sartin,jess@example.com,#12',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows[0].jerseyNumber).toBe(12)
+    expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(false)
   })
 
   it('errors when name columns are missing', () => {
@@ -182,6 +216,18 @@ describe('teamlinkt csv parse', () => {
     })
     // Birthdate is in raw CSV but not mapped onto the player row
     expect(parsed.rows[0]).not.toHaveProperty('birthdate')
+    expect(parsed.warnings.some((w) => /No Skill/.test(w))).toBe(true)
+    expect(parsed.warnings.some((w) => /No Jersey/.test(w))).toBe(true)
+  })
+
+  it('warns when jersey values cannot be parsed', () => {
+    const csv = [
+      'First Name,Last Name,Email,Jersey Number',
+      'Jess,Sartin,jess@example.com,twelve',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.rows[0].jerseyNumber).toBeNull()
+    expect(parsed.warnings.some((w) => /no numbers parsed/i.test(w))).toBe(true)
   })
 
   it('strips a UTF-8 BOM from TeamLinkt exports', () => {

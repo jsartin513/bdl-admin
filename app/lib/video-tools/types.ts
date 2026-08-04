@@ -38,8 +38,20 @@ export type VideoUploadSetRecord = {
   mergedBlobPathname: string | null
   outputFilename: string | null
   pendingUploadCount: number
+  autoEnqueueOnReady: boolean
   createdAt: Date
   updatedAt: Date
+}
+
+export type AdminNotificationRecord = {
+  id: string
+  recipientEmail: string
+  title: string
+  body: string
+  href: string | null
+  /** DB returns Date; JSON APIs serialize to ISO strings for the client. */
+  readAt: Date | string | null
+  createdAt: Date | string
 }
 
 export type VideoUploadSetListItem = VideoUploadSetRecord & {

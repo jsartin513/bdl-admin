@@ -21,6 +21,7 @@ import {
   teamGenderCounts,
   teamSkillTotal,
 } from '@/app/lib/events/draft-seed'
+import { resolveTeamName } from '@/app/lib/events/dodgeballhub-export'
 import type {
   EventDraftSnapshotListItem,
   EventRegistrationListItem,
@@ -51,6 +52,10 @@ type Props = {
   error: string | null
   pairingEnabled?: boolean
   skillViewMode?: SkillViewMode
+  /** Ordered names; index i maps to team i + 1 */
+  teamNames?: string[]
+  /** When true, Apply and Promote are disabled */
+  teamsLocked?: boolean
   snapshots: EventDraftSnapshotListItem[]
   snapshotsBusy: boolean
   onSaveSnapshot: (name: string) => Promise<void>
@@ -444,6 +449,8 @@ export function EventDraftBoard(props: Props) {
     error,
     pairingEnabled = true,
     skillViewMode = 'linear',
+    teamNames = [],
+    teamsLocked = false,
     snapshots,
     snapshotsBusy,
     onSaveSnapshot,
@@ -635,6 +642,11 @@ export function EventDraftBoard(props: Props) {
             Working copy only — permanent draft groups are unchanged until you Apply.
             {pairingEnabled ? ' Paired players move together.' : ''}
           </p>
+          {teamsLocked ? (
+            <p className="mt-1 text-sm font-medium text-amber-800">
+              Teams are locked. Unlock on the event page to Apply or Promote.
+            </p>
+          ) : null}
           <FieldHelp className="mt-1">
             Drag players between teams. Reshuffle re-seeds from the current setup. Save
             snapshots to compare alternatives before applying.
@@ -681,8 +693,9 @@ export function EventDraftBoard(props: Props) {
           <button
             type="button"
             className="rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40"
-            disabled={applying}
+            disabled={applying || teamsLocked}
             onClick={onApply}
+            title={teamsLocked ? 'Unlock teams to apply' : undefined}
           >
             {applying ? 'Applying…' : 'Apply to event'}
           </button>
@@ -760,7 +773,8 @@ export function EventDraftBoard(props: Props) {
                         <button
                           type="button"
                           className="text-xs text-violet-700 hover:underline disabled:opacity-40"
-                          disabled={snapshotsBusy || applying}
+                          disabled={snapshotsBusy || applying || teamsLocked}
+                          title={teamsLocked ? 'Unlock teams to promote' : undefined}
                           onClick={() => {
                             if (
                               !window.confirm(
@@ -856,7 +870,8 @@ export function EventDraftBoard(props: Props) {
                     <ul className="mt-2 space-y-1 text-gray-700">
                       {side.summary.teams.map((t) => (
                         <li key={t.team}>
-                          Team {t.team}: {t.size} · score {t.skillTotal}
+                          {resolveTeamName(t.team, teamNames)}: {t.size} · score{' '}
+                          {t.skillTotal}
                           {t.size > 0 ? ` (avg ${t.skillAvg.toFixed(1)})` : ''} ·
                           W/NB/O {t.gender.wNbO} · M {t.gender.men}
                           {t.gender.unset ? ` · — ${t.gender.unset}` : ''}
@@ -932,7 +947,7 @@ export function EventDraftBoard(props: Props) {
               <TeamColumn
                 key={t}
                 team={t}
-                label={`Team ${t}`}
+                label={resolveTeamName(t, teamNames)}
                 players={teamPlayers}
                 sort={playerSort}
                 skillViewMode={skillViewMode}

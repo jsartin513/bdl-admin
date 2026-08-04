@@ -134,6 +134,34 @@
       "when": 1753815600000,
       "tag": "0018_video_tools_pending_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1753833600000,
+      "tag": "0019_video_tools_set_and_forget",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1753992000000,
+      "tag": "0020_event_team_names_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1753984800000,
+      "tag": "0021_contact_players",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784145000000,
+      "tag": "0022_import_batches_csv_text",
+      "breakpoints": true
     }
   ]
 }
