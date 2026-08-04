@@ -1,0 +1,3 @@
+{
+  "installCommand": "corepack enable && bash scripts/with-bdl-git-auth.sh pnpm install"
+}

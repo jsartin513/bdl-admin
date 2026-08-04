@@ -23,6 +23,9 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@bdl/admin-auth": "github:jsartin513/bdl-packages#path:admin-auth",
+    "@bdl/app-config": "github:jsartin513/bdl-packages#path:app-config",
+    "@bdl/board-apps": "github:jsartin513/bdl-packages#path:board-apps",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -59,5 +62,14 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.16"
+  },
+  "packageManager": "pnpm@10.33.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver",
+      "@ffmpeg/core"
+    ]
   }
 }
