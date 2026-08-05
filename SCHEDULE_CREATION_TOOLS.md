@@ -43,7 +43,12 @@ python3 create_five_team_teamref_league.py "public/league_schedules/Five Team Ro
   "Carbon Fiber" "Velocity Syndicate" "Hyperdrive" "High Octane" "Full Throttle"
 ```
 
-Each night has 5 rounds on 2 courts. The bye team refs **both** courts (counts as 2 refs). Balance per team: **2 home, 2 away, 2 refs**.
+Default night: 4 dual-court rounds + 2 single-court rounds when a team cannot dual-ref (e.g. Hyperdrive with 7 players). Dual-ref bye counts as 2 refs; Hyperdrive refs Court 1 only twice instead. Balance per team: **2 home, 2 away, 2 refs**.
+
+```bash
+# Hyperdrive cannot cover both courts:
+python3 create_five_team_teamref_league.py ... --no-dual-ref "Hyperdrive"
+```
 
 ### 2. `create_league_template.py` - Template Generator
 **Creates a blank league spreadsheet with proper structure**
