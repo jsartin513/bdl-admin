@@ -1,0 +1,19 @@
+---
+description: When changing app/db/schema.ts or drizzle SQL, keep migrations journaled so deploy applies them
+globs:
+  - app/db/schema.ts
+  - drizzle/**
+  - scripts/migrate-on-deploy.mjs
+  - scripts/check-migrations.mjs
+alwaysApply: false
+---
+
+# Drizzle migrations
+
+Deploy only applies migrations listed in `drizzle/meta/_journal.json` via `drizzle-kit migrate`.
+
+- Prefer `npm run db:generate` after schema edits.
+- Never add a lone `drizzle/*.sql` without a matching journal `tag`.
+- Never reuse a numeric prefix already used by another migration file.
+- Run `npm run db:check-migrations` before finishing.
+- If prod 500s with `column … does not exist` after a schema PR, follow `.cursor/drizzle-migrations-runbook.md`.
