@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  alertWatchedAdminLoginAttempt,
   clearAdminOAuthStateCookie,
   isAllowedAdminEmail,
   readAdminOAuthState,
@@ -78,7 +79,9 @@ export async function GET(request: NextRequest) {
     return adminErrorRedirect(request, 'invalid_google_identity')
   }
 
-  if (!isAllowedAdminEmail(email)) {
+  const allowed = isAllowedAdminEmail(email)
+  void alertWatchedAdminLoginAttempt(email, { app: 'bdl-admin', allowed })
+  if (!allowed) {
     return adminErrorRedirect(request, 'email_not_allowed')
   }
 
