@@ -228,6 +228,72 @@ describe('emptySeedDraftGroups', () => {
     expect(result.get('a')).toBeNull()
     expect(result.get('b')).toBeNull()
   })
+
+  it('preserves locked BYOT seats', () => {
+    const result = emptySeedDraftGroups([
+      {
+        id: 'locked',
+        skillLevel: 3,
+        gender: 'female',
+        teamLocked: true,
+        draftGroup: 2,
+      },
+      { id: 'fa', skillLevel: 2, gender: 'male' },
+    ])
+    expect(result.get('locked')).toBe(2)
+    expect(result.get('fa')).toBeNull()
+  })
+})
+
+describe('autoSeedDraftGroups with BYOT locks', () => {
+  it('keeps locked players on their signup team and places free agents', () => {
+    const players: DraftSeedPlayer[] = [
+      {
+        id: 'l1',
+        skillLevel: 4,
+        gender: 'female',
+        teamLocked: true,
+        draftGroup: 1,
+      },
+      {
+        id: 'l2',
+        skillLevel: 4,
+        gender: 'male',
+        teamLocked: true,
+        draftGroup: 2,
+      },
+      { id: 'f1', skillLevel: 3, gender: 'female' },
+      { id: 'f2', skillLevel: 3, gender: 'male' },
+      { id: 'f3', skillLevel: 2, gender: 'female' },
+      { id: 'f4', skillLevel: 2, gender: 'male' },
+    ]
+    const result = autoSeedDraftGroups(players, 2)
+    expect(result.get('l1')).toBe(1)
+    expect(result.get('l2')).toBe(2)
+    for (const id of ['f1', 'f2', 'f3', 'f4']) {
+      expect(result.get(id)).toBeGreaterThanOrEqual(1)
+      expect(result.get(id)).toBeLessThanOrEqual(2)
+    }
+  })
+
+  it('keeps free-agent groups together when seeding around locks', () => {
+    const players: DraftSeedPlayer[] = [
+      {
+        id: 'l1',
+        skillLevel: 4,
+        gender: 'female',
+        teamLocked: true,
+        draftGroup: 1,
+      },
+      { id: 'a', skillLevel: 3, gender: 'female', pairId: 'g1' },
+      { id: 'b', skillLevel: 3, gender: 'male', pairId: 'g1' },
+      { id: 'c', skillLevel: 2, gender: 'female', pairId: 'g1' },
+    ]
+    const result = autoSeedDraftGroups(players, 2)
+    expect(result.get('l1')).toBe(1)
+    expect(result.get('a')).toBe(result.get('b'))
+    expect(result.get('b')).toBe(result.get('c'))
+  })
 })
 
 describe('copyExistingDraftGroups', () => {

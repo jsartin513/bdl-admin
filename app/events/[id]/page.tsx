@@ -299,6 +299,11 @@ function EventTrackerPageContent() {
     [registrations]
   )
 
+  const hasByotLocked = useMemo(
+    () => registrations.some((r) => r.teamLocked),
+    [registrations]
+  )
+
   const counts = useMemo(() => {
     let unassigned = 0
     let assigned = 0
@@ -570,17 +575,17 @@ function EventTrackerPageContent() {
         }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to pair players')
+      if (!res.ok) throw new Error(data.error || 'Failed to group')
       await load()
-      setMessage('Players paired')
+      setMessage('Group updated')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to pair players')
+      setFormError(err instanceof Error ? err.message : 'Failed to group')
     } finally {
       setSavingId(null)
     }
   }
 
-  async function unpair(registrationId: string) {
+  async function leaveGroup(registrationId: string) {
     setSavingId(registrationId)
     setFormError(null)
     try {
@@ -589,15 +594,87 @@ function EventTrackerPageContent() {
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ unpair: true }),
+          body: JSON.stringify({ leaveGroup: true }),
         }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to unpair')
+      if (!res.ok) throw new Error(data.error || 'Failed to leave group')
       await load()
-      setMessage('Pair cleared')
+      setMessage('Left group')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to unpair')
+      setFormError(err instanceof Error ? err.message : 'Failed to leave group')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function dissolveGroup(registrationId: string) {
+    setSavingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dissolveGroup: true }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to dissolve group')
+      await load()
+      setMessage('Group dissolved')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to dissolve group')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function setSignupOverride(
+    registrationId: string,
+    patch: { draftGroup?: number | null; teamLocked?: boolean }
+  ) {
+    setSavingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signupOverride: true, ...patch }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update signup team')
+      setRegistrations((prev) =>
+        prev.map((r) =>
+          r.id === registrationId
+            ? {
+                ...r,
+                draftGroup: data.registration.draftGroup,
+                teamLocked: data.registration.teamLocked,
+                isCaptain:
+                  data.registration.draftGroup == null ? false : r.isCaptain,
+              }
+            : r
+        )
+      )
+      if (data.registration.draftGroup != null) {
+        setMaxGroup((prev) => Math.max(prev, data.registration.draftGroup))
+      }
+      setMessage(
+        patch.teamLocked === false
+          ? 'Unlocked from signup team'
+          : patch.teamLocked === true
+            ? 'Locked to signup team'
+            : 'Signup team updated'
+      )
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'Failed to update signup team'
+      )
     } finally {
       setSavingId(null)
     }
@@ -611,13 +688,22 @@ function EventTrackerPageContent() {
       gender: r.gender,
       pairId: pairingOn ? r.pairId : null,
       draftGroup: r.draftGroup,
+      teamLocked: r.teamLocked,
     }))
   }
 
   function openDraftSetup() {
     setDraftError(null)
-    setDraftTeamCount(defaultTeamCount(registrations.length))
-    setDraftSeedMode(hasExistingGroups ? 'existing' : 'auto')
+    setDraftTeamCount(
+      Math.max(
+        defaultTeamCount(registrations.length),
+        event?.teamNames?.length ?? 0,
+        ...registrations.map((r) => r.draftGroup ?? 0)
+      ) || 1
+    )
+    setDraftSeedMode(
+      hasByotLocked || hasExistingGroups ? 'existing' : 'auto'
+    )
     setDraftPhase('setup')
   }
 
@@ -663,10 +749,12 @@ function EventTrackerPageContent() {
     setDraftApplying(true)
     setDraftError(null)
     try {
-      const assignments = registrations.map((r) => ({
-        registrationId: r.id,
-        draftGroup: draftAssignments.get(r.id) ?? null,
-      }))
+      const assignments = registrations
+        .filter((r) => !r.teamLocked)
+        .map((r) => ({
+          registrationId: r.id,
+          draftGroup: draftAssignments.get(r.id) ?? null,
+        }))
       const res = await fetch(`/api/events/${eventId}/registrations/bulk`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -676,6 +764,7 @@ function EventTrackerPageContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to apply draft')
       setRegistrations((prev) =>
         prev.map((r) => {
+          if (r.teamLocked) return r
           const draftGroup = draftAssignments.get(r.id) ?? null
           return {
             ...r,
@@ -737,7 +826,11 @@ function EventTrackerPageContent() {
     if (!snap) return
     const next = new Map<string, number | null>()
     for (const r of registrations) {
-      next.set(r.id, snap.assignments[r.id] ?? null)
+      if (r.teamLocked) {
+        next.set(r.id, r.draftGroup)
+      } else {
+        next.set(r.id, snap.assignments[r.id] ?? null)
+      }
     }
     const maxAssigned = Math.max(
       0,
@@ -916,7 +1009,11 @@ function EventTrackerPageContent() {
       setImportPreview(null)
       setImportProfileFields('skip')
       setMessage(
-        `Import done: ${summary.created ?? 0} created, ${summary.updated ?? 0} updated, ${summary.register ?? 0} registered, ${summary.alreadyRegistered ?? 0} already registered`
+        `Import done: ${summary.created ?? 0} created, ${summary.updated ?? 0} updated, ${summary.register ?? 0} registered, ${summary.alreadyRegistered ?? 0} already registered${
+          typeof summary.byotRegistered === 'number'
+            ? `, ${summary.byotRegistered} BYOT / ${summary.freeAgentRegistered ?? 0} free agents`
+            : ''
+        }`
       )
       await load()
     } catch (err) {
@@ -981,11 +1078,11 @@ function EventTrackerPageContent() {
                 Allow pairing
                 <Tooltip
                   label="About pairing"
-                  content="When enabled, you can pair registrants. Paired players stay on the same team during draft."
+                  content="When enabled, you can group free agents. Grouped players stay on the same team during draft. BYOT locked players cannot join groups."
                 />
               </span>
               <FieldHelp>
-                Paired players are kept together when you assign or draft teams.
+                Free-agent groups are kept together when you assign or draft teams.
               </FieldHelp>
             </span>
           </label>
@@ -1255,10 +1352,10 @@ function EventTrackerPageContent() {
                 onChange={() => setDraftSeedMode('auto')}
               />
               <span className="inline-flex items-center gap-1.5">
-                Auto-seed (gender-balanced, skill-aware)
+                Auto-seed free agents (gender-balanced, skill-aware)
                 <Tooltip
                   label="Auto-seed"
-                  content="Distributes players across teams balancing gender mix and skill levels."
+                  content="Places unlocked free agents across teams. Locked BYOT signup players stay put and count toward team balance."
                 />
               </span>
             </label>
@@ -1270,10 +1367,10 @@ function EventTrackerPageContent() {
                 onChange={() => setDraftSeedMode('empty')}
               />
               <span className="inline-flex items-center gap-1.5">
-                Empty teams (all players unassigned)
+                Empty free-agent pool (BYOT seats kept)
                 <Tooltip
                   label="Empty teams"
-                  content="Creates the requested number of teams with every player left unassigned."
+                  content="Clears unlocked players to unassigned. Locked signup-team players remain on their teams."
                 />
               </span>
             </label>
@@ -1476,8 +1573,9 @@ function EventTrackerPageContent() {
                   <th scope="col" className="px-3 py-2 font-medium">Draft group</th>
                   <th scope="col" className="px-3 py-2 font-medium">Captain</th>
                   {event.pairingEnabled !== false ? (
-                    <th scope="col" className="px-3 py-2 font-medium">Pair</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Group</th>
                   ) : null}
+                  <th scope="col" className="px-3 py-2 font-medium">Lock</th>
                   <th scope="col" className="px-3 py-2 font-medium">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -1487,7 +1585,7 @@ function EventTrackerPageContent() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={event.pairingEnabled !== false ? 8 : 7}
+                      colSpan={event.pairingEnabled !== false ? 9 : 8}
                       className="px-3 py-6 text-center text-gray-500"
                     >
                       {registrations.length === 0
@@ -1501,11 +1599,21 @@ function EventTrackerPageContent() {
                       r.nickname || `${r.firstName} ${r.lastName}`
                     const badge = captainBadge(r, registrations)
                     const onTeam = r.draftGroup != null
-                    const unpairedOptions = registrations.filter(
+                    const addableOptions = registrations.filter(
                       (other) =>
                         other.id !== r.id &&
-                        other.pairId == null &&
-                        r.pairId == null
+                        !other.teamLocked &&
+                        !r.teamLocked &&
+                        other.pairId == null
+                    )
+                    const joinOptions = registrations.filter(
+                      (other) =>
+                        other.id !== r.id &&
+                        !other.teamLocked &&
+                        !r.teamLocked &&
+                        ((r.pairId == null && other.pairId == null) ||
+                          (r.pairId == null && other.pairId != null) ||
+                          (r.pairId != null && other.pairId == null))
                     )
                     return (
                       <tr
@@ -1519,6 +1627,11 @@ function EventTrackerPageContent() {
                           >
                             {label}
                           </SkillStyledText>
+                          {r.teamLocked ? (
+                            <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                              BYOT
+                            </span>
+                          ) : null}
                           {r.hasStrongPersonality ? (
                             <Tooltip
                               label="Strong personality"
@@ -1544,9 +1657,16 @@ function EventTrackerPageContent() {
                               </span>
                             </Tooltip>
                           ) : null}
-                          {event.pairingEnabled !== false && r.partnerNickname ? (
+                          {event.pairingEnabled !== false &&
+                          r.groupMembers.length > 0 ? (
                             <div className="text-xs text-violet-700">
-                              Paired with {r.partnerNickname}
+                              Group with{' '}
+                              {r.groupMembers.map((m) => m.nickname).join(', ')}
+                            </div>
+                          ) : event.pairingEnabled !== false &&
+                            r.partnerNickname ? (
+                            <div className="text-xs text-violet-700">
+                              Grouped with {r.partnerNickname}
                             </div>
                           ) : null}
                           <div className="text-xs text-gray-500">
@@ -1563,11 +1683,17 @@ function EventTrackerPageContent() {
                         <td className="px-3 py-2">
                           <select
                             className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
-                            disabled={savingId === r.id || event.teamsLocked}
+                            disabled={
+                              savingId === r.id ||
+                              event.teamsLocked ||
+                              r.teamLocked
+                            }
                             title={
                               event.teamsLocked
                                 ? 'Unlock teams to change assignments'
-                                : undefined
+                                : r.teamLocked
+                                  ? 'BYOT locked — use Unlock to move'
+                                  : undefined
                             }
                             value={r.draftGroup == null ? '' : String(r.draftGroup)}
                             onChange={(e) => {
@@ -1616,16 +1742,49 @@ function EventTrackerPageContent() {
                         </td>
                         {event.pairingEnabled !== false ? (
                           <td className="px-3 py-2">
-                            {r.pairId ? (
-                              <button
-                                type="button"
-                                className="text-xs text-violet-700 hover:underline disabled:opacity-40"
-                                disabled={savingId === r.id}
-                                onClick={() => void unpair(r.id)}
-                              >
-                                Unpair
-                              </button>
-                            ) : unpairedOptions.length > 0 ? (
+                            {r.teamLocked ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : r.pairId ? (
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  className="text-left text-xs text-violet-700 hover:underline disabled:opacity-40"
+                                  disabled={savingId === r.id}
+                                  onClick={() => void leaveGroup(r.id)}
+                                >
+                                  Leave group
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-left text-xs text-violet-700 hover:underline disabled:opacity-40"
+                                  disabled={savingId === r.id}
+                                  onClick={() => void dissolveGroup(r.id)}
+                                >
+                                  Dissolve
+                                </button>
+                                {addableOptions.length > 0 ? (
+                                  <select
+                                    className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+                                    disabled={savingId === r.id}
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      const partnerId = e.target.value
+                                      e.target.value = ''
+                                      if (!partnerId) return
+                                      void pairWith(r.id, partnerId)
+                                    }}
+                                  >
+                                    <option value="">Add to group…</option>
+                                    {addableOptions.map((other) => (
+                                      <option key={other.id} value={other.id}>
+                                        {other.nickname ||
+                                          `${other.firstName} ${other.lastName}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                              </div>
+                            ) : joinOptions.length > 0 ? (
                               <select
                                 className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
                                 disabled={savingId === r.id}
@@ -1637,11 +1796,12 @@ function EventTrackerPageContent() {
                                   void pairWith(r.id, partnerId)
                                 }}
                               >
-                                <option value="">Pair with…</option>
-                                {unpairedOptions.map((other) => (
+                                <option value="">Group with…</option>
+                                {joinOptions.map((other) => (
                                   <option key={other.id} value={other.id}>
                                     {other.nickname ||
                                       `${other.firstName} ${other.lastName}`}
+                                    {other.pairId ? ' (group)' : ''}
                                   </option>
                                 ))}
                               </select>
@@ -1650,6 +1810,36 @@ function EventTrackerPageContent() {
                             )}
                           </td>
                         ) : null}
+                        <td className="px-3 py-2">
+                          {r.draftGroup == null && !r.teamLocked ? (
+                            <span className="text-xs text-gray-400">—</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`text-xs disabled:opacity-40 ${
+                                r.teamLocked
+                                  ? 'font-medium text-amber-800 hover:underline'
+                                  : 'text-gray-500 hover:underline'
+                              }`}
+                              disabled={savingId === r.id || event.teamsLocked}
+                              title={
+                                event.teamsLocked
+                                  ? 'Unlock teams first'
+                                  : r.teamLocked
+                                    ? 'Allow moving this player in draft'
+                                    : 'Lock to current team (BYOT)'
+                              }
+                              onClick={() =>
+                                void setSignupOverride(r.id, {
+                                  teamLocked: !r.teamLocked,
+                                  draftGroup: r.draftGroup,
+                                })
+                              }
+                            >
+                              {r.teamLocked ? 'Unlock' : 'Lock'}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -1924,8 +2114,9 @@ function EventTrackerPageContent() {
               placeholder="Or paste CSV contents here…"
             />
             <FieldHelp>
-              Paste here if you do not have a file handy. Dry run previews changes
-              before commit.
+              Paste here if you do not have a file handy. Include a Team Name
+              column for BYOT players; blank team = free agent. Dry run previews
+              changes before commit.
             </FieldHelp>
           </div>
           {formError ? (
@@ -1943,6 +2134,12 @@ function EventTrackerPageContent() {
                   <>
                     ; {importPreview.summary.register} will register,{' '}
                     {importPreview.summary.alreadyRegistered ?? 0} already registered
+                  </>
+                ) : null}
+                {typeof importPreview.summary.byot === 'number' ? (
+                  <>
+                    ; {importPreview.summary.byot} BYOT /{' '}
+                    {importPreview.summary.freeAgents ?? 0} free agents
                   </>
                 ) : null}
               </LiveMessage>

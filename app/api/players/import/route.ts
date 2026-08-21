@@ -136,7 +136,15 @@ export async function POST(request: NextRequest) {
           skip: preview.actions.filter((a) => a.action === 'skip').length,
           ambiguous: preview.actions.filter((a) => a.action === 'ambiguous').length,
           ...(preview.registrationSummary ?? {}),
+          ...(preview.byotSummary
+            ? {
+                byot: preview.byotSummary.byot,
+                freeAgents: preview.byotSummary.freeAgents,
+                byotTeamCount: preview.byotSummary.teamNames.length,
+              }
+            : {}),
         },
+        byotSummary: preview.byotSummary,
       })
     }
 

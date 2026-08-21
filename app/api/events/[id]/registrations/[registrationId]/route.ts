@@ -5,7 +5,11 @@ import {
 } from '@/app/lib/admin-auth'
 import {
   deleteEventRegistration,
+  dissolveGroup,
+  groupRegistrations,
+  leaveGroup,
   pairRegistrations,
+  setRegistrationSignupTeam,
   unpairRegistration,
   updateRegistrationCaptain,
   updateRegistrationDraftGroup,
@@ -32,17 +36,69 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       draftGroup?: unknown
       isCaptain?: unknown
       pairWithRegistrationId?: unknown
+      groupWithRegistrationIds?: unknown
+      leaveGroup?: unknown
+      dissolveGroup?: unknown
       unpair?: unknown
+      /** Admin override: bypass teamLocked for draftGroup / lock flag */
+      signupOverride?: unknown
+      teamLocked?: unknown
     }
 
-    if (body.unpair === true) {
+    if (body.signupOverride === true) {
+      if (event.teamsLocked) {
+        return NextResponse.json(
+          { error: 'Teams are locked. Unlock to make changes.' },
+          { status: 400 }
+        )
+      }
+      const registration = await setRegistrationSignupTeam(id, registrationId, {
+        draftGroup: 'draftGroup' in body ? body.draftGroup : undefined,
+        teamLocked:
+          'teamLocked' in body ? Boolean(body.teamLocked) : undefined,
+      })
+      return NextResponse.json({ registration })
+    }
+
+    if (body.leaveGroup === true) {
       if (!event.pairingEnabled) {
         return NextResponse.json(
           { error: 'Pairing is disabled for this event' },
           { status: 400 }
         )
       }
-      const result = await unpairRegistration(id, registrationId)
+      const result = await leaveGroup(id, registrationId)
+      return NextResponse.json({ result })
+    }
+
+    if (body.dissolveGroup === true || body.unpair === true) {
+      if (!event.pairingEnabled) {
+        return NextResponse.json(
+          { error: 'Pairing is disabled for this event' },
+          { status: 400 }
+        )
+      }
+      const result =
+        body.dissolveGroup === true
+          ? await dissolveGroup(id, registrationId)
+          : await unpairRegistration(id, registrationId)
+      return NextResponse.json({ result })
+    }
+
+    if (
+      'groupWithRegistrationIds' in body &&
+      Array.isArray(body.groupWithRegistrationIds)
+    ) {
+      if (!event.pairingEnabled) {
+        return NextResponse.json(
+          { error: 'Pairing is disabled for this event' },
+          { status: 400 }
+        )
+      }
+      const others = body.groupWithRegistrationIds.filter(
+        (x): x is string => typeof x === 'string' && x.length > 0
+      )
+      const result = await groupRegistrations(id, [registrationId, ...others])
       return NextResponse.json({ result })
     }
 
@@ -109,8 +165,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             message.includes('Pairing') ||
             message.includes('Cannot pair') ||
             message.includes('already paired') ||
+            message.includes('group') ||
+            message.includes('Group') ||
+            message.includes('Locked') ||
+            message.includes('locked') ||
             message.includes('captain') ||
-            message.includes('locked')
+            message.includes('merge')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

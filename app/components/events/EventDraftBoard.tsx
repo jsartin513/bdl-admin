@@ -141,14 +141,28 @@ function DraftPlayerCard(props: {
   const league = homeLeagueText(player)
   const score = effectiveSkillScore(player, skillViewMode)
   const label = effectiveSkillLabel(player, skillViewMode)
+  const groupLabel =
+    player.groupMembers.length > 0
+      ? player.groupMembers.map((m) => m.nickname).filter(Boolean).join(', ')
+      : player.partnerNickname
   return (
     <div
       className={`rounded border px-2 py-1.5 text-xs shadow-sm ${playerCardClass(player.gender)} ${
         dragging ? 'opacity-90 shadow-md ring-2 ring-blue-400' : ''
-      }`}
+      } ${player.teamLocked ? 'ring-1 ring-amber-300' : ''}`}
     >
       <div className="font-medium text-gray-900">
         {player.nickname || `${player.firstName} ${player.lastName}`}
+        {player.teamLocked ? (
+          <Tooltip
+            label="BYOT locked"
+            content="Signed up on this team. Cannot be moved in draft mode — use roster override to change."
+          >
+            <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              BYOT
+            </span>
+          </Tooltip>
+        ) : null}
         {captainBadge ? (
           <Tooltip
             label={captainBadge === '(CC)' ? 'Co-captain' : 'Captain'}
@@ -173,16 +187,20 @@ function DraftPlayerCard(props: {
         ) : null}
         {pairingEnabled !== false && player.pairId ? (
           <Tooltip
-            label="Paired player"
+            label="Free-agent group"
             content={
-              player.partnerNickname
-                ? `Paired with ${player.partnerNickname}. Keep pairs on the same team when pairing is enabled.`
-                : 'Paired with another registrant. Keep pairs on the same team when pairing is enabled.'
+              groupLabel
+                ? `Grouped with ${groupLabel}. Group members move together.`
+                : 'Grouped with other free agents. Group members move together.'
             }
           >
             <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
-              Pair
-              {player.partnerNickname ? ` · ${player.partnerNickname}` : ''}
+              Group
+              {player.groupMembers.length > 0
+                ? ` · ${player.groupMembers.length + 1}`
+                : groupLabel
+                  ? ` · ${groupLabel}`
+                  : ''}
             </span>
           </Tooltip>
         ) : null}
@@ -215,11 +233,26 @@ function DraggablePlayer(props: {
   showHomeLeague?: boolean
   captainBadge?: '(C)' | '(CC)' | null
 }) {
+  const locked = props.player.teamLocked
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: props.player.id })
+    useDraggable({ id: props.player.id, disabled: locked })
   const style = transform
     ? { transform: CSS.Translate.toString(transform) }
     : undefined
+
+  if (locked) {
+    return (
+      <div className="cursor-not-allowed touch-none opacity-95">
+        <DraftPlayerCard
+          player={props.player}
+          skillViewMode={props.skillViewMode}
+          pairingEnabled={props.pairingEnabled}
+          showHomeLeague={props.showHomeLeague}
+          captainBadge={props.captainBadge}
+        />
+      </div>
+    )
+  }
 
   return (
     <div
@@ -604,6 +637,9 @@ export function EventDraftBoard(props: Props) {
     if (!over) return
 
     const playerId = String(active.id)
+    const dragged = registrations.find((r) => r.id === playerId)
+    if (!dragged || dragged.teamLocked) return
+
     let targetTeam: number | null = null
 
     const overId = String(over.id)
@@ -619,9 +655,20 @@ export function EventDraftBoard(props: Props) {
 
     const next = new Map(assignments)
     next.set(playerId, targetTeam)
-    const dragged = registrations.find((r) => r.id === playerId)
-    if (pairingEnabled && dragged?.partnerRegistrationId) {
-      next.set(dragged.partnerRegistrationId, targetTeam)
+    if (pairingEnabled && dragged.pairId) {
+      for (const mate of dragged.groupMembers) {
+        const mateReg = registrations.find((r) => r.id === mate.registrationId)
+        if (mateReg && !mateReg.teamLocked) {
+          next.set(mate.registrationId, targetTeam)
+        }
+      }
+      // Fallback for size-2 when groupMembers empty (shouldn't happen)
+      if (
+        dragged.groupMembers.length === 0 &&
+        dragged.partnerRegistrationId
+      ) {
+        next.set(dragged.partnerRegistrationId, targetTeam)
+      }
     }
     onAssignmentsChange(next)
   }
@@ -640,7 +687,10 @@ export function EventDraftBoard(props: Props) {
           <h2 className="text-lg font-semibold text-gray-900">Draft mode</h2>
           <p className="text-sm text-gray-600">
             Working copy only — permanent draft groups are unchanged until you Apply.
-            {pairingEnabled ? ' Paired players move together.' : ''}
+            {pairingEnabled
+              ? ' Free-agent groups move together.'
+              : ''}{' '}
+            BYOT (locked) players stay on their signup team.
           </p>
           {teamsLocked ? (
             <p className="mt-1 text-sm font-medium text-amber-800">
@@ -648,7 +698,8 @@ export function EventDraftBoard(props: Props) {
             </p>
           ) : null}
           <FieldHelp className="mt-1">
-            Drag players between teams. Reshuffle re-seeds from the current setup. Save
+            Drag free agents between teams. Locked BYOT players cannot be moved.
+            Reshuffle re-seeds free agents only (signup teams stay put). Save
             snapshots to compare alternatives before applying.
           </FieldHelp>
         </div>

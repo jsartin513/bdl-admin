@@ -4,8 +4,12 @@ export type DraftSeedPlayer = {
   id: string
   skillLevel: number | null
   gender: string | null
-  /** Shared id links two players as a pair that must stay together. */
+  /** Shared id links free-agent group members that must stay together. */
   pairId?: string | null
+  /** BYOT: locked to signup team; never reassigned by seed. */
+  teamLocked?: boolean
+  /** Current / signup draft group (used when teamLocked). */
+  draftGroup?: number | null
 }
 
 export type AutoSeedOptions = {
@@ -182,7 +186,9 @@ function teamTieBreakRanks(n: number, random: () => number): number[] {
 
 /**
  * Auto-seed teams: gender-balanced (W/NB/O vs men), skill-aware snake draft.
- * Paired players (shared pairId) are placed on the same team as one unit.
+ * Grouped players (shared pairId) are placed on the same team as one unit.
+ * Locked BYOT players keep their draftGroup and count toward team size/balance;
+ * only unlocked free agents are placed.
  * Returns map of player id → team number (1..teamCount). Unset gender players
  * are placed last into the currently smallest / lowest-score teams.
  */
@@ -198,7 +204,34 @@ export function autoSeedDraftGroups(
 
   if (players.length === 0) return assignments
 
-  const units = buildDraftUnits(players)
+  const locked = players.filter(
+    (p) => p.teamLocked && p.draftGroup != null && p.draftGroup >= 1
+  )
+  const freeAgents = players.filter((p) => !locked.some((l) => l.id === p.id))
+
+  const teamSizes = Array.from({ length: n }, () => 0)
+  const teamScores = Array.from({ length: n }, () => 0)
+  const teamGender = Array.from({ length: n }, () => ({ w_nb_o: 0, men: 0 }))
+  const tieBreak = shuffle
+    ? teamTieBreakRanks(n, random)
+    : Array.from({ length: n }, (_, i) => i)
+
+  for (const p of locked) {
+    let team = p.draftGroup!
+    // Clamp locked seats into 1..n if teamCount is smaller than signup groups
+    if (team > n) team = ((team - 1) % n) + 1
+    assignments.set(p.id, team)
+    const teamIndex = team - 1
+    teamSizes[teamIndex]++
+    teamScores[teamIndex] += skillScore(p.skillLevel)
+    const g = genderGroup(p.gender)
+    if (g === 'w_nb_o') teamGender[teamIndex].w_nb_o++
+    else if (g === 'men') teamGender[teamIndex].men++
+  }
+
+  if (freeAgents.length === 0) return assignments
+
+  const units = buildDraftUnits(freeAgents)
   const pools: Record<GenderGroup, DraftUnit[]> = {
     w_nb_o: [],
     men: [],
@@ -211,13 +244,6 @@ export function autoSeedDraftGroups(
     const sorted = sortUnitsBySkillDesc(pools[key])
     pools[key] = shuffle ? shuffleEqualSkillBands(sorted, random) : sorted
   }
-
-  const teamSizes = Array.from({ length: n }, () => 0)
-  const teamScores = Array.from({ length: n }, () => 0)
-  const teamGender = Array.from({ length: n }, () => ({ w_nb_o: 0, men: 0 }))
-  const tieBreak = shuffle
-    ? teamTieBreakRanks(n, random)
-    : Array.from({ length: n }, (_, i) => i)
 
   function pickTeam(preferGender: 'w_nb_o' | 'men' | null): number {
     let best = 0
@@ -294,13 +320,19 @@ export function autoSeedDraftGroups(
   return assignments
 }
 
-/** Empty seed: everyone unassigned. */
+/**
+ * Empty seed: clear unlocked players to unassigned; preserve locked BYOT seats.
+ */
 export function emptySeedDraftGroups(
   players: DraftSeedPlayer[]
 ): Map<string, number | null> {
   const assignments = new Map<string, number | null>()
   for (const p of players) {
-    assignments.set(p.id, null)
+    if (p.teamLocked && p.draftGroup != null && p.draftGroup >= 1) {
+      assignments.set(p.id, p.draftGroup)
+    } else {
+      assignments.set(p.id, null)
+    }
   }
   return assignments
 }
