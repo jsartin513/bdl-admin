@@ -304,6 +304,17 @@ function EventTrackerPageContent() {
     [registrations]
   )
 
+  /** Team count must cover every locked BYOT signup group so seats stay visible. */
+  const minDraftTeamCount = useMemo(() => {
+    let maxLocked = 1
+    for (const r of registrations) {
+      if (r.teamLocked && r.draftGroup != null && r.draftGroup > maxLocked) {
+        maxLocked = r.draftGroup
+      }
+    }
+    return maxLocked
+  }, [registrations])
+
   const counts = useMemo(() => {
     let unassigned = 0
     let assigned = 0
@@ -709,7 +720,7 @@ function EventTrackerPageContent() {
 
   function startDraftBoard() {
     const seeds = seedPlayersFromRegistrations()
-    const n = Math.max(1, Math.floor(draftTeamCount))
+    const n = Math.max(minDraftTeamCount, Math.floor(draftTeamCount) || 1)
     let next: Map<string, number | null>
     if (draftSeedMode === 'auto') {
       const seeded = autoSeedDraftGroups(seeds, n)
@@ -730,13 +741,14 @@ function EventTrackerPageContent() {
 
   function reshuffleDraft() {
     const seeds = seedPlayersFromRegistrations()
-    const n = Math.max(1, Math.floor(draftTeamCount))
+    const n = Math.max(minDraftTeamCount, Math.floor(draftTeamCount) || 1)
     const seeded = autoSeedDraftGroups(seeds, n, { shuffle: true })
     const next = new Map<string, number | null>()
     for (const r of registrations) {
       next.set(r.id, seeded.get(r.id) ?? null)
     }
     setDraftAssignments(next)
+    setDraftTeamCount(n)
   }
 
   function discardDraft() {
@@ -1329,17 +1341,21 @@ function EventTrackerPageContent() {
             <span className="text-gray-600">Number of teams</span>
             <input
               type="number"
-              min={1}
-              max={Math.max(1, registrations.length)}
+              min={minDraftTeamCount}
+              max={Math.max(minDraftTeamCount, registrations.length)}
               className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
               value={draftTeamCount}
-              onChange={(e) =>
-                setDraftTeamCount(Number.parseInt(e.target.value, 10) || 1)
-              }
+              onChange={(e) => {
+                const parsed = Number.parseInt(e.target.value, 10) || 1
+                setDraftTeamCount(Math.max(minDraftTeamCount, parsed))
+              }}
             />
             <FieldHelp>
               ~{playersPerTeamLabel(registrations.length, draftTeamCount)}{' '}
               players per team
+              {hasByotLocked && minDraftTeamCount > 1
+                ? ` (min ${minDraftTeamCount} for locked BYOT teams)`
+                : ''}
             </FieldHelp>
           </label>
           <fieldset className="space-y-2 text-sm">

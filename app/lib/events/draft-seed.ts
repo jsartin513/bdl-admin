@@ -187,8 +187,9 @@ function teamTieBreakRanks(n: number, random: () => number): number[] {
 /**
  * Auto-seed teams: gender-balanced (W/NB/O vs men), skill-aware snake draft.
  * Grouped players (shared pairId) are placed on the same team as one unit.
- * Locked BYOT players keep their draftGroup and count toward team size/balance;
- * only unlocked free agents are placed.
+ * Locked BYOT players keep their draftGroup and count toward team size/balance
+ * when that group is within 1..teamCount; only unlocked free agents are placed.
+ * Locked seats are never remapped when teamCount is smaller than their signup group.
  * Returns map of player id → team number (1..teamCount). Unset gender players
  * are placed last into the currently smallest / lowest-score teams.
  */
@@ -217,10 +218,10 @@ export function autoSeedDraftGroups(
     : Array.from({ length: n }, (_, i) => i)
 
   for (const p of locked) {
-    let team = p.draftGroup!
-    // Clamp locked seats into 1..n if teamCount is smaller than signup groups
-    if (team > n) team = ((team - 1) % n) + 1
+    // Never remap locked BYOT seats — Apply also preserves signup draftGroup.
+    const team = p.draftGroup!
     assignments.set(p.id, team)
+    if (team < 1 || team > n) continue
     const teamIndex = team - 1
     teamSizes[teamIndex]++
     teamScores[teamIndex] += skillScore(p.skillLevel)

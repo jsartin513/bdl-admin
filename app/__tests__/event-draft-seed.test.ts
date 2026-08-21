@@ -294,6 +294,26 @@ describe('autoSeedDraftGroups with BYOT locks', () => {
     expect(result.get('a')).toBe(result.get('b'))
     expect(result.get('b')).toBe(result.get('c'))
   })
+
+  it('does not remap locked seats when teamCount is below signup group', () => {
+    const players: DraftSeedPlayer[] = [
+      {
+        id: 'l5',
+        skillLevel: 4,
+        gender: 'female',
+        teamLocked: true,
+        draftGroup: 5,
+      },
+      { id: 'f1', skillLevel: 3, gender: 'male' },
+      { id: 'f2', skillLevel: 2, gender: 'female' },
+    ]
+    const result = autoSeedDraftGroups(players, 2)
+    expect(result.get('l5')).toBe(5)
+    expect(result.get('f1')).toBeGreaterThanOrEqual(1)
+    expect(result.get('f1')).toBeLessThanOrEqual(2)
+    expect(result.get('f2')).toBeGreaterThanOrEqual(1)
+    expect(result.get('f2')).toBeLessThanOrEqual(2)
+  })
 })
 
 describe('copyExistingDraftGroups', () => {
