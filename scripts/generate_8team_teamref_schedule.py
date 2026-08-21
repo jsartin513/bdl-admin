@@ -17,12 +17,49 @@ from itertools import combinations
 from pathlib import Path
 
 import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from league_schedule_format import TEAM_REF, write_format_to_teams_sheet
+
+# Match Six Team League (Drive) dual-court team-ref styling.
+_THIN = Border(
+    left=Side(style="thin", color="FF000000"),
+    right=Side(style="thin", color="FF000000"),
+    top=Side(style="thin", color="FF000000"),
+    bottom=Side(style="thin", color="FF000000"),
+)
+_FILL_WHITE = PatternFill("solid", fgColor="FFFFFFFF")
+_FILL_REF = PatternFill("solid", fgColor="FFFEF8E3")
+_FILL_GAP = PatternFill("solid", fgColor="FFD9D9D9")
+_FILL_STANDINGS_HDR = PatternFill("solid", fgColor="FFD9D9D9")
+_FONT_GAME = Font(name="Arial", size=11)
+_FONT_TEAM = Font(name="Arial", size=14, bold=True)
+_FONT_REF = Font(name="Arial", size=11)
+_FONT_STD = Font(name="Arial", size=11)
+_ALIGN_GAME = Alignment(horizontal="center", vertical="top")
+_ALIGN_SCORE = Alignment(horizontal="right", vertical="bottom")
+_ALIGN_STANDINGS_HDR = Alignment(horizontal="center", vertical="top")
+
+# Six Team League week-sheet column widths (A–K); L widened for Off labels.
+_WEEK_COL_WIDTHS = {
+    "A": 7.88,
+    "B": 17.63,
+    "C": 4.63,
+    "D": 17.63,
+    "E": 5.25,
+    "F": 12.63,
+    "G": 16.38,
+    "H": 5.75,
+    "I": 17.63,
+    "J": 5.88,
+    "K": 13.0,
+    "L": 28.0,
+}
+
 
 GAMES_PER_WEEK = 40
 ROUNDS_PER_WEEK = 20
@@ -454,31 +491,120 @@ def validate_season(teams: list[str], weeks: list[list[dict]]) -> list[str]:
 
 
 def week_sheet_names(num_weeks: int) -> list[str]:
-    return [f"Week {week_num}" for week_num in range(1, num_weeks + 1)]
+    # Match Six / Seven Team League naming: "Week N Schedule"
+    return [f"Week {week_num} Schedule" for week_num in range(1, num_weeks + 1)]
+
+
+def _style_score_cell(cell) -> None:
+    cell.font = _FONT_TEAM
+    cell.fill = _FILL_WHITE
+    cell.border = _THIN
+    cell.alignment = _ALIGN_SCORE
+
+
+def _style_team_cell(cell, value: str) -> None:
+    cell.value = value
+    cell.font = _FONT_TEAM
+    cell.fill = _FILL_WHITE
+    cell.border = _THIN
+
+
+def _apply_gap_columns(ws, row: int) -> None:
+    for col in (6, 11):  # F and K — gray separators like Six Team
+        cell = ws.cell(row, col)
+        cell.fill = _FILL_GAP
+        cell.font = _FONT_STD
 
 
 def write_week_sheet(ws, rounds: list[dict]) -> None:
-    """BYOT-style dual court: Court 1 in B/D, Court 2 in G/I; refs in F/K."""
-    ws.cell(1, 2).value = "Court 1"
-    ws.cell(1, 7).value = "Court 2"
+    """Six Team League dual-court layout: Game NN, B/D + G/I teams, Refs: in B/G."""
+    for letter, width in _WEEK_COL_WIDTHS.items():
+        ws.column_dimensions[letter].width = width
 
-    row = 2
-    for round_num, rnd in enumerate(rounds, start=1):
+    row = 1
+    for game_num, rnd in enumerate(rounds, start=1):
         h1, a1 = rnd["court1"]
         h2, a2 = rnd["court2"]
-        ws.cell(row, 1).value = f"Round {round_num:02d}"
-        ws.cell(row, 2).value = h1
-        ws.cell(row, 4).value = a1
-        ws.cell(row, 7).value = h2
-        ws.cell(row, 9).value = a2
-        row += 1
-        ws.cell(row, 2).value = "Ref"
-        ws.cell(row, 6).value = rnd["ref1"]
-        ws.cell(row, 7).value = "Ref"
-        ws.cell(row, 11).value = rnd["ref2"]
-        offs = ", ".join(rnd["off"])
-        ws.cell(row, 12).value = f"Off: {offs}"
-        row += 1
+        game_row = row
+        ref_row = row + 1
+
+        game_cell = ws.cell(game_row, 1)
+        game_cell.value = f"Game {game_num:02d}"
+        game_cell.font = _FONT_GAME
+        game_cell.alignment = _ALIGN_GAME
+        game_cell.border = _THIN
+        ws.merge_cells(start_row=game_row, start_column=1, end_row=ref_row, end_column=1)
+        ws.cell(ref_row, 1).border = _THIN
+
+        _style_team_cell(ws.cell(game_row, 2), h1)
+        _style_score_cell(ws.cell(game_row, 3))
+        _style_team_cell(ws.cell(game_row, 4), a1)
+        _style_score_cell(ws.cell(game_row, 5))
+        _style_team_cell(ws.cell(game_row, 7), h2)
+        _style_score_cell(ws.cell(game_row, 8))
+        _style_team_cell(ws.cell(game_row, 9), a2)
+        _style_score_cell(ws.cell(game_row, 10))
+        _apply_gap_columns(ws, game_row)
+
+        ref1 = ws.cell(ref_row, 2)
+        ref1.value = f"Refs: {rnd['ref1']}"
+        ref1.font = _FONT_REF
+        ref1.fill = _FILL_REF
+        ref1.border = _THIN
+        ws.merge_cells(start_row=ref_row, start_column=2, end_row=ref_row, end_column=4)
+        for col in (3, 4, 5):
+            ws.cell(ref_row, col).fill = _FILL_REF
+            ws.cell(ref_row, col).border = _THIN
+
+        ref2 = ws.cell(ref_row, 7)
+        ref2.value = f"Refs: {rnd['ref2']}"
+        ref2.font = _FONT_REF
+        ref2.fill = _FILL_REF
+        ref2.border = _THIN
+        ws.merge_cells(start_row=ref_row, start_column=7, end_row=ref_row, end_column=9)
+        for col in (8, 9, 10):
+            ws.cell(ref_row, col).fill = _FILL_REF
+            ws.cell(ref_row, col).border = _THIN
+
+        _apply_gap_columns(ws, ref_row)
+
+        off = ws.cell(ref_row, 12)
+        off.value = f"Off: {', '.join(rnd['off'])}"
+        off.font = _FONT_REF
+
+        ws.row_dimensions[game_row].height = 15.75
+        ws.row_dimensions[ref_row].height = 15.75
+        row += 2
+
+    # Gray spacer rows before standings (Six Team leaves a short gap)
+    for spacer in range(row, row + 2):
+        for col in range(1, 12):
+            cell = ws.cell(spacer, col)
+            cell.fill = _FILL_GAP
+            cell.font = _FONT_STD
+        ws.row_dimensions[spacer].height = 15.75
+
+
+def style_week_standings_block(ws, header_row: int, num_teams: int) -> None:
+    """Apply Six Team standings-header fill after formulas are written."""
+    section_header = header_row - 2
+    col_header = header_row - 1
+    for r in range(max(1, section_header - 1), section_header + 1):
+        for c in range(1, 6):
+            cell = ws.cell(r, c)
+            cell.fill = _FILL_STANDINGS_HDR
+            cell.font = _FONT_STD
+    hdr = ws.cell(section_header, 1)
+    if hdr.value:
+        hdr.alignment = _ALIGN_STANDINGS_HDR
+        hdr.font = _FONT_STD
+        hdr.fill = _FILL_STANDINGS_HDR
+    for c in range(1, 4):
+        ws.cell(col_header, c).font = _FONT_STD
+    for r in range(header_row, header_row + num_teams):
+        for c in range(1, 4):
+            ws.cell(r, c).font = _FONT_STD
+        ws.row_dimensions[r].height = 15.75
 
 
 def write_workbook(
@@ -542,19 +668,25 @@ def write_workbook(
 
 def setup_dual_court_standings(path: str | Path, teams: list[str]) -> None:
     """Apply BYOT-style dual-court win/loss formulas (Court 1 + Court 2)."""
-    from update_byot_standings import setup_league_standings, setup_week_sheet
+    from update_byot_standings import (
+        apply_workbook_font_name,
+        setup_league_standings,
+        setup_week_sheet,
+    )
 
     path = Path(path)
     wb = openpyxl.load_workbook(path)
     week_sheets = [n for n in wb.sheetnames if n.startswith("Week ")]
-    # 20 rounds × 2 rows + header → games through row 41; standings after that
-    min_start_row = 42
+    # 20 games × 2 rows (no Court header) → rows 1–40; spacers 41–42; standings at 43+
+    min_start_row = 43
     week_start_rows: dict[str, int] = {}
     for week_name in week_sheets:
         start = setup_week_sheet(wb[week_name], teams, week_name, min_start_row=min_start_row)
+        style_week_standings_block(wb[week_name], start, len(teams))
         week_start_rows[week_name] = start
     week_start_row = next(iter(week_start_rows.values()))
     setup_league_standings(wb, teams, week_sheets, week_start_row)
+    apply_workbook_font_name(wb, "Arial")
     wb.calculation.iterate = True
     wb.calculation.maxIter = 100
     wb.calculation.maxChange = 0.001
