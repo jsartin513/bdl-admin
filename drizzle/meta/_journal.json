@@ -162,6 +162,13 @@
       "when": 1784145000000,
       "tag": "0022_import_batches_csv_text",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787320800000,
+      "tag": "0023_event_registration_team_locked",
+      "breakpoints": true
     }
   ]
 }

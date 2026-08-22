@@ -179,7 +179,12 @@ export const eventRegistrations = pgTable(
     /** Positive int draft bucket; null = unassigned */
     draftGroup: integer('draft_group'),
     isCaptain: boolean('is_captain').notNull().default(false),
-    /** Shared UUID links two registrations as a pair; null = unpaired */
+    /**
+     * When true, draftGroup cannot change via draft apply / bulk / promote / drag.
+     * Used for BYOT signup-team members. Admin override APIs can still change it.
+     */
+    teamLocked: boolean('team_locked').notNull().default(false),
+    /** Shared UUID links registrations as a free-agent group; null = ungrouped */
     pairId: uuid('pair_id'),
     importBatchId: uuid('import_batch_id').references(() => importBatches.id, {
       onDelete: 'set null',

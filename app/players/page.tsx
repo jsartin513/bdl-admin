@@ -1183,6 +1183,9 @@ export default function PlayersPage() {
         ambiguous: number
         register?: number
         alreadyRegistered?: number
+        byotRegistered?: number
+        freeAgentRegistered?: number
+        byotTeamNames?: string[]
       }
       setImportOpen(false)
       setImportCsv('')
@@ -1196,8 +1199,16 @@ export default function PlayersPage() {
         typeof summary.register === 'number'
           ? `, ${summary.register} registered, ${summary.alreadyRegistered ?? 0} already registered`
           : ''
+      const byotPart =
+        typeof summary.byotRegistered === 'number'
+          ? `, ${summary.byotRegistered} BYOT / ${summary.freeAgentRegistered ?? 0} free agents${
+              summary.byotTeamNames?.length
+                ? ` (${summary.byotTeamNames.join(', ')})`
+                : ''
+            }`
+          : ''
       alert(
-        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous${eventPart}`
+        `Import done: ${summary.created} created, ${summary.updated} updated, ${summary.skipped} skipped, ${summary.ambiguous} ambiguous${eventPart}${byotPart}`
       )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Import failed')
@@ -2479,6 +2490,15 @@ export default function PlayersPage() {
                     <>
                       ; {importPreview.summary.register} will register,{' '}
                       {importPreview.summary.alreadyRegistered ?? 0} already registered
+                    </>
+                  ) : null}
+                  {typeof importPreview.summary.byot === 'number' ? (
+                    <>
+                      ; {importPreview.summary.byot} BYOT /{' '}
+                      {importPreview.summary.freeAgents ?? 0} free agents
+                      {importPreview.summary.byotTeamCount
+                        ? ` across ${importPreview.summary.byotTeamCount} teams`
+                        : ''}
                     </>
                   ) : null}
                 </p>

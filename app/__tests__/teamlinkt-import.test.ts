@@ -5,6 +5,9 @@ import {
   playerIdForRegistration,
   shouldApplyProfileField,
   summarizeRegistrationPreview,
+  collectTeamNamesFromRows,
+  mergeByotTeamNames,
+  summarizeByotPreview,
   type ImportPreviewAction,
   type TeamlinktRow,
 } from '@/app/lib/players/teamlinkt-import'
@@ -29,6 +32,7 @@ function sampleRow(overrides: Partial<TeamlinktRow> = {}): TeamlinktRow {
     jerseyNumber: null,
     skillLevel: null,
     gender: null,
+    teamName: null,
     raw: {},
     ...overrides,
   }
@@ -331,6 +335,62 @@ describe('event-scoped registration preview', () => {
     expect(summarizeRegistrationPreview(actions, new Set())).toEqual({
       register: 1,
       alreadyRegistered: 0,
+    })
+  })
+})
+
+describe('BYOT team column', () => {
+  it('parses Team Name column onto rows', () => {
+    const csv = [
+      'First Name,Last Name,Email,Team Name',
+      'A,One,a@ex.com,Alpha',
+      'B,Two,b@ex.com,',
+      'C,Three,c@ex.com,Beta',
+      'D,Four,d@ex.com,Alpha',
+    ].join('\n')
+    const parsed = parseTeamlinktCsv(csv)
+    expect(parsed.error).toBeUndefined()
+    expect(parsed.rows.map((r) => r.teamName)).toEqual([
+      'Alpha',
+      null,
+      'Beta',
+      'Alpha',
+    ])
+  })
+
+  it('collects unique team names in first-appearance order', () => {
+    const names = collectTeamNamesFromRows([
+      sampleRow({ teamName: 'Alpha' }),
+      sampleRow({ teamName: null }),
+      sampleRow({ teamName: 'Beta' }),
+      sampleRow({ teamName: 'alpha' }),
+      sampleRow({ teamName: '  ' }),
+    ])
+    expect(names).toEqual(['Alpha', 'Beta'])
+  })
+
+  it('merges discovered names into existing teamNames', () => {
+    const { teamNames, draftGroupByTeamKey } = mergeByotTeamNames(
+      ['Alpha'],
+      ['Beta', 'alpha', 'Gamma']
+    )
+    expect(teamNames).toEqual(['Alpha', 'Beta', 'Gamma'])
+    expect(draftGroupByTeamKey.get('alpha')).toBe(1)
+    expect(draftGroupByTeamKey.get('beta')).toBe(2)
+    expect(draftGroupByTeamKey.get('gamma')).toBe(3)
+  })
+
+  it('summarizes BYOT vs free agents', () => {
+    expect(
+      summarizeByotPreview([
+        sampleRow({ teamName: 'A' }),
+        sampleRow({ teamName: null }),
+        sampleRow({ teamName: 'B' }),
+      ])
+    ).toEqual({
+      byot: 2,
+      freeAgents: 1,
+      teamNames: ['A', 'B'],
     })
   })
 })
