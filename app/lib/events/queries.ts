@@ -9,6 +9,7 @@ import {
 } from '@/app/db/schema'
 import {
   ballTypeLabel,
+  eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
   type EventListItem,
@@ -34,6 +35,7 @@ export async function listEvents(): Promise<EventListItem[]> {
       name: events.name,
       eventDate: events.eventDate,
       eventType: events.eventType,
+      eventFormat: events.eventFormat,
       ballType: events.ballType,
       gender: events.gender,
       notes: events.notes,
@@ -50,6 +52,8 @@ export async function listEvents(): Promise<EventListItem[]> {
     eventDate: r.eventDate,
     eventType: r.eventType,
     eventTypeLabel: eventTypeLabel(r.eventType),
+    eventFormat: r.eventFormat,
+    eventFormatLabel: eventFormatLabel(r.eventFormat),
     ballType: r.ballType,
     ballTypeLabel: ballTypeLabel(r.ballType),
     gender: r.gender,

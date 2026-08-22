@@ -24,6 +24,7 @@ import type {
   EventDraftSnapshotListItem,
   EventRegistrationListItem,
 } from '@/app/lib/events/types'
+import { EVENT_FORMATS, EVENT_TYPES } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
 import {
   HOME_LEAGUES,
@@ -57,6 +58,8 @@ type EventDetail = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  eventFormat: string | null
+  eventFormatLabel: string | null
   ballType: string
   ballTypeLabel: string
   gender: string
@@ -304,6 +307,9 @@ function EventTrackerPageContent() {
     [registrations]
   )
 
+  const showFreeAgentTeamLabel =
+    hasByotLocked || event?.eventFormat === 'byot'
+
   /** Team count must cover every locked BYOT signup group so seats stay visible. */
   const minDraftTeamCount = useMemo(() => {
     let maxLocked = 1
@@ -452,6 +458,37 @@ function EventTrackerPageContent() {
       )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to update pairing')
+    }
+  }
+
+  async function updateEventMeta(patch: {
+    eventType?: string
+    eventFormat?: string | null
+  }) {
+    if (!event) return
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update event')
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              eventType: data.event.eventType,
+              eventTypeLabel: data.event.eventTypeLabel,
+              eventFormat: data.event.eventFormat ?? null,
+              eventFormatLabel: data.event.eventFormatLabel ?? null,
+            }
+          : prev
+      )
+      setMessage('Event updated')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update event')
     }
   }
 
@@ -1069,12 +1106,48 @@ function EventTrackerPageContent() {
           </Link>
           <h1 className="text-2xl font-semibold mt-1">{event.name}</h1>
           <p className="text-sm text-gray-600">
-            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel} ·{' '}
+            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel}
+            {event.eventFormatLabel ? ` · ${event.eventFormatLabel}` : ''} ·{' '}
             {event.ballTypeLabel} · {event.genderLabel}
           </p>
           {event.notes ? (
             <p className="text-sm text-gray-600 mt-1">{event.notes}</p>
           ) : null}
+          <div className="mt-3 flex flex-wrap gap-3">
+            <label className="block text-sm">
+              <span className="text-gray-600">Type</span>
+              <select
+                className={`mt-1 block rounded border border-gray-300 px-2 py-1.5 ${FOCUS_RING}`}
+                value={event.eventType}
+                onChange={(e) => void updateEventMeta({ eventType: e.target.value })}
+              >
+                {Object.entries(EVENT_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-600">Format</span>
+              <select
+                className={`mt-1 block rounded border border-gray-300 px-2 py-1.5 ${FOCUS_RING}`}
+                value={event.eventFormat ?? ''}
+                onChange={(e) =>
+                  void updateEventMeta({
+                    eventFormat: e.target.value === '' ? null : e.target.value,
+                  })
+                }
+              >
+                <option value="">Not set</option>
+                {Object.entries(EVENT_FORMATS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="mt-3">
             <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} />
           </div>
@@ -1296,7 +1369,7 @@ function EventTrackerPageContent() {
               disabled={event.teamsLocked || teamNamesSaving}
               onClick={() => setTeamNamesDraft((prev) => [...prev, ''])}
             >
-              Add team name
+              {showFreeAgentTeamLabel ? 'Add free agent team' : 'Add team name'}
             </button>
             <button
               type="button"
@@ -1307,6 +1380,12 @@ function EventTrackerPageContent() {
               {teamNamesSaving ? 'Saving…' : 'Save team names'}
             </button>
           </div>
+          {showFreeAgentTeamLabel ? (
+            <FieldHelp>
+              Empty free-agent teams you can fill from Unassigned on the assignment
+              board.
+            </FieldHelp>
+          ) : null}
         </div>
       </section>
 
@@ -1669,6 +1748,15 @@ function EventTrackerPageContent() {
                             <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                               Locked
                             </span>
+                          ) : onTeam && showFreeAgentTeamLabel ? (
+                            <Tooltip
+                              label="Free agent"
+                              content="Added to this team after signup (not an original BYOT member)."
+                            >
+                              <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                FA
+                              </span>
+                            </Tooltip>
                           ) : null}
                           {r.hasStrongPersonality ? (
                             <Tooltip
