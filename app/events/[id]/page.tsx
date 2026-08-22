@@ -1087,14 +1087,15 @@ function EventTrackerPageContent() {
             />
             <span>
               <span className="inline-flex items-center gap-1.5">
-                Allow pairing
-                <Tooltip
-                  label="About pairing"
-                  content="When enabled, you can group free agents. Grouped players stay on the same team during draft. BYOT locked players cannot join groups."
+                Allow free-agent grouping
+                  <Tooltip
+                  label="About grouping"
+                  content="When enabled, you can group unassigned free agents so they stay together when placed on a team. Players already on a team cannot be grouped."
                 />
               </span>
               <FieldHelp>
-                Free-agent groups are kept together when you assign or draft teams.
+                Only unassigned free agents can be grouped; groups move together when
+                you place them on teams.
               </FieldHelp>
             </span>
           </label>
@@ -1107,12 +1108,14 @@ function EventTrackerPageContent() {
               disabled={registrations.length === 0 || event.teamsLocked}
               title={
                 event.teamsLocked
-                  ? 'Unlock teams to enter draft mode'
+                  ? hasByotLocked
+                    ? 'Unlock teams to assign free agents'
+                    : 'Unlock teams to enter draft mode'
                   : undefined
               }
               onClick={openDraftSetup}
             >
-              Enter draft mode
+              {hasByotLocked ? 'Assign free agents' : 'Enter draft mode'}
             </button>
           ) : null}
           <button
@@ -1331,10 +1334,13 @@ function EventTrackerPageContent() {
       {draftPhase === 'setup' ? (
         <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-4 space-y-4">
           <div>
-            <h2 className="text-lg font-semibold">Draft setup</h2>
+            <h2 className="text-lg font-semibold">
+              {hasByotLocked ? 'Finish team assignments' : 'Draft setup'}
+            </h2>
             <FieldHelp className="text-sm">
-              Local workspace only until you Apply. Default team size targets ~7–8
-              players.
+              {hasByotLocked
+                ? 'Signup teams are already set. Place free agents onto those teams (working copy until you Apply).'
+                : 'Local workspace only until you Apply. Default team size targets ~7–8 players.'}
             </FieldHelp>
           </div>
           <label className="block text-sm max-w-xs">
@@ -1399,10 +1405,20 @@ function EventTrackerPageContent() {
                   onChange={() => setDraftSeedMode('existing')}
                 />
                 <span className="inline-flex items-center gap-1.5">
-                  Copy current draft groups
+                  {hasByotLocked
+                    ? 'Keep current teams (place free agents next)'
+                    : 'Copy current draft groups'}
                   <Tooltip
-                    label="Copy current draft groups"
-                    content="Keeps each player on their current draft group as the starting point."
+                    label={
+                      hasByotLocked
+                        ? 'Keep current teams'
+                        : 'Copy current draft groups'
+                    }
+                    content={
+                      hasByotLocked
+                        ? 'Starts from signup teams and any players already assigned; only free agents still need placing.'
+                        : 'Keeps each player on their current draft group as the starting point.'
+                    }
                   />
                 </span>
               </label>
@@ -1421,7 +1437,7 @@ function EventTrackerPageContent() {
               className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
               onClick={startDraftBoard}
             >
-              Start drafting
+              {hasByotLocked ? 'Open assignment board' : 'Start drafting'}
             </button>
           </div>
         </div>
@@ -1442,6 +1458,7 @@ function EventTrackerPageContent() {
           skillViewMode={skillViewMode}
           teamNames={event.teamNames ?? []}
           teamsLocked={event.teamsLocked}
+          byotMode={hasByotLocked}
           snapshots={snapshots}
           snapshotsBusy={snapshotsBusy}
           onSaveSnapshot={saveSnapshot}
@@ -1615,22 +1632,27 @@ function EventTrackerPageContent() {
                       r.nickname || `${r.firstName} ${r.lastName}`
                     const badge = captainBadge(r, registrations)
                     const onTeam = r.draftGroup != null
-                    const addableOptions = registrations.filter(
-                      (other) =>
-                        other.id !== r.id &&
-                        !other.teamLocked &&
-                        !r.teamLocked &&
-                        other.pairId == null
-                    )
-                    const joinOptions = registrations.filter(
-                      (other) =>
-                        other.id !== r.id &&
-                        !other.teamLocked &&
-                        !r.teamLocked &&
-                        ((r.pairId == null && other.pairId == null) ||
-                          (r.pairId == null && other.pairId != null) ||
-                          (r.pairId != null && other.pairId == null))
-                    )
+                    const canGroup = !r.teamLocked && r.draftGroup == null
+                    const addableOptions = canGroup
+                      ? registrations.filter(
+                          (other) =>
+                            other.id !== r.id &&
+                            !other.teamLocked &&
+                            other.draftGroup == null &&
+                            other.pairId == null
+                        )
+                      : []
+                    const joinOptions = canGroup
+                      ? registrations.filter(
+                          (other) =>
+                            other.id !== r.id &&
+                            !other.teamLocked &&
+                            other.draftGroup == null &&
+                            ((r.pairId == null && other.pairId == null) ||
+                              (r.pairId == null && other.pairId != null) ||
+                              (r.pairId != null && other.pairId == null))
+                        )
+                      : []
                     return (
                       <tr
                         key={r.id}
@@ -1645,7 +1667,7 @@ function EventTrackerPageContent() {
                           </SkillStyledText>
                           {r.teamLocked ? (
                             <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                              BYOT
+                              Locked
                             </span>
                           ) : null}
                           {r.hasStrongPersonality ? (
@@ -1708,7 +1730,7 @@ function EventTrackerPageContent() {
                               event.teamsLocked
                                 ? 'Unlock teams to change assignments'
                                 : r.teamLocked
-                                  ? 'BYOT locked — use Unlock to move'
+                                  ? 'Locked signup — use Unlock to move'
                                   : undefined
                             }
                             value={r.draftGroup == null ? '' : String(r.draftGroup)}
@@ -1758,7 +1780,7 @@ function EventTrackerPageContent() {
                         </td>
                         {event.pairingEnabled !== false ? (
                           <td className="px-3 py-2">
-                            {r.teamLocked ? (
+                            {!canGroup && !r.pairId ? (
                               <span className="text-xs text-gray-400">—</span>
                             ) : r.pairId ? (
                               <div className="flex flex-col gap-1">
@@ -1778,7 +1800,7 @@ function EventTrackerPageContent() {
                                 >
                                   Dissolve
                                 </button>
-                                {addableOptions.length > 0 ? (
+                                {canGroup && addableOptions.length > 0 ? (
                                   <select
                                     className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
                                     disabled={savingId === r.id}
@@ -1842,8 +1864,8 @@ function EventTrackerPageContent() {
                                 event.teamsLocked
                                   ? 'Unlock teams first'
                                   : r.teamLocked
-                                    ? 'Allow moving this player in draft'
-                                    : 'Lock to current team (BYOT)'
+                                    ? 'Allow moving this player when assigning'
+                                    : 'Lock to current team (signup)'
                               }
                               onClick={() =>
                                 void setSignupOverride(r.id, {

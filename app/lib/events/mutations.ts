@@ -540,6 +540,9 @@ export async function groupRegistrations(
     if (row.teamLocked) {
       throw new Error('Locked signup-team players cannot join free-agent groups')
     }
+    if (row.draftGroup != null) {
+      throw new Error('Only unassigned free agents can be grouped')
+    }
   }
 
   const existingPairIds = [
