@@ -111,8 +111,10 @@ export const events = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     name: text('name').notNull(),
     eventDate: date('event_date').notNull(),
-    /** Canonical: tournament | open_gym | other */
+    /** Canonical: tournament | league | open_gym | other */
     eventType: text('event_type').notNull().default('tournament'),
+    /** Canonical: byot | remix | draft | null (unset; metadata only) */
+    eventFormat: text('event_format'),
     /** Canonical: foam | cloth */
     ballType: text('ball_type').notNull().default('foam'),
     /** Canonical: mixed | open | she_they */

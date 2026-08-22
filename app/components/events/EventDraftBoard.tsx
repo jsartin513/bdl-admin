@@ -136,10 +136,18 @@ function DraftPlayerCard(props: {
   dragging?: boolean
   pairingEnabled?: boolean
   showHomeLeague?: boolean
+  showFaBadge?: boolean
   captainBadge?: '(C)' | '(CC)' | null
 }) {
-  const { player, skillViewMode, dragging, pairingEnabled, showHomeLeague, captainBadge } =
-    props
+  const {
+    player,
+    skillViewMode,
+    dragging,
+    pairingEnabled,
+    showHomeLeague,
+    showFaBadge,
+    captainBadge,
+  } = props
   const league = homeLeagueText(player)
   const score = effectiveSkillScore(player, skillViewMode)
   const label = effectiveSkillLabel(player, skillViewMode)
@@ -162,6 +170,15 @@ function DraftPlayerCard(props: {
           >
             <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
               Locked
+            </span>
+          </Tooltip>
+        ) : showFaBadge ? (
+          <Tooltip
+            label="Free agent"
+            content="Added to this team after signup (not an original BYOT member)."
+          >
+            <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+              FA
             </span>
           </Tooltip>
         ) : null}
@@ -233,6 +250,7 @@ function DraggablePlayer(props: {
   skillViewMode: SkillViewMode
   pairingEnabled?: boolean
   showHomeLeague?: boolean
+  showFaBadge?: boolean
   captainBadge?: '(C)' | '(CC)' | null
 }) {
   const locked = props.player.teamLocked
@@ -250,6 +268,7 @@ function DraggablePlayer(props: {
           skillViewMode={props.skillViewMode}
           pairingEnabled={props.pairingEnabled}
           showHomeLeague={props.showHomeLeague}
+          showFaBadge={props.showFaBadge}
           captainBadge={props.captainBadge}
         />
       </div>
@@ -269,6 +288,7 @@ function DraggablePlayer(props: {
         skillViewMode={props.skillViewMode}
         pairingEnabled={props.pairingEnabled}
         showHomeLeague={props.showHomeLeague}
+        showFaBadge={props.showFaBadge}
         captainBadge={props.captainBadge}
       />
     </div>
@@ -305,6 +325,8 @@ function TeamColumn(props: {
   scoreImbalanced?: boolean
   genderImbalanced?: boolean
   emphasizeUnassigned?: boolean
+  /** Split into Signup / Added free agents subsections */
+  byotSections?: boolean
   pairingEnabled?: boolean
   showHomeLeague?: boolean
   captainBadgeFor?: (player: EventRegistrationListItem) => '(C)' | '(CC)' | null
@@ -316,6 +338,29 @@ function TeamColumn(props: {
   const gender = teamGenderCounts(props.players)
   const count = props.players.length
   const average = count > 0 ? score / count : 0
+  const useByotSections = Boolean(props.byotSections && props.team != null)
+  const signupPlayers = useMemo(
+    () =>
+      useByotSections
+        ? sortPlayers(
+            props.players.filter((p) => p.teamLocked),
+            props.sort,
+            props.skillViewMode
+          )
+        : [],
+    [useByotSections, props.players, props.sort, props.skillViewMode]
+  )
+  const freeAgentPlayers = useMemo(
+    () =>
+      useByotSections
+        ? sortPlayers(
+            props.players.filter((p) => !p.teamLocked),
+            props.sort,
+            props.skillViewMode
+          )
+        : [],
+    [useByotSections, props.players, props.sort, props.skillViewMode]
+  )
   const sortedPlayers = useMemo(
     () => sortPlayers(props.players, props.sort, props.skillViewMode),
     [props.players, props.sort, props.skillViewMode]
@@ -353,6 +398,20 @@ function TeamColumn(props: {
       setCopied(false)
       scheduleReset()
     })
+  }
+
+  function renderPlayer(p: EventRegistrationListItem, showFaBadge: boolean) {
+    return (
+      <DraggablePlayer
+        key={p.id}
+        player={p}
+        skillViewMode={props.skillViewMode}
+        pairingEnabled={props.pairingEnabled}
+        showHomeLeague={props.showHomeLeague}
+        showFaBadge={showFaBadge}
+        captainBadge={props.captainBadgeFor?.(p) ?? null}
+      />
+    )
   }
 
   return (
@@ -456,16 +515,32 @@ function TeamColumn(props: {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto p-2">
-        {sortedPlayers.map((p) => (
-          <DraggablePlayer
-            key={p.id}
-            player={p}
-            skillViewMode={props.skillViewMode}
-            pairingEnabled={props.pairingEnabled}
-            showHomeLeague={props.showHomeLeague}
-            captainBadge={props.captainBadgeFor?.(p) ?? null}
-          />
-        ))}
+        {useByotSections ? (
+          <>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                Signup ({signupPlayers.length})
+              </p>
+              {signupPlayers.length > 0 ? (
+                signupPlayers.map((p) => renderPlayer(p, false))
+              ) : (
+                <p className="text-[10px] text-gray-400">No locked signup players</p>
+              )}
+            </div>
+            <div className="mt-2 space-y-1.5 border-t border-gray-200 pt-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-900">
+                Added free agents ({freeAgentPlayers.length})
+              </p>
+              {freeAgentPlayers.length > 0 ? (
+                freeAgentPlayers.map((p) => renderPlayer(p, true))
+              ) : (
+                <p className="text-[10px] text-gray-400">Drop free agents here</p>
+              )}
+            </div>
+          </>
+        ) : (
+          sortedPlayers.map((p) => renderPlayer(p, false))
+        )}
       </div>
     </div>
   )
@@ -1027,6 +1102,7 @@ export function EventDraftBoard(props: Props) {
                   teamStats.genderDeltas[t - 1] >
                     Math.max(1, teamStats.avgGenderDelta + 1)
                 }
+                byotSections={byotMode}
                 pairingEnabled={pairingEnabled}
                 showHomeLeague={showHomeLeague}
                 captainBadgeFor={(p) =>

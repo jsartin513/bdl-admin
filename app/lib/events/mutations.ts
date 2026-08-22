@@ -12,8 +12,10 @@ import {
   isValidEventGender,
   isValidEventType,
   parseDraftGroup,
+  parseEventFormat,
   type BallType,
   type EventDraftSnapshotListItem,
+  type EventFormat,
   type EventGender,
   type EventRecord,
   type EventType,
@@ -59,6 +61,7 @@ export async function createEvent(input: {
   name: string
   eventDate: string
   eventType?: string | null
+  eventFormat?: string | null
   ballType?: string | null
   gender?: string | null
   notes?: string | null
@@ -73,6 +76,12 @@ export async function createEvent(input: {
   if (input.eventType != null && input.eventType !== '') {
     if (!isValidEventType(input.eventType)) throw new Error('Invalid eventType')
     eventType = input.eventType
+  }
+
+  let eventFormat: EventFormat | null = null
+  if (input.eventFormat !== undefined) {
+    const parsed = parseEventFormat(input.eventFormat)
+    eventFormat = parsed === undefined ? null : parsed
   }
 
   let ballType: BallType = 'foam'
@@ -92,7 +101,16 @@ export async function createEvent(input: {
 
   const [created] = await db
     .insert(events)
-    .values({ name, eventDate, eventType, ballType, gender, notes, pairingEnabled })
+    .values({
+      name,
+      eventDate,
+      eventType,
+      eventFormat,
+      ballType,
+      gender,
+      notes,
+      pairingEnabled,
+    })
     .returning()
 
   return mapEventRecord(created)
@@ -104,6 +122,7 @@ export async function updateEvent(
     name?: string
     eventDate?: string
     eventType?: string | null
+    eventFormat?: string | null
     ballType?: string | null
     gender?: string | null
     notes?: string | null
@@ -127,6 +146,7 @@ export async function updateEvent(
     name?: string
     eventDate?: string
     eventType?: string
+    eventFormat?: string | null
     ballType?: string
     gender?: string
     notes?: string | null
@@ -153,6 +173,9 @@ export async function updateEvent(
     } else {
       updates.eventType = patch.eventType
     }
+  }
+  if (patch.eventFormat !== undefined) {
+    updates.eventFormat = parseEventFormat(patch.eventFormat) ?? null
   }
   if (patch.ballType !== undefined) {
     if (patch.ballType == null || patch.ballType === '') {

@@ -7,9 +7,11 @@ import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import {
   ballTypeLabel,
+  eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
   isValidBallType,
+  isValidEventFormat,
   isValidEventGender,
   isValidEventType,
 } from '@/app/lib/events/types'
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },
@@ -50,6 +53,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       name?: string
       eventDate?: string
       eventType?: string | null
+      eventFormat?: string | null
       ballType?: string | null
       gender?: string | null
       notes?: string | null
@@ -65,6 +69,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       !isValidEventType(body.eventType)
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
+    }
+    if (
+      body.eventFormat != null &&
+      body.eventFormat !== '' &&
+      !isValidEventFormat(body.eventFormat)
+    ) {
+      return NextResponse.json({ error: 'Invalid eventFormat' }, { status: 400 })
     }
     if (
       body.ballType != null &&
@@ -123,6 +134,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },
