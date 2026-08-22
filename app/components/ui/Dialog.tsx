@@ -125,9 +125,9 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`max-h-[90vh] w-full overflow-y-auto rounded-lg bg-white p-4 shadow-xl focus:outline-none ${className ?? 'max-w-lg'}`.trim()}
+        className={`max-h-[90vh] w-full overflow-y-auto rounded-lg bg-[var(--tm-surface,#fff)] p-4 text-[var(--tm-fg,#111827)] shadow-xl focus:outline-none ${className ?? 'max-w-lg'}`.trim()}
       >
-        <h2 id={titleId} className="text-lg font-semibold text-gray-900">
+        <h2 id={titleId} className="text-lg font-semibold text-[var(--tm-fg,#111827)]">
           {title}
         </h2>
         <div className="mt-3">{children}</div>

@@ -10,6 +10,11 @@ import {
   useState,
 } from 'react'
 import { EventDraftBoard } from '@/app/components/events/EventDraftBoard'
+import {
+  EventDraftSetup,
+  type DraftSeedMode,
+} from '@/app/components/events/EventDraftSetup'
+import { EventTeamsSection } from '@/app/components/events/EventTeamsSection'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import {
@@ -17,7 +22,6 @@ import {
   copyExistingDraftGroups,
   defaultTeamCount,
   emptySeedDraftGroups,
-  playersPerTeamLabel,
 } from '@/app/lib/events/draft-seed'
 import { resolveTeamName } from '@/app/lib/events/dodgeballhub-export'
 import type {
@@ -44,13 +48,18 @@ import {
   SkillViewModeToggle,
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
-import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import {
+  Button,
+  ConfirmDialog,
+  Dialog,
+  FieldHelp,
+  FOCUS_RING,
+  LiveMessage,
+  Tooltip,
+} from '@/app/components/ui'
 import { ContactPlayersDialog } from '@/app/components/contact/ContactPlayersDialog'
 
 const DEFAULT_REACH_OUT_LEAGUE: HomeLeague = 'boston_dodgeball_league'
-
-const FOCUS_RING =
-  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 type EventDetail = {
   id: string
@@ -87,8 +96,6 @@ type ImportAction = {
 }
 
 type DraftPhase = 'off' | 'setup' | 'board'
-
-type SeedMode = 'auto' | 'empty' | 'existing'
 
 const GENDER_ROWS = ['w_nb_o', 'men', 'unset'] as const
 
@@ -132,7 +139,9 @@ export default function EventTrackerPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-6xl p-6 text-sm text-gray-600">Loading…</div>
+        <div className="team-maker mx-auto max-w-6xl p-6 text-sm text-[var(--tm-muted,#4b5563)]">
+          Loading…
+        </div>
       }
     >
       <EventTrackerPageContent />
@@ -174,7 +183,14 @@ function EventTrackerPageContent() {
 
   const [draftPhase, setDraftPhase] = useState<DraftPhase>('off')
   const [draftTeamCount, setDraftTeamCount] = useState(1)
-  const [draftSeedMode, setDraftSeedMode] = useState<SeedMode>('auto')
+  const [draftSeedMode, setDraftSeedMode] = useState<DraftSeedMode>('auto')
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(false)
+  const [confirmFinalize, setConfirmFinalize] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState<{
+    id: string
+    label: string
+  } | null>(null)
+  const [confirmImportCommit, setConfirmImportCommit] = useState(false)
   const [draftAssignments, setDraftAssignments] = useState<Map<string, number | null>>(
     () => new Map()
   )
@@ -326,19 +342,6 @@ function EventTrackerPageContent() {
         return an.localeCompare(bn, undefined, { sensitivity: 'base' })
       })
   }, [registrations])
-
-  const freeAgentGender = useMemo(() => {
-    let wNbO = 0
-    let men = 0
-    let unset = 0
-    for (const r of freeAgents) {
-      const g = genderGroup(r.gender)
-      if (g === 'w_nb_o') wNbO++
-      else if (g === 'men') men++
-      else unset++
-    }
-    return { wNbO, men, unset }
-  }, [freeAgents])
 
   const showFreeAgentTeamLabel =
     hasByotLocked || event?.eventFormat === 'byot'
@@ -564,13 +567,6 @@ function EventTrackerPageContent() {
 
   async function finalizeTeams() {
     if (!event) return
-    if (
-      !window.confirm(
-        'Finalize teams? This locks assignments and unlocks DodgeballHub export. You can unlock later for late registrations.'
-      )
-    ) {
-      return
-    }
     setTeamsActionBusy(true)
     setFormError(null)
     try {
@@ -583,6 +579,7 @@ function EventTrackerPageContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to finalize teams')
       applyEventTeamsPatch(data)
       setMessage('Teams finalized and locked')
+      setConfirmFinalize(false)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to finalize teams')
     } finally {
@@ -990,7 +987,6 @@ function EventTrackerPageContent() {
   }
 
   async function removeRegistration(registrationId: string, label: string) {
-    if (!window.confirm(`Remove ${label} from this event?`)) return
     setRemovingId(registrationId)
     setFormError(null)
     try {
@@ -1002,6 +998,7 @@ function EventTrackerPageContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to remove player')
       setRegistrations((prev) => prev.filter((r) => r.id !== registrationId))
       setMessage(`Removed ${label} from event`)
+      setConfirmRemove(null)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to remove player')
     } finally {
@@ -1010,13 +1007,6 @@ function EventTrackerPageContent() {
   }
 
   async function deleteEvent() {
-    if (
-      !window.confirm(
-        `Delete “${event?.name}”? This removes the event and all its registrations.`
-      )
-    ) {
-      return
-    }
     setDeletingEvent(true)
     setFormError(null)
     try {
@@ -1027,6 +1017,7 @@ function EventTrackerPageContent() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to delete event')
       setDeletingEvent(false)
+      setConfirmDeleteEvent(false)
     }
   }
 
@@ -1060,16 +1051,16 @@ function EventTrackerPageContent() {
 
   async function commitImport() {
     if (!importPreview) {
-      if (
-        !window.confirm(
-          'Import without a dry run? This will create/update players and register them for this event.'
-        )
-      ) {
-        return
-      }
+      setConfirmImportCommit(true)
+      return
     }
+    await runImportCommit()
+  }
+
+  async function runImportCommit() {
     setImportBusy(true)
     setFormError(null)
+    setConfirmImportCommit(false)
     try {
       const res = await fetch('/api/players/import', {
         method: 'POST',
@@ -1107,19 +1098,21 @@ function EventTrackerPageContent() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl p-6 text-sm text-gray-600">Loading…</div>
+      <div className="team-maker mx-auto max-w-6xl p-6 text-sm text-[var(--tm-muted,#4b5563)]">
+        Loading…
+      </div>
     )
   }
 
   if (!event) {
     return (
-      <div className="mx-auto max-w-6xl p-6 space-y-3">
+      <div className="team-maker mx-auto max-w-6xl space-y-3 p-6">
         <LiveMessage variant="alert" className="text-sm text-red-600">
           {error || 'Event not found'}
         </LiveMessage>
         <Link
           href={withDevMode('/events', devMode)}
-          className="text-sm text-blue-700 hover:underline"
+          className="text-sm text-[var(--tm-link,#1d4ed8)] hover:underline"
         >
           ← Events
         </Link>
@@ -1128,29 +1121,29 @@ function EventTrackerPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6 text-gray-900">
+    <div className="team-maker mx-auto max-w-6xl space-y-6 p-6 text-[var(--tm-fg,#111827)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
             href={withDevMode('/events', devMode)}
-            className="text-sm text-blue-700 hover:underline"
+            className="text-sm text-[var(--tm-link,#1d4ed8)] hover:underline"
           >
             ← Events
           </Link>
-          <h1 className="text-2xl font-semibold mt-1">{event.name}</h1>
-          <p className="text-sm text-gray-600">
+          <h1 className="mt-1 text-2xl font-semibold">{event.name}</h1>
+          <p className="text-sm text-[var(--tm-muted,#4b5563)]">
             {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel}
             {event.eventFormatLabel ? ` · ${event.eventFormatLabel}` : ''} ·{' '}
             {event.ballTypeLabel} · {event.genderLabel}
           </p>
           {event.notes ? (
-            <p className="text-sm text-gray-600 mt-1">{event.notes}</p>
+            <p className="mt-1 text-sm text-[var(--tm-muted,#4b5563)]">{event.notes}</p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-3">
             <label className="block text-sm">
-              <span className="text-gray-600">Type</span>
+              <span className="text-[var(--tm-muted,#4b5563)]">Type</span>
               <select
-                className={`mt-1 block rounded border border-gray-300 px-2 py-1.5 ${FOCUS_RING}`}
+                className={`mt-1 block rounded border border-[var(--tm-border,#d1d5db)] bg-[var(--tm-surface,#fff)] px-2 py-1.5 ${FOCUS_RING}`}
                 value={event.eventType}
                 onChange={(e) => void updateEventMeta({ eventType: e.target.value })}
               >
@@ -1162,9 +1155,9 @@ function EventTrackerPageContent() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="text-gray-600">Format</span>
+              <span className="text-[var(--tm-muted,#4b5563)]">Format</span>
               <select
-                className={`mt-1 block rounded border border-gray-300 px-2 py-1.5 ${FOCUS_RING}`}
+                className={`mt-1 block rounded border border-[var(--tm-border,#d1d5db)] bg-[var(--tm-surface,#fff)] px-2 py-1.5 ${FOCUS_RING}`}
                 value={event.eventFormat ?? ''}
                 onChange={(e) =>
                   void updateEventMeta({
@@ -1184,10 +1177,10 @@ function EventTrackerPageContent() {
           <div className="mt-3">
             <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} />
           </div>
-          <label className="mt-3 flex items-start gap-2 text-sm text-gray-800">
+          <label className="mt-3 flex items-start gap-2 text-sm text-[var(--tm-fg,#1f2937)]">
             <input
               type="checkbox"
-              className="mt-0.5"
+              className={`mt-0.5 ${FOCUS_RING}`}
               checked={event.pairingEnabled !== false}
               onChange={(e) => void togglePairingEnabled(e.target.checked)}
             />
@@ -1208,9 +1201,8 @@ function EventTrackerPageContent() {
         </div>
         <div className="flex flex-wrap gap-2">
           {draftPhase === 'off' ? (
-            <button
-              type="button"
-              className={`rounded border border-blue-600 px-3 py-2 text-sm text-blue-700 disabled:opacity-40 ${FOCUS_RING}`}
+            <Button
+              variant="outline"
               disabled={registrations.length === 0 || event.teamsLocked}
               title={
                 event.teamsLocked
@@ -1222,19 +1214,18 @@ function EventTrackerPageContent() {
               onClick={openDraftSetup}
             >
               {hasByotLocked ? 'Assign free agents' : 'Enter draft mode'}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
-            className={`rounded border border-teal-600 px-3 py-2 text-sm text-teal-800 ${FOCUS_RING}`}
+          <Button
+            variant="secondary"
+            className="border-teal-600 text-teal-800"
             disabled={registrations.length === 0}
             onClick={() => setContactOpen(true)}
           >
             Contact registered players
-          </button>
-          <button
-            type="button"
-            className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
@@ -1243,15 +1234,14 @@ function EventTrackerPageContent() {
             }}
           >
             Import TeamLinkt CSV
-          </button>
-          <button
-            type="button"
-            className={`rounded border border-red-300 px-3 py-2 text-sm text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+          </Button>
+          <Button
+            variant="danger"
             disabled={deletingEvent}
-            onClick={() => void deleteEvent()}
+            onClick={() => setConfirmDeleteEvent(true)}
           >
             {deletingEvent ? 'Deleting…' : 'Delete event'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1271,235 +1261,27 @@ function EventTrackerPageContent() {
         </LiveMessage>
       ) : null}
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Teams</h2>
-            <FieldHelp>
-              {hasByotLocked
-                ? 'Imported BYOT names can only be changed when unlocked. Free-agent and draft/remix names stay editable. Missing names fall back to Team 1, Team 2, …'
-                : 'Rename teams anytime. Extra names are ignored; missing names fall back to Team 1, Team 2, …'}
-            </FieldHelp>
-            {event.teamsFinalizedAt ? (
-              <p className="mt-1 text-sm text-gray-600">
-                {event.teamsLocked
-                  ? 'Finalized and locked.'
-                  : 'Finalized (unlocked for late registrations).'}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-gray-600">Not finalized yet.</p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!event.teamsFinalizedAt ? (
-              <button
-                type="button"
-                className={`rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={teamsActionBusy || !hasExistingGroups}
-                onClick={() => void finalizeTeams()}
-              >
-                Finalize teams
-              </button>
-            ) : event.teamsLocked ? (
-              <button
-                type="button"
-                className={`rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-950 disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={teamsActionBusy}
-                onClick={() => void setTeamsLocked(false)}
-              >
-                Unlock teams
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={`rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={teamsActionBusy}
-                onClick={() => void setTeamsLocked(true)}
-              >
-                Lock teams
-              </button>
-            )}
-            {event.teamsFinalizedAt ? (
-              <button
-                type="button"
-                className={`rounded border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-900 ${FOCUS_RING}`}
-                onClick={exportDodgeballHub}
-              >
-                Export for DodgeballHub
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 md:items-start">
-          <div className="space-y-2">
-            {teamNamesDraft.map((name, index) => {
-              const teamNum = index + 1
-              const isByotSlot = byotTeamIndexes.has(teamNum)
-              const byotFrozen = Boolean(event.teamsLocked && isByotSlot)
-              const slotBusy = teamNamesSaving || byotFrozen
-              // When locked, do not swap with a BYOT neighbor (would move import names).
-              const upBlocked =
-                index === 0 ||
-                slotBusy ||
-                (event.teamsLocked && byotTeamIndexes.has(index))
-              const downBlocked =
-                index >= teamNamesDraft.length - 1 ||
-                slotBusy ||
-                (event.teamsLocked && byotTeamIndexes.has(index + 2))
-              // Removing a slot before a BYOT team would shift locked name indices.
-              const removeBlocked =
-                slotBusy ||
-                (event.teamsLocked &&
-                  [...byotTeamIndexes].some((g) => g > teamNum))
-              return (
-                <div key={index} className="flex flex-wrap items-center gap-2">
-                  <span className="w-20 shrink-0 text-xs text-gray-500">
-                    Team {teamNum}
-                    {isByotSlot ? (
-                      <span className="ml-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">
-                        BYOT
-                      </span>
-                    ) : null}
-                  </span>
-                  <input
-                    type="text"
-                    className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40"
-                    value={name}
-                    disabled={slotBusy}
-                    title={
-                      byotFrozen
-                        ? 'Unlock teams to edit imported BYOT names'
-                        : undefined
-                    }
-                    placeholder={`Team ${teamNum}`}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setTeamNamesDraft((prev) =>
-                        prev.map((n, i) => (i === index ? value : n))
-                      )
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={`text-xs text-red-700 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                    disabled={removeBlocked}
-                    title={
-                      byotFrozen
-                        ? 'Unlock teams to remove imported BYOT names'
-                        : event.teamsLocked &&
-                            [...byotTeamIndexes].some((g) => g > teamNum)
-                          ? 'Cannot remove a slot that would shift locked BYOT names'
-                          : undefined
-                    }
-                    onClick={() =>
-                      setTeamNamesDraft((prev) =>
-                        prev.filter((_, i) => i !== index)
-                      )
-                    }
-                  >
-                    Remove
-                  </button>
-                  <button
-                    type="button"
-                    className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                    disabled={upBlocked}
-                    onClick={() =>
-                      setTeamNamesDraft((prev) => {
-                        if (index === 0) return prev
-                        const next = [...prev]
-                        ;[next[index - 1], next[index]] = [
-                          next[index],
-                          next[index - 1],
-                        ]
-                        return next
-                      })
-                    }
-                  >
-                    Up
-                  </button>
-                  <button
-                    type="button"
-                    className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                    disabled={downBlocked}
-                    onClick={() =>
-                      setTeamNamesDraft((prev) => {
-                        if (index >= prev.length - 1) return prev
-                        const next = [...prev]
-                        ;[next[index], next[index + 1]] = [
-                          next[index + 1],
-                          next[index],
-                        ]
-                        return next
-                      })
-                    }
-                  >
-                    Down
-                  </button>
-                </div>
-              )
-            })}
-            <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                className={`rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={teamNamesSaving}
-                onClick={() => setTeamNamesDraft((prev) => [...prev, ''])}
-              >
-                {showFreeAgentTeamLabel ? 'Add free agent team' : 'Add team name'}
-              </button>
-              <button
-                type="button"
-                className={`rounded bg-gray-900 px-3 py-1.5 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={teamNamesSaving}
-                onClick={() => void saveTeamNames()}
-              >
-                {teamNamesSaving ? 'Saving…' : 'Save team names'}
-              </button>
-            </div>
-            {showFreeAgentTeamLabel ? (
-              <FieldHelp>
-                Empty free-agent teams you can fill from Unassigned on the
-                assignment board.
-              </FieldHelp>
-            ) : null}
-          </div>
-
-          <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-3 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-900">
-              Free agents ({freeAgents.length})
-            </h3>
-            <p className="text-xs text-gray-600">
-              W/NB/O {freeAgentGender.wNbO} · M {freeAgentGender.men}
-              {freeAgentGender.unset
-                ? ` · — ${freeAgentGender.unset}`
-                : ''}
-            </p>
-            {freeAgents.length === 0 ? (
-              <p className="text-xs text-gray-500">No free agents</p>
-            ) : (
-              <ul className="max-h-48 overflow-y-auto space-y-0.5 text-xs text-gray-800">
-                {freeAgents.map((r) => {
-                  const full =
-                    `${r.firstName} ${r.lastName}`.trim() ||
-                    r.rosterName ||
-                    r.nickname ||
-                    'Unknown'
-                  return (
-                    <li key={r.id} className="truncate">
-                      {full}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      </section>
+      <EventTeamsSection
+        hasByotLocked={hasByotLocked}
+        teamsLocked={event.teamsLocked}
+        teamsFinalizedAt={event.teamsFinalizedAt}
+        teamNamesDraft={teamNamesDraft}
+        onTeamNamesDraftChange={setTeamNamesDraft}
+        byotTeamIndexes={byotTeamIndexes}
+        showFreeAgentTeamLabel={showFreeAgentTeamLabel}
+        freeAgents={freeAgents}
+        teamsActionBusy={teamsActionBusy}
+        teamNamesSaving={teamNamesSaving}
+        hasExistingGroups={hasExistingGroups}
+        onFinalize={() => setConfirmFinalize(true)}
+        onSetLocked={(locked) => void setTeamsLocked(locked)}
+        onExport={exportDodgeballHub}
+        onSaveTeamNames={() => void saveTeamNames()}
+      />
 
       {draftPhase !== 'board' && counts.unassigned > 0 ? (
         <div
-          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          className="rounded-lg border border-[var(--tm-amber-border,#fcd34d)] bg-[var(--tm-amber-bg,#fffbeb)] px-4 py-3 text-sm text-[var(--tm-amber-fg,#78350f)]"
           role="status"
         >
           <p className="font-medium">
@@ -1510,115 +1292,18 @@ function EventTrackerPageContent() {
       ) : null}
 
       {draftPhase === 'setup' ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-4 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold">
-              {hasByotLocked ? 'Finish team assignments' : 'Draft setup'}
-            </h2>
-            <FieldHelp className="text-sm">
-              {hasByotLocked
-                ? 'Signup teams are already set. Place free agents onto those teams (working copy until you Apply).'
-                : 'Local workspace only until you Apply. Default team size targets ~7–8 players.'}
-            </FieldHelp>
-          </div>
-          <label className="block text-sm max-w-xs">
-            <span className="text-gray-600">Number of teams</span>
-            <input
-              type="number"
-              min={minDraftTeamCount}
-              max={Math.max(minDraftTeamCount, registrations.length)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-              value={draftTeamCount}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value, 10) || 1
-                setDraftTeamCount(Math.max(minDraftTeamCount, parsed))
-              }}
-            />
-            <FieldHelp>
-              ~{playersPerTeamLabel(registrations.length, draftTeamCount)}{' '}
-              players per team
-              {hasByotLocked && minDraftTeamCount > 1
-                ? ` (min ${minDraftTeamCount} for locked BYOT teams)`
-                : ''}
-            </FieldHelp>
-          </label>
-          <fieldset className="space-y-2 text-sm">
-            <legend className="text-gray-600 mb-1">Start with</legend>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="seedMode"
-                checked={draftSeedMode === 'auto'}
-                onChange={() => setDraftSeedMode('auto')}
-              />
-              <span className="inline-flex items-center gap-1.5">
-                Auto-seed free agents (gender-balanced, skill-aware)
-                <Tooltip
-                  label="Auto-seed"
-                  content="Places unlocked free agents across teams. Locked BYOT signup players stay put and count toward team balance."
-                />
-              </span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="seedMode"
-                checked={draftSeedMode === 'empty'}
-                onChange={() => setDraftSeedMode('empty')}
-              />
-              <span className="inline-flex items-center gap-1.5">
-                Empty free-agent pool (BYOT seats kept)
-                <Tooltip
-                  label="Empty teams"
-                  content="Clears unlocked players to unassigned. Locked signup-team players remain on their teams."
-                />
-              </span>
-            </label>
-            {hasExistingGroups ? (
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="seedMode"
-                  checked={draftSeedMode === 'existing'}
-                  onChange={() => setDraftSeedMode('existing')}
-                />
-                <span className="inline-flex items-center gap-1.5">
-                  {hasByotLocked
-                    ? 'Keep current teams (place free agents next)'
-                    : 'Copy current draft groups'}
-                  <Tooltip
-                    label={
-                      hasByotLocked
-                        ? 'Keep current teams'
-                        : 'Copy current draft groups'
-                    }
-                    content={
-                      hasByotLocked
-                        ? 'Starts from signup teams and any players already assigned; only free agents still need placing.'
-                        : 'Keeps each player on their current draft group as the starting point.'
-                    }
-                  />
-                </span>
-              </label>
-            ) : null}
-          </fieldset>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`rounded border px-3 py-2 text-sm ${FOCUS_RING}`}
-              onClick={discardDraft}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
-              onClick={startDraftBoard}
-            >
-              {hasByotLocked ? 'Open assignment board' : 'Start drafting'}
-            </button>
-          </div>
-        </div>
+        <EventDraftSetup
+          hasByotLocked={hasByotLocked}
+          minDraftTeamCount={minDraftTeamCount}
+          registrationCount={registrations.length}
+          draftTeamCount={draftTeamCount}
+          onDraftTeamCountChange={setDraftTeamCount}
+          draftSeedMode={draftSeedMode}
+          onDraftSeedModeChange={setDraftSeedMode}
+          hasExistingGroups={hasExistingGroups}
+          onCancel={discardDraft}
+          onStart={startDraftBoard}
+        />
       ) : null}
 
       {draftPhase === 'board' ? (
@@ -1647,19 +1332,19 @@ function EventTrackerPageContent() {
         />
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 text-sm">
-        <div className="rounded border border-gray-200 px-3 py-2">
-          <div className="text-gray-500">Total</div>
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <div className="rounded border border-[var(--tm-border,#e5e7eb)] px-3 py-2">
+          <div className="text-[var(--tm-muted,#6b7280)]">Total</div>
           <div className="text-xl font-semibold">{counts.total}</div>
         </div>
         <div
           className={`rounded border px-3 py-2 ${
             counts.unassigned > 0
-              ? 'border-amber-300 bg-amber-50/60'
-              : 'border-gray-200'
+              ? 'border-[var(--tm-amber-border,#fcd34d)] bg-[var(--tm-amber-bg,#fffbeb)]'
+              : 'border-[var(--tm-border,#e5e7eb)]'
           }`}
         >
-          <div className="text-gray-500">Draft buckets</div>
+          <div className="text-[var(--tm-muted,#6b7280)]">Draft buckets</div>
           <div>
             <span
               className={
@@ -2095,9 +1780,11 @@ function EventTrackerPageContent() {
                         <td className="px-3 py-2">
                           <button
                             type="button"
-                            className="text-xs text-red-700 hover:underline disabled:opacity-40"
+                            className={`min-h-11 text-xs text-red-700 hover:underline disabled:opacity-40 md:min-h-0 ${FOCUS_RING}`}
                             disabled={removingId === r.id}
-                            onClick={() => void removeRegistration(r.id, label)}
+                            onClick={() =>
+                              setConfirmRemove({ id: r.id, label })
+                            }
                           >
                             Remove
                           </button>
@@ -2463,6 +2150,57 @@ function EventTrackerPageContent() {
           }}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={confirmDeleteEvent}
+        onClose={() => setConfirmDeleteEvent(false)}
+        title="Delete event"
+        danger
+        confirmLabel={deletingEvent ? 'Deleting…' : 'Delete'}
+        busy={deletingEvent}
+        onConfirm={() => void deleteEvent()}
+      >
+        Delete “{event.name}”? This removes the event and all its registrations.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmFinalize}
+        onClose={() => setConfirmFinalize(false)}
+        title="Finalize teams"
+        confirmLabel={teamsActionBusy ? 'Finalizing…' : 'Finalize'}
+        busy={teamsActionBusy}
+        onConfirm={() => void finalizeTeams()}
+      >
+        Finalize teams? This locks assignments and unlocks DodgeballHub export.
+        You can unlock later for late registrations.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmRemove != null}
+        onClose={() => setConfirmRemove(null)}
+        title="Remove registration"
+        danger
+        confirmLabel={removingId ? 'Removing…' : 'Remove'}
+        busy={removingId != null}
+        onConfirm={() => {
+          if (!confirmRemove) return
+          void removeRegistration(confirmRemove.id, confirmRemove.label)
+        }}
+      >
+        Remove {confirmRemove?.label} from this event?
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmImportCommit}
+        onClose={() => setConfirmImportCommit(false)}
+        title="Import without dry run"
+        confirmLabel={importBusy ? 'Importing…' : 'Import now'}
+        busy={importBusy}
+        onConfirm={() => void runImportCommit()}
+      >
+        Import without a dry run? This will create/update players and register
+        them for this event.
+      </ConfirmDialog>
     </div>
   )
 }

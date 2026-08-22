@@ -18,3 +18,48 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Scoped team-maker tokens (event detail). Does not flip global :root. */
+.team-maker {
+  --tm-bg: #ffffff;
+  --tm-fg: #111827;
+  --tm-muted: #4b5563;
+  --tm-border: #e5e7eb;
+  --tm-surface: #ffffff;
+  --tm-surface-2: #f9fafb;
+  --tm-panel: #eff6ff;
+  --tm-panel-border: #bfdbfe;
+  --tm-amber-bg: #fffbeb;
+  --tm-amber-border: #fcd34d;
+  --tm-amber-fg: #78350f;
+  --tm-card-men-bg: rgb(240 249 255 / 0.8);
+  --tm-card-men-border: #bae6fd;
+  --tm-card-wnbo-bg: rgb(255 241 242 / 0.8);
+  --tm-card-wnbo-border: #fecdd3;
+  --tm-link: #1d4ed8;
+  color: var(--tm-fg);
+  background: var(--tm-bg);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  .team-maker {
+    --tm-bg: #111827;
+    --tm-fg: #f9fafb;
+    --tm-muted: #9ca3af;
+    --tm-border: #374151;
+    --tm-surface: #1f2937;
+    --tm-surface-2: #111827;
+    --tm-panel: #1e3a5f;
+    --tm-panel-border: #3b82f6;
+    --tm-amber-bg: #451a03;
+    --tm-amber-border: #d97706;
+    --tm-amber-fg: #fde68a;
+    --tm-card-men-bg: #0c4a6e;
+    --tm-card-men-border: #38bdf8;
+    --tm-card-wnbo-bg: #881337;
+    --tm-card-wnbo-border: #fb7185;
+    --tm-link: #93c5fd;
+  }
+}
+
