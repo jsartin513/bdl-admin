@@ -169,6 +169,13 @@
       "when": 1787320800000,
       "tag": "0023_event_registration_team_locked",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787324400000,
+      "tag": "0024_event_format",
+      "breakpoints": true
     }
   ]
 }
