@@ -81,6 +81,7 @@ export async function listEventRegistrations(
       status: eventRegistrations.status,
       draftGroup: eventRegistrations.draftGroup,
       isCaptain: eventRegistrations.isCaptain,
+      teamLocked: eventRegistrations.teamLocked,
       pairId: eventRegistrations.pairId,
       registeredAt: eventRegistrations.registeredAt,
       updatedAt: eventRegistrations.updatedAt,
@@ -170,6 +171,10 @@ export async function listEventRegistrations(
 
   return rows.map((r) => {
     const partnerRegistrationId = partnerByRegistrationId.get(r.id) ?? null
+    const groupMateIds =
+      r.pairId != null
+        ? (byPairId.get(r.pairId) ?? []).filter((id) => id !== r.id)
+        : []
     return {
       id: r.id,
       eventId: r.eventId,
@@ -177,11 +182,16 @@ export async function listEventRegistrations(
       status: r.status,
       draftGroup: r.draftGroup,
       isCaptain: r.isCaptain,
+      teamLocked: r.teamLocked,
       pairId: r.pairId,
       partnerRegistrationId,
       partnerNickname: partnerRegistrationId
         ? (nicknameById.get(partnerRegistrationId) ?? null)
         : null,
+      groupMembers: groupMateIds.map((registrationId) => ({
+        registrationId,
+        nickname: nicknameById.get(registrationId) ?? '',
+      })),
       registeredAt: r.registeredAt,
       updatedAt: r.updatedAt,
       firstName: r.firstName,

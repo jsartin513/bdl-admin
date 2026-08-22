@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { importBatches, playerEmails, players } from '@/app/db/schema'
-import { upsertEventRegistration } from '@/app/lib/events/mutations'
+import { updateEvent, upsertEventRegistration } from '@/app/lib/events/mutations'
 import { getEvent, getRegisteredPlayerIds } from '@/app/lib/events/queries'
 import {
   createPlayer,
@@ -28,6 +28,8 @@ export type TeamlinktRow = {
   jerseyNumber: number | null
   skillLevel: number | null
   gender: Gender | null
+  /** Signup team name from CSV; null/empty = free agent */
+  teamName: string | null
   raw: Record<string, string>
 }
 
@@ -80,6 +82,61 @@ export function summarizeRegistrationPreview(
   }
 
   return { register, alreadyRegistered }
+}
+
+/**
+ * Build ordered unique team names from CSV rows (first appearance wins).
+ * Empty / null team names are free agents and are ignored here.
+ */
+export function collectTeamNamesFromRows(rows: TeamlinktRow[]): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const name = row.teamName?.trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names
+}
+
+/**
+ * Merge CSV-discovered team names into existing event teamNames.
+ * Matching is case-insensitive; new names are appended.
+ * Returns final teamNames list and a lookup from lowercase name → draftGroup (1-based).
+ */
+export function mergeByotTeamNames(
+  existingTeamNames: string[],
+  discoveredNames: string[]
+): { teamNames: string[]; draftGroupByTeamKey: Map<string, number> } {
+  const teamNames = [...existingTeamNames.map((n) => n.trim()).filter(Boolean)]
+  const draftGroupByTeamKey = new Map<string, number>()
+  for (let i = 0; i < teamNames.length; i++) {
+    draftGroupByTeamKey.set(teamNames[i].toLowerCase(), i + 1)
+  }
+  for (const name of discoveredNames) {
+    const key = name.toLowerCase()
+    if (draftGroupByTeamKey.has(key)) continue
+    teamNames.push(name)
+    draftGroupByTeamKey.set(key, teamNames.length)
+  }
+  return { teamNames, draftGroupByTeamKey }
+}
+
+export function summarizeByotPreview(rows: TeamlinktRow[]): {
+  byot: number
+  freeAgents: number
+  teamNames: string[]
+} {
+  let byot = 0
+  let freeAgents = 0
+  for (const row of rows) {
+    if (row.teamName?.trim()) byot++
+    else freeAgents++
+  }
+  return { byot, freeAgents, teamNames: collectTeamNamesFromRows(rows) }
 }
 
 /**
@@ -150,6 +207,14 @@ const HEADER_ALIASES: Record<string, string[]> = {
     'ability level',
   ],
   gender: ['gender', 'sex', 'player gender'],
+  teamName: [
+    'team',
+    'team name',
+    'teamname',
+    'squad',
+    'squad name',
+    'byot team',
+  ],
 }
 
 function normalizeHeader(h: string): string {
@@ -164,14 +229,17 @@ function mapHeaders(headers: string[]): {
   jerseyNumber?: number
   skillLevel?: number
   gender?: number
+  teamName?: number
 } {
   const mapped: {
     firstName?: number
     lastName?: number
     email?: number
+    phone?: number
     jerseyNumber?: number
     skillLevel?: number
     gender?: number
+    teamName?: number
   } = {}
 
   headers.forEach((header, index) => {
@@ -321,6 +389,12 @@ export function parseTeamlinktCsv(csvText: string): {
       gender = parseGender(cells[mapping.gender] ?? '')
     }
 
+    let teamName: string | null = null
+    if (mapping.teamName !== undefined) {
+      const t = (cells[mapping.teamName] ?? '').trim()
+      teamName = t || null
+    }
+
     if (!firstName && !lastName && !email) continue
 
     rows.push({
@@ -332,6 +406,7 @@ export function parseTeamlinktCsv(csvText: string): {
       jerseyNumber,
       skillLevel,
       gender,
+      teamName,
       raw,
     })
   }
@@ -451,6 +526,7 @@ export async function previewTeamlinktImport(
   headers: string[]
   warnings: string[]
   registrationSummary?: { register: number; alreadyRegistered: number }
+  byotSummary?: { byot: number; freeAgents: number; teamNames: string[] }
   error?: string
 }> {
   const profileFields = resolveProfileFieldsMode(options)
@@ -636,6 +712,9 @@ export async function previewTeamlinktImport(
     registrationSummary: eventId
       ? summarizeRegistrationPreview(actions, registeredPlayerIds)
       : undefined,
+    byotSummary: eventId
+      ? summarizeByotPreview(parsed.rows)
+      : undefined,
   }
 }
 
@@ -651,6 +730,21 @@ export async function commitTeamlinktImport(input: {
   const preview = await previewTeamlinktImport(input.csvText, input.options, eventId)
   if (preview.error) {
     throw new Error(preview.error)
+  }
+
+  let draftGroupByTeamKey = new Map<string, number>()
+  let byotTeamNames: string[] = []
+  if (eventId && preview.byotSummary && preview.byotSummary.teamNames.length > 0) {
+    const event = await getEvent(eventId)
+    if (!event) throw new Error('Event not found')
+    const merged = mergeByotTeamNames(event.teamNames, preview.byotSummary.teamNames)
+    byotTeamNames = merged.teamNames
+    draftGroupByTeamKey = merged.draftGroupByTeamKey
+    if (
+      JSON.stringify(event.teamNames) !== JSON.stringify(merged.teamNames)
+    ) {
+      await updateEvent(eventId, { teamNames: merged.teamNames })
+    }
   }
 
   const db = getDb()
@@ -673,17 +767,38 @@ export async function commitTeamlinktImport(input: {
   let ambiguous = 0
   let register = 0
   let alreadyRegistered = 0
+  let byotRegistered = 0
+  let freeAgentRegistered = 0
   const errors: string[] = []
 
-  async function registerPlayer(playerId: string) {
+  function byotAssignmentForRow(row: TeamlinktRow): {
+    draftGroup: number | null
+    teamLocked: boolean
+  } {
+    const name = row.teamName?.trim()
+    if (!name) return { draftGroup: null, teamLocked: false }
+    const draftGroup = draftGroupByTeamKey.get(name.toLowerCase()) ?? null
+    if (draftGroup == null) return { draftGroup: null, teamLocked: false }
+    return { draftGroup, teamLocked: true }
+  }
+
+  async function registerPlayer(playerId: string, row: TeamlinktRow) {
     if (!eventId) return
+    const { draftGroup, teamLocked } = byotAssignmentForRow(row)
     const result = await upsertEventRegistration({
       eventId,
       playerId,
       importBatchId: batch.id,
+      draftGroup,
+      teamLocked,
     })
-    if (result.created) register++
-    else alreadyRegistered++
+    if (result.created) {
+      register++
+      if (teamLocked) byotRegistered++
+      else freeAgentRegistered++
+    } else {
+      alreadyRegistered++
+    }
   }
 
   for (const item of preview.actions) {
@@ -699,7 +814,7 @@ export async function commitTeamlinktImport(input: {
         // (except records flagged excludeFromRegistration, e.g. merged players)
         const registerId = playerIdForRegistration(item)
         if (eventId && registerId) {
-          await registerPlayer(registerId)
+          await registerPlayer(registerId, item.row)
         }
         continue
       }
@@ -727,7 +842,7 @@ export async function commitTeamlinktImport(input: {
           }
         }
         created++
-        if (snap?.id) await registerPlayer(snap.id)
+        if (snap?.id) await registerPlayer(snap.id, item.row)
         continue
       }
 
@@ -785,7 +900,7 @@ export async function commitTeamlinktImport(input: {
       }
 
       updated++
-      await registerPlayer(item.playerId)
+      await registerPlayer(item.playerId, item.row)
     } catch (err) {
       errors.push(
         `Row ${item.row.rowNumber}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -800,7 +915,16 @@ export async function commitTeamlinktImport(input: {
     ambiguous,
     errors,
     profileFields,
-    ...(eventId ? { register, alreadyRegistered, eventId } : {}),
+    ...(eventId
+      ? {
+          register,
+          alreadyRegistered,
+          eventId,
+          byotRegistered,
+          freeAgentRegistered,
+          byotTeamNames,
+        }
+      : {}),
   }
   await db.update(importBatches).set({ summary }).where(eq(importBatches.id, batch.id))
 

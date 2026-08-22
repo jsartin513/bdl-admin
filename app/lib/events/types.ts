@@ -63,6 +63,11 @@ export type EventRegistrationHomeLeague = {
   logoUrl: string | null
 }
 
+export type EventRegistrationGroupMember = {
+  registrationId: string
+  nickname: string
+}
+
 export type EventRegistrationListItem = {
   id: string
   eventId: string
@@ -70,9 +75,14 @@ export type EventRegistrationListItem = {
   status: string
   draftGroup: number | null
   isCaptain: boolean
+  /** BYOT: signup team is locked; cannot move via draft board / bulk apply */
+  teamLocked: boolean
   pairId: string | null
+  /** For groups of exactly 2; prefer groupMembers for N-person groups */
   partnerRegistrationId: string | null
   partnerNickname: string | null
+  /** Other members of the same pairId group (excludes self) */
+  groupMembers: EventRegistrationGroupMember[]
   registeredAt: Date
   updatedAt: Date
   firstName: string
