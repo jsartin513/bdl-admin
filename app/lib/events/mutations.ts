@@ -7,6 +7,7 @@ import {
   events,
 } from '@/app/db/schema'
 import { normalizeTeamNames } from '@/app/lib/events/dodgeballhub-export'
+import { assertTeamNamesPatchWhenLocked } from '@/app/lib/events/team-names'
 import {
   isValidBallType,
   isValidEventGender,
@@ -206,15 +207,32 @@ export async function updateEvent(
     if (!Array.isArray(patch.teamNames)) {
       throw new Error('teamNames must be an array of strings')
     }
-    if (existing.teamsLocked) {
-      throw new Error('Teams are locked. Unlock to edit team names.')
-    }
     for (const name of patch.teamNames) {
       if (typeof name !== 'string') {
         throw new Error('teamNames must be an array of strings')
       }
     }
-    updates.teamNames = patch.teamNames.map((n) => n.trim())
+    const nextNames = patch.teamNames.map((n) => n.trim())
+    if (existing.teamsLocked) {
+      const lockedRows = await db
+        .select({ draftGroup: eventRegistrations.draftGroup })
+        .from(eventRegistrations)
+        .where(
+          and(
+            eq(eventRegistrations.eventId, id),
+            eq(eventRegistrations.teamLocked, true)
+          )
+        )
+      const byotGroups = lockedRows
+        .map((r) => r.draftGroup)
+        .filter((g): g is number => g != null)
+      assertTeamNamesPatchWhenLocked(
+        normalizeTeamNames(existing.teamNames),
+        nextNames,
+        byotGroups
+      )
+    }
+    updates.teamNames = nextNames
   }
 
   if (patch.finalizeTeams === true) {

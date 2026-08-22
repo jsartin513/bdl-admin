@@ -307,6 +307,39 @@ function EventTrackerPageContent() {
     [registrations]
   )
 
+  /** Draft groups (1-based) that have ≥1 locked BYOT signup player. */
+  const byotTeamIndexes = useMemo(() => {
+    const set = new Set<number>()
+    for (const r of registrations) {
+      if (r.teamLocked && r.draftGroup != null) set.add(r.draftGroup)
+    }
+    return set
+  }, [registrations])
+
+  const freeAgents = useMemo(() => {
+    return registrations
+      .filter((r) => r.draftGroup == null)
+      .slice()
+      .sort((a, b) => {
+        const an = `${a.firstName} ${a.lastName}`.trim() || a.nickname
+        const bn = `${b.firstName} ${b.lastName}`.trim() || b.nickname
+        return an.localeCompare(bn, undefined, { sensitivity: 'base' })
+      })
+  }, [registrations])
+
+  const freeAgentGender = useMemo(() => {
+    let wNbO = 0
+    let men = 0
+    let unset = 0
+    for (const r of freeAgents) {
+      const g = genderGroup(r.gender)
+      if (g === 'w_nb_o') wNbO++
+      else if (g === 'men') men++
+      else unset++
+    }
+    return { wNbO, men, unset }
+  }, [freeAgents])
+
   const showFreeAgentTeamLabel =
     hasByotLocked || event?.eventFormat === 'byot'
 
@@ -509,7 +542,7 @@ function EventTrackerPageContent() {
   }
 
   async function saveTeamNames() {
-    if (!event || event.teamsLocked) return
+    if (!event) return
     setTeamNamesSaving(true)
     setFormError(null)
     try {
@@ -1243,8 +1276,9 @@ function EventTrackerPageContent() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Teams</h2>
             <FieldHelp>
-              Add names anytime before lock. Extra names are ignored; missing names fall
-              back to Team 1, Team 2, …
+              {hasByotLocked
+                ? 'Imported BYOT names can only be changed when unlocked. Free-agent and draft/remix names stay editable. Missing names fall back to Team 1, Team 2, …'
+                : 'Rename teams anytime. Extra names are ignored; missing names fall back to Team 1, Team 2, …'}
             </FieldHelp>
             {event.teamsFinalizedAt ? (
               <p className="mt-1 text-sm text-gray-600">
@@ -1297,116 +1331,181 @@ function EventTrackerPageContent() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          {teamNamesDraft.map((name, index) => (
-            <div key={index} className="flex flex-wrap items-center gap-2">
-              <span className="w-16 shrink-0 text-xs text-gray-500">
-                Team {index + 1}
-              </span>
-              <input
-                type="text"
-                className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40"
-                value={name}
-                disabled={event.teamsLocked || teamNamesSaving}
-                placeholder={`Team ${index + 1}`}
-                onChange={(e) => {
-                  const value = e.target.value
-                  setTeamNamesDraft((prev) =>
-                    prev.map((n, i) => (i === index ? value : n))
-                  )
-                }}
-              />
+        <div className="grid gap-4 md:grid-cols-2 md:items-start">
+          <div className="space-y-2">
+            {teamNamesDraft.map((name, index) => {
+              const teamNum = index + 1
+              const isByotSlot = byotTeamIndexes.has(teamNum)
+              const byotFrozen = Boolean(event.teamsLocked && isByotSlot)
+              const slotBusy = teamNamesSaving || byotFrozen
+              // When locked, do not swap with a BYOT neighbor (would move import names).
+              const upBlocked =
+                index === 0 ||
+                slotBusy ||
+                (event.teamsLocked && byotTeamIndexes.has(index))
+              const downBlocked =
+                index >= teamNamesDraft.length - 1 ||
+                slotBusy ||
+                (event.teamsLocked && byotTeamIndexes.has(index + 2))
+              // Removing a slot before a BYOT team would shift locked name indices.
+              const removeBlocked =
+                slotBusy ||
+                (event.teamsLocked &&
+                  [...byotTeamIndexes].some((g) => g > teamNum))
+              return (
+                <div key={index} className="flex flex-wrap items-center gap-2">
+                  <span className="w-20 shrink-0 text-xs text-gray-500">
+                    Team {teamNum}
+                    {isByotSlot ? (
+                      <span className="ml-1 text-[10px] font-medium uppercase tracking-wide text-amber-800">
+                        BYOT
+                      </span>
+                    ) : null}
+                  </span>
+                  <input
+                    type="text"
+                    className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40"
+                    value={name}
+                    disabled={slotBusy}
+                    title={
+                      byotFrozen
+                        ? 'Unlock teams to edit imported BYOT names'
+                        : undefined
+                    }
+                    placeholder={`Team ${teamNum}`}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setTeamNamesDraft((prev) =>
+                        prev.map((n, i) => (i === index ? value : n))
+                      )
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`text-xs text-red-700 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                    disabled={removeBlocked}
+                    title={
+                      byotFrozen
+                        ? 'Unlock teams to remove imported BYOT names'
+                        : event.teamsLocked &&
+                            [...byotTeamIndexes].some((g) => g > teamNum)
+                          ? 'Cannot remove a slot that would shift locked BYOT names'
+                          : undefined
+                    }
+                    onClick={() =>
+                      setTeamNamesDraft((prev) =>
+                        prev.filter((_, i) => i !== index)
+                      )
+                    }
+                  >
+                    Remove
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                    disabled={upBlocked}
+                    onClick={() =>
+                      setTeamNamesDraft((prev) => {
+                        if (index === 0) return prev
+                        const next = [...prev]
+                        ;[next[index - 1], next[index]] = [
+                          next[index],
+                          next[index - 1],
+                        ]
+                        return next
+                      })
+                    }
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
+                    disabled={downBlocked}
+                    onClick={() =>
+                      setTeamNamesDraft((prev) => {
+                        if (index >= prev.length - 1) return prev
+                        const next = [...prev]
+                        ;[next[index], next[index + 1]] = [
+                          next[index + 1],
+                          next[index],
+                        ]
+                        return next
+                      })
+                    }
+                  >
+                    Down
+                  </button>
+                </div>
+              )
+            })}
+            <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
-                className={`text-xs text-red-700 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={event.teamsLocked || teamNamesSaving}
-                onClick={() =>
-                  setTeamNamesDraft((prev) => prev.filter((_, i) => i !== index))
-                }
+                className={`rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={teamNamesSaving}
+                onClick={() => setTeamNamesDraft((prev) => [...prev, ''])}
               >
-                Remove
+                {showFreeAgentTeamLabel ? 'Add free agent team' : 'Add team name'}
               </button>
               <button
                 type="button"
-                className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={event.teamsLocked || teamNamesSaving || index === 0}
-                onClick={() =>
-                  setTeamNamesDraft((prev) => {
-                    if (index === 0) return prev
-                    const next = [...prev]
-                    ;[next[index - 1], next[index]] = [next[index], next[index - 1]]
-                    return next
-                  })
-                }
+                className={`rounded bg-gray-900 px-3 py-1.5 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
+                disabled={teamNamesSaving}
+                onClick={() => void saveTeamNames()}
               >
-                Up
-              </button>
-              <button
-                type="button"
-                className={`text-xs text-gray-600 hover:underline disabled:opacity-40 ${FOCUS_RING}`}
-                disabled={
-                  event.teamsLocked ||
-                  teamNamesSaving ||
-                  index >= teamNamesDraft.length - 1
-                }
-                onClick={() =>
-                  setTeamNamesDraft((prev) => {
-                    if (index >= prev.length - 1) return prev
-                    const next = [...prev]
-                    ;[next[index], next[index + 1]] = [next[index + 1], next[index]]
-                    return next
-                  })
-                }
-              >
-                Down
+                {teamNamesSaving ? 'Saving…' : 'Save team names'}
               </button>
             </div>
-          ))}
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              className={`rounded border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 ${FOCUS_RING}`}
-              disabled={event.teamsLocked || teamNamesSaving}
-              onClick={() => setTeamNamesDraft((prev) => [...prev, ''])}
-            >
-              {showFreeAgentTeamLabel ? 'Add free agent team' : 'Add team name'}
-            </button>
-            <button
-              type="button"
-              className={`rounded bg-gray-900 px-3 py-1.5 text-sm text-white disabled:opacity-40 ${FOCUS_RING}`}
-              disabled={event.teamsLocked || teamNamesSaving}
-              onClick={() => void saveTeamNames()}
-            >
-              {teamNamesSaving ? 'Saving…' : 'Save team names'}
-            </button>
+            {showFreeAgentTeamLabel ? (
+              <FieldHelp>
+                Empty free-agent teams you can fill from Unassigned on the
+                assignment board.
+              </FieldHelp>
+            ) : null}
           </div>
-          {showFreeAgentTeamLabel ? (
-            <FieldHelp>
-              Empty free-agent teams you can fill from Unassigned on the assignment
-              board.
-            </FieldHelp>
-          ) : null}
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-3 space-y-2">
+            <h3 className="text-sm font-semibold text-gray-900">
+              Free agents ({freeAgents.length})
+            </h3>
+            <p className="text-xs text-gray-600">
+              W/NB/O {freeAgentGender.wNbO} · M {freeAgentGender.men}
+              {freeAgentGender.unset
+                ? ` · — ${freeAgentGender.unset}`
+                : ''}
+            </p>
+            {freeAgents.length === 0 ? (
+              <p className="text-xs text-gray-500">No free agents</p>
+            ) : (
+              <ul className="max-h-48 overflow-y-auto space-y-0.5 text-xs text-gray-800">
+                {freeAgents.map((r) => {
+                  const full =
+                    `${r.firstName} ${r.lastName}`.trim() ||
+                    r.rosterName ||
+                    r.nickname ||
+                    'Unknown'
+                  return (
+                    <li key={r.id} className="truncate">
+                      {full}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </section>
 
       {draftPhase !== 'board' && counts.unassigned > 0 ? (
         <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
           role="status"
         >
           <p className="font-medium">
             {counts.unassigned} registered{' '}
             {counts.unassigned === 1 ? 'player is' : 'players are'} not on a team
           </p>
-          {draftPhase === 'off' ? (
-            <button
-              type="button"
-              className={`rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 ${FOCUS_RING}`}
-              onClick={() => setDraftFilter('unassigned')}
-            >
-              Show unassigned
-            </button>
-          ) : null}
         </div>
       ) : null}
 
@@ -1663,6 +1762,33 @@ function EventTrackerPageContent() {
                 ))}
               </select>
             </label>
+            {counts.unassigned > 0 && draftFilter !== 'unassigned' ? (
+              <button
+                type="button"
+                className={`rounded border border-amber-400 bg-amber-50 px-2 py-1 text-sm text-amber-950 ${FOCUS_RING}`}
+                onClick={() => setDraftFilter('unassigned')}
+              >
+                Show unassigned ({counts.unassigned})
+              </button>
+            ) : null}
+            {draftFilter !== 'all' ? (
+              <span className="inline-flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                <span>
+                  Showing{' '}
+                  {draftFilter === 'unassigned'
+                    ? 'unassigned'
+                    : resolveTeamName(draftFilter, event.teamNames)}{' '}
+                  ({filtered.length})
+                </span>
+                <button
+                  type="button"
+                  className={`text-xs text-blue-700 hover:underline ${FOCUS_RING}`}
+                  onClick={() => setDraftFilter('all')}
+                >
+                  Clear filter
+                </button>
+              </span>
+            ) : null}
             <button
               type="button"
               className={`rounded border px-2 py-1 text-sm ${FOCUS_RING}`}
