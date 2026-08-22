@@ -517,11 +517,23 @@ def _apply_gap_columns(ws, row: int) -> None:
 
 
 def write_week_sheet(ws, rounds: list[dict]) -> None:
-    """Six Team League dual-court layout: Game NN, B/D + G/I teams, Refs: in B/G."""
+    """Dual-court layout matching Inaugural/BYOT: Court labels, then Game NN + Refs."""
     for letter, width in _WEEK_COL_WIDTHS.items():
         ws.column_dimensions[letter].width = width
 
-    row = 1
+    # Row 1: Court 1 / Court 2 labels (Inaugural Draft dual-court sheets)
+    court1 = ws.cell(1, 2)
+    court1.value = "Court 1"
+    court1.font = _FONT_GAME
+    court1.alignment = _ALIGN_GAME
+    court2 = ws.cell(1, 7)
+    court2.value = "Court 2"
+    court2.font = _FONT_GAME
+    court2.alignment = _ALIGN_GAME
+    _apply_gap_columns(ws, 1)
+    ws.row_dimensions[1].height = 15.75
+
+    row = 2
     for game_num, rnd in enumerate(rounds, start=1):
         h1, a1 = rnd["court1"]
         h2, a2 = rnd["court2"]
@@ -677,8 +689,8 @@ def setup_dual_court_standings(path: str | Path, teams: list[str]) -> None:
     path = Path(path)
     wb = openpyxl.load_workbook(path)
     week_sheets = [n for n in wb.sheetnames if n.startswith("Week ")]
-    # 20 games × 2 rows (no Court header) → rows 1–40; spacers 41–42; standings at 43+
-    min_start_row = 43
+    # Court header + 20 games × 2 rows → rows 1–41; spacers 42–43; standings at 44+
+    min_start_row = 44
     week_start_rows: dict[str, int] = {}
     for week_name in week_sheets:
         start = setup_week_sheet(wb[week_name], teams, week_name, min_start_row=min_start_row)
