@@ -79,7 +79,18 @@ function parseColumnId(id: string): number | null {
 }
 
 function displayName(player: EventRegistrationListItem): string {
-  return player.nickname || `${player.firstName} ${player.lastName}`
+  const full = `${player.firstName} ${player.lastName}`.trim()
+  return full || player.rosterName || player.nickname || 'Unknown'
+}
+
+function nicknameIfDistinct(player: EventRegistrationListItem): string | null {
+  const nick = player.nickname?.trim()
+  if (!nick) return null
+  const primary = displayName(player)
+  if (nick.localeCompare(primary, undefined, { sensitivity: 'base' }) === 0) {
+    return null
+  }
+  return nick
 }
 
 function captainBadgeForAssignment(
@@ -155,6 +166,7 @@ function DraftPlayerCard(props: {
     player.groupMembers.length > 0
       ? player.groupMembers.map((m) => m.nickname).filter(Boolean).join(', ')
       : player.partnerNickname
+  const secondaryNickname = nicknameIfDistinct(player)
   return (
     <div
       className={`rounded border px-2 py-1.5 text-xs shadow-sm ${playerCardClass(player.gender)} ${
@@ -162,7 +174,7 @@ function DraftPlayerCard(props: {
       } ${player.teamLocked ? 'ring-1 ring-amber-300' : ''}`}
     >
       <div className="font-medium text-gray-900">
-        {player.nickname || `${player.firstName} ${player.lastName}`}
+        {displayName(player)}
         {player.teamLocked ? (
           <Tooltip
             label="BYOT locked"
@@ -224,6 +236,9 @@ function DraftPlayerCard(props: {
           </Tooltip>
         ) : null}
       </div>
+      {secondaryNickname ? (
+        <div className="text-[10px] text-gray-500">{secondaryNickname}</div>
+      ) : null}
       <div className="text-gray-600">
         {score != null ? label : '—'} · {player.genderGroupLabel}
         {score != null ? ` · ${score}` : ''}
@@ -417,7 +432,7 @@ function TeamColumn(props: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[220px] w-56 shrink-0 flex-col rounded-lg border ${
+      className={`flex min-h-[220px] w-44 shrink-0 flex-col rounded-lg border ${
         isOver
           ? 'border-blue-400 bg-blue-50/40'
           : emphasizeUnassigned
@@ -446,7 +461,9 @@ function TeamColumn(props: {
                   : 'text-gray-500'
               }`}
             >
-              {count}
+              {props.team != null
+                ? `${count} ${count === 1 ? 'player' : 'players'}`
+                : count}
             </span>
             {props.onCopy && props.team != null ? (
               <>
