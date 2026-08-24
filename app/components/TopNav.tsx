@@ -7,6 +7,7 @@ import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
 import BoardAppsMenu from '@/app/components/BoardAppsMenu'
+import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { Tooltip } from '@/app/components/ui'
 import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
 
@@ -360,6 +361,7 @@ export default function TopNav() {
         )}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <ThemeToggle />
         <NotificationsBell enabled={Boolean(email)} devMode={devMode} />
         <BoardAppsMenu currentApp="admin" />
         {email ? (
