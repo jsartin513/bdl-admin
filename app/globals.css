@@ -1,9 +1,17 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
   color-scheme: light;
+}
+
+.dark {
+  --background: #111827;
+  --foreground: #f9fafb;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -13,6 +21,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html,
 body {
   background: var(--background);
   color: var(--foreground);
@@ -42,8 +51,7 @@ body {
   color-scheme: light dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  .team-maker {
+.dark .team-maker {
     --tm-bg: #111827;
     --tm-fg: #f9fafb;
     --tm-muted: #9ca3af;
@@ -60,6 +68,5 @@ body {
     --tm-card-wnbo-bg: #881337;
     --tm-card-wnbo-border: #fb7185;
     --tm-link: #93c5fd;
-  }
 }
 
