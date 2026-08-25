@@ -17,6 +17,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "smoke:preview": "node scripts/smoke-preview.mjs",
+    "test:e2e:preview": "playwright test --config=playwright.preview.config.ts",
     "worker:video-merge": "node workers/video-merge/index.mjs"
   },
   "engines": {
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
