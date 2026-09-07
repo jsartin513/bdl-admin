@@ -877,13 +877,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (numTeams !== 4 && numTeams !== 5 && numTeams !== 6 && numTeams !== 7) {
-      return NextResponse.json(
-        { error: 'Only 4-, 5-, 6-, and 7-team leagues are supported.' },
-        { status: 400 },
-      )
-    }
-
     if (body.teams.length !== numTeams) {
       return NextResponse.json(
         { error: `Number of teams must match: expected ${numTeams}, got ${body.teams.length}` },
