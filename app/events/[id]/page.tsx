@@ -942,6 +942,7 @@ function EventTrackerPageContent() {
       )
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to rename snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }
@@ -960,6 +961,7 @@ function EventTrackerPageContent() {
       setSnapshots((prev) => prev.filter((s) => s.id !== snapshotId))
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to delete snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }
@@ -981,6 +983,7 @@ function EventTrackerPageContent() {
       setMessage('Snapshot promoted to live roster')
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to promote snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }

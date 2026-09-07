@@ -296,9 +296,9 @@ export function DraftSnapshotsPanel(props: Props) {
                 if (!renameTarget) return
                 const next = renameValue.trim()
                 if (!next) return
-                void onRenameSnapshot(renameTarget.id, next).then(() =>
-                  setRenameTarget(null)
-                )
+                void onRenameSnapshot(renameTarget.id, next)
+                  .then(() => setRenameTarget(null))
+                  .catch(() => undefined)
               }}
             >
               Save
@@ -316,9 +316,9 @@ export function DraftSnapshotsPanel(props: Props) {
         busy={snapshotsBusy}
         onConfirm={() => {
           if (!confirmAction || confirmAction.type !== 'delete') return
-          void onDeleteSnapshot(confirmAction.id).then(() =>
-            setConfirmAction(null)
-          )
+          void onDeleteSnapshot(confirmAction.id)
+            .then(() => setConfirmAction(null))
+            .catch(() => undefined)
         }}
       >
         Delete snapshot “{confirmAction?.name}”? This cannot be undone.
@@ -332,9 +332,9 @@ export function DraftSnapshotsPanel(props: Props) {
         busy={snapshotsBusy}
         onConfirm={() => {
           if (!confirmAction || confirmAction.type !== 'promote') return
-          void onPromoteSnapshot(confirmAction.id).then(() =>
-            setConfirmAction(null)
-          )
+          void onPromoteSnapshot(confirmAction.id)
+            .then(() => setConfirmAction(null))
+            .catch(() => undefined)
         }}
       >
         Promote “{confirmAction?.name}” to the live event roster?
