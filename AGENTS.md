@@ -6,6 +6,25 @@ Neon Postgres via Drizzle ORM.
 
 ## Cursor Cloud specific instructions
 
+This repo uses a **preview-first** deploy flow. Production merges go `preview` → `main` only after preview is verified.
+
+### Pull requests (required)
+
+- **Default base branch for new PRs: `preview`** (not `main`).
+- When creating or updating pull requests (`ManagePullRequest`, `gh pr create`, etc.), always pass **`base_branch: "preview"`** unless you are explicitly opening a production promotion PR (`preview` → `main`).
+- Feature and fix branches should merge into `preview` first. CI **Main merge gate** fails if a PR into `main` has any head branch other than `preview`.
+
+### Branches
+
+- Integration / preview deploy: `preview` → `admin-preview.bostondodgeballleague.com`
+- Production: `main` → `admin.bostondodgeballleague.com`
+- Cloud agent feature branches: `cursor/<descriptive-name>-4208` (or your topic branch), opened against **`preview`**.
+
+### More detail
+
+- [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md)
+- [.github/pull_request_template.md](.github/pull_request_template.md)
+
 The startup update script already runs `npm install`. Node 20+ is required
 (`package.json` `engines`); the VM's Node 22 works fine.
 
@@ -52,8 +71,4 @@ Without these, the pages still render but their data fetches fail. The fully
 self-contained feature that works with zero secrets is the **`/tournament`
 schedule + audio-cue generator** (reads the bundled `throwdown_5_schedule.csv`).
 
-### Branch / PR workflow
-
-Open feature PRs against **`preview`** (not `main`); a CI "Main merge gate"
-rejects PRs into `main` unless the head branch is `preview`. See
-[`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
+See also [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
