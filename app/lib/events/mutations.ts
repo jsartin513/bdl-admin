@@ -6,17 +6,41 @@ import {
   eventRegistrations,
   events,
 } from '@/app/db/schema'
+import { normalizeTeamNames } from '@/app/lib/events/dodgeballhub-export'
+import { assertTeamNamesPatchWhenLocked } from '@/app/lib/events/team-names'
 import {
   isValidBallType,
   isValidEventGender,
   isValidEventType,
   parseDraftGroup,
+  parseEventFormat,
   type BallType,
   type EventDraftSnapshotListItem,
+  type EventFormat,
   type EventGender,
   type EventRecord,
   type EventType,
 } from '@/app/lib/events/types'
+
+export async function assertTeamsUnlocked(eventId: string): Promise<void> {
+  const db = getDb()
+  const [event] = await db
+    .select({ teamsLocked: events.teamsLocked })
+    .from(events)
+    .where(eq(events.id, eventId))
+    .limit(1)
+  if (!event) throw new Error('Event not found')
+  if (event.teamsLocked) {
+    throw new Error('Teams are locked. Unlock to make changes.')
+  }
+}
+
+function mapEventRecord(row: typeof events.$inferSelect): EventRecord {
+  return {
+    ...row,
+    teamNames: normalizeTeamNames(row.teamNames),
+  }
+}
 
 export function parseEventDate(value: string): string {
   const trimmed = value.trim()
@@ -38,6 +62,7 @@ export async function createEvent(input: {
   name: string
   eventDate: string
   eventType?: string | null
+  eventFormat?: string | null
   ballType?: string | null
   gender?: string | null
   notes?: string | null
@@ -52,6 +77,12 @@ export async function createEvent(input: {
   if (input.eventType != null && input.eventType !== '') {
     if (!isValidEventType(input.eventType)) throw new Error('Invalid eventType')
     eventType = input.eventType
+  }
+
+  let eventFormat: EventFormat | null = null
+  if (input.eventFormat !== undefined) {
+    const parsed = parseEventFormat(input.eventFormat)
+    eventFormat = parsed === undefined ? null : parsed
   }
 
   let ballType: BallType = 'foam'
@@ -71,10 +102,19 @@ export async function createEvent(input: {
 
   const [created] = await db
     .insert(events)
-    .values({ name, eventDate, eventType, ballType, gender, notes, pairingEnabled })
+    .values({
+      name,
+      eventDate,
+      eventType,
+      eventFormat,
+      ballType,
+      gender,
+      notes,
+      pairingEnabled,
+    })
     .returning()
 
-  return created
+  return mapEventRecord(created)
 }
 
 export async function updateEvent(
@@ -83,21 +123,38 @@ export async function updateEvent(
     name?: string
     eventDate?: string
     eventType?: string | null
+    eventFormat?: string | null
     ballType?: string | null
     gender?: string | null
     notes?: string | null
     pairingEnabled?: boolean
+    teamNames?: string[]
+    /** Lock or unlock assignments. Unlock does not clear teamsFinalizedAt. */
+    teamsLocked?: boolean
+    /** Finalize: set teamsFinalizedAt (if null) and lock teams. */
+    finalizeTeams?: boolean
   }
 ): Promise<EventRecord> {
   const db = getDb()
+  const [existing] = await db
+    .select()
+    .from(events)
+    .where(eq(events.id, id))
+    .limit(1)
+  if (!existing) throw new Error('Event not found')
+
   const updates: {
     name?: string
     eventDate?: string
     eventType?: string
+    eventFormat?: string | null
     ballType?: string
     gender?: string
     notes?: string | null
     pairingEnabled?: boolean
+    teamNames?: string[]
+    teamsLocked?: boolean
+    teamsFinalizedAt?: Date
     updatedAt: Date
   } = { updatedAt: new Date() }
 
@@ -117,6 +174,9 @@ export async function updateEvent(
     } else {
       updates.eventType = patch.eventType
     }
+  }
+  if (patch.eventFormat !== undefined) {
+    updates.eventFormat = parseEventFormat(patch.eventFormat) ?? null
   }
   if (patch.ballType !== undefined) {
     if (patch.ballType == null || patch.ballType === '') {
@@ -143,6 +203,53 @@ export async function updateEvent(
     updates.pairingEnabled = Boolean(patch.pairingEnabled)
   }
 
+  if (patch.teamNames !== undefined) {
+    if (!Array.isArray(patch.teamNames)) {
+      throw new Error('teamNames must be an array of strings')
+    }
+    for (const name of patch.teamNames) {
+      if (typeof name !== 'string') {
+        throw new Error('teamNames must be an array of strings')
+      }
+    }
+    const nextNames = patch.teamNames.map((n) => n.trim())
+    if (existing.teamsLocked) {
+      const lockedRows = await db
+        .select({ draftGroup: eventRegistrations.draftGroup })
+        .from(eventRegistrations)
+        .where(
+          and(
+            eq(eventRegistrations.eventId, id),
+            eq(eventRegistrations.teamLocked, true)
+          )
+        )
+      const byotGroups = lockedRows
+        .map((r) => r.draftGroup)
+        .filter((g): g is number => g != null)
+      assertTeamNamesPatchWhenLocked(
+        normalizeTeamNames(existing.teamNames),
+        nextNames,
+        byotGroups
+      )
+    }
+    updates.teamNames = nextNames
+  }
+
+  if (patch.finalizeTeams === true) {
+    updates.teamsLocked = true
+    if (existing.teamsFinalizedAt == null) {
+      updates.teamsFinalizedAt = new Date()
+    }
+  } else if (patch.teamsLocked !== undefined) {
+    if (typeof patch.teamsLocked !== 'boolean') {
+      throw new Error('teamsLocked must be a boolean')
+    }
+    if (patch.teamsLocked && existing.teamsFinalizedAt == null) {
+      throw new Error('Finalize teams before locking')
+    }
+    updates.teamsLocked = patch.teamsLocked
+  }
+
   const [updated] = await db
     .update(events)
     .set(updates)
@@ -150,7 +257,7 @@ export async function updateEvent(
     .returning()
 
   if (!updated) throw new Error('Event not found')
-  return updated
+  return mapEventRecord(updated)
 }
 
 export async function deleteEvent(id: string): Promise<void> {
@@ -161,12 +268,15 @@ export async function deleteEvent(id: string): Promise<void> {
 
 /**
  * Create registration if missing; if present only refresh importBatchId / updatedAt.
- * Never clears draftGroup.
+ * Never clears or overwrites draftGroup / teamLocked on re-import.
+ * Optional draftGroup + teamLocked apply on create only (BYOT import).
  */
 export async function upsertEventRegistration(input: {
   eventId: string
   playerId: string
   importBatchId?: string | null
+  draftGroup?: number | null
+  teamLocked?: boolean
 }): Promise<{ created: boolean; id: string }> {
   const db = getDb()
   const [existing] = await db
@@ -183,7 +293,7 @@ export async function upsertEventRegistration(input: {
     .limit(1)
 
   if (existing) {
-    // Do not touch draftGroup on re-import
+    // Do not touch draftGroup / teamLocked on re-import
     await db
       .update(eventRegistrations)
       .set({
@@ -194,13 +304,23 @@ export async function upsertEventRegistration(input: {
     return { created: false, id: existing.id }
   }
 
+  const draftGroup =
+    input.draftGroup !== undefined
+      ? parseDraftGroup(input.draftGroup)
+      : null
+  if (draftGroup === undefined) {
+    throw new Error('draftGroup must be a positive integer or null')
+  }
+  const teamLocked = Boolean(input.teamLocked) && draftGroup != null
+
   const [created] = await db
     .insert(eventRegistrations)
     .values({
       eventId: input.eventId,
       playerId: input.playerId,
       status: 'registered',
-      draftGroup: null,
+      draftGroup,
+      teamLocked,
       importBatchId: input.importBatchId ?? null,
     })
     .returning({ id: eventRegistrations.id })
@@ -208,22 +328,131 @@ export async function upsertEventRegistration(input: {
   return { created: true, id: created.id }
 }
 
+/**
+ * Admin override: set draftGroup and/or teamLocked without the hard-lock guard.
+ * Still respects event-level teamsLocked.
+ */
+export async function setRegistrationSignupTeam(
+  eventId: string,
+  registrationId: string,
+  input: { draftGroup?: unknown; teamLocked?: boolean }
+): Promise<{
+  id: string
+  draftGroup: number | null
+  teamLocked: boolean
+  isCaptain: boolean
+}> {
+  await assertTeamsUnlocked(eventId)
+
+  if (input.draftGroup === undefined && input.teamLocked === undefined) {
+    throw new Error('draftGroup or teamLocked is required')
+  }
+
+  const db = getDb()
+  const [existing] = await db
+    .select({
+      id: eventRegistrations.id,
+      draftGroup: eventRegistrations.draftGroup,
+      teamLocked: eventRegistrations.teamLocked,
+      isCaptain: eventRegistrations.isCaptain,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .limit(1)
+
+  if (!existing) throw new Error('Registration not found')
+
+  let draftGroup = existing.draftGroup
+  if (input.draftGroup !== undefined) {
+    const parsed = parseDraftGroup(input.draftGroup)
+    if (parsed === undefined) throw new Error('draftGroup is required')
+    draftGroup = parsed
+  }
+
+  let teamLocked = existing.teamLocked
+  if (input.teamLocked !== undefined) {
+    teamLocked = Boolean(input.teamLocked)
+  }
+  // Cannot lock an unassigned player
+  if (draftGroup == null) teamLocked = false
+
+  const [updated] = await db
+    .update(eventRegistrations)
+    .set({
+      draftGroup,
+      teamLocked,
+      ...(draftGroup == null ? { isCaptain: false } : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .returning({
+      id: eventRegistrations.id,
+      draftGroup: eventRegistrations.draftGroup,
+      teamLocked: eventRegistrations.teamLocked,
+      isCaptain: eventRegistrations.isCaptain,
+    })
+
+  if (!updated) throw new Error('Registration not found')
+  return updated
+}
+
 export async function updateRegistrationDraftGroup(
   eventId: string,
   registrationId: string,
   draftGroupInput: unknown
-): Promise<{ id: string; draftGroup: number | null; isCaptain: boolean }> {
+): Promise<{
+  id: string
+  draftGroup: number | null
+  isCaptain: boolean
+  teamLocked: boolean
+}> {
+  await assertTeamsUnlocked(eventId)
+
   const draftGroup = parseDraftGroup(draftGroupInput)
   if (draftGroup === undefined) {
     throw new Error('draftGroup is required')
   }
 
   const db = getDb()
+  const [existing] = await db
+    .select({
+      id: eventRegistrations.id,
+      draftGroup: eventRegistrations.draftGroup,
+      teamLocked: eventRegistrations.teamLocked,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
+      )
+    )
+    .limit(1)
+
+  if (!existing) throw new Error('Registration not found')
+  if (
+    existing.teamLocked &&
+    existing.draftGroup !== draftGroup
+  ) {
+    throw new Error(
+      'Player is locked to their signup team. Use override to change.'
+    )
+  }
+
   const [updated] = await db
     .update(eventRegistrations)
     .set({
       draftGroup,
-      // Captains only apply to players on a team
       ...(draftGroup == null ? { isCaptain: false } : {}),
       updatedAt: new Date(),
     })
@@ -237,6 +466,7 @@ export async function updateRegistrationDraftGroup(
       id: eventRegistrations.id,
       draftGroup: eventRegistrations.draftGroup,
       isCaptain: eventRegistrations.isCaptain,
+      teamLocked: eventRegistrations.teamLocked,
     })
 
   if (!updated) throw new Error('Registration not found')
@@ -300,19 +530,119 @@ async function assertPairingEnabled(eventId: string): Promise<void> {
   }
 }
 
-export async function pairRegistrations(
+type GroupMemberRow = {
+  id: string
+  pairId: string | null
+  teamLocked: boolean
+  draftGroup: number | null
+}
+
+async function loadGroupCandidates(
   eventId: string,
-  registrationIdA: string,
-  registrationIdB: string
-): Promise<{ pairId: string; registrationIds: [string, string] }> {
-  if (registrationIdA === registrationIdB) {
-    throw new Error('Cannot pair a registration with itself')
+  registrationIds: string[]
+): Promise<GroupMemberRow[]> {
+  const db = getDb()
+  return db
+    .select({
+      id: eventRegistrations.id,
+      pairId: eventRegistrations.pairId,
+      teamLocked: eventRegistrations.teamLocked,
+      draftGroup: eventRegistrations.draftGroup,
+    })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, registrationIds)
+      )
+    )
+}
+
+/**
+ * Create a free-agent group of 2+ unlocked registrations, or add one unlocked
+ * registration into another's existing group.
+ */
+export async function groupRegistrations(
+  eventId: string,
+  registrationIds: string[]
+): Promise<{ pairId: string; registrationIds: string[] }> {
+  const uniqueIds = [...new Set(registrationIds.filter(Boolean))]
+  if (uniqueIds.length < 2) {
+    throw new Error('At least two registrations are required to form a group')
   }
 
   await assertPairingEnabled(eventId)
 
+  const rows = await loadGroupCandidates(eventId, uniqueIds)
+  if (rows.length !== uniqueIds.length) {
+    throw new Error('Registration not found')
+  }
+  for (const row of rows) {
+    if (row.teamLocked) {
+      throw new Error('Locked signup-team players cannot join free-agent groups')
+    }
+    if (row.draftGroup != null) {
+      throw new Error('Only unassigned free agents can be grouped')
+    }
+  }
+
+  const existingPairIds = [
+    ...new Set(rows.map((r) => r.pairId).filter((id): id is string => id != null)),
+  ]
+  if (existingPairIds.length > 1) {
+    throw new Error('Cannot merge two existing groups; leave a group first')
+  }
+
+  const pairId = existingPairIds[0] ?? randomUUID()
+  const now = new Date()
   const db = getDb()
-  const rows = await db
+  await db
+    .update(eventRegistrations)
+    .set({ pairId, updatedAt: now })
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        inArray(eventRegistrations.id, uniqueIds)
+      )
+    )
+
+  const members = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        eq(eventRegistrations.pairId, pairId)
+      )
+    )
+
+  return {
+    pairId,
+    registrationIds: members.map((m) => m.id),
+  }
+}
+
+/** @deprecated Prefer groupRegistrations — kept for existing pair-with UI */
+export async function pairRegistrations(
+  eventId: string,
+  registrationIdA: string,
+  registrationIdB: string
+): Promise<{ pairId: string; registrationIds: string[] }> {
+  if (registrationIdA === registrationIdB) {
+    throw new Error('Cannot pair a registration with itself')
+  }
+  return groupRegistrations(eventId, [registrationIdA, registrationIdB])
+}
+
+/** Remove one registration from their group; dissolve leftover singleton. */
+export async function leaveGroup(
+  eventId: string,
+  registrationId: string
+): Promise<{ clearedPairId: string | null; registrationIds: string[] }> {
+  await assertPairingEnabled(eventId)
+
+  const db = getDb()
+  const [row] = await db
     .select({
       id: eventRegistrations.id,
       pairId: eventRegistrations.pairId,
@@ -320,34 +650,60 @@ export async function pairRegistrations(
     .from(eventRegistrations)
     .where(
       and(
-        eq(eventRegistrations.eventId, eventId),
-        inArray(eventRegistrations.id, [registrationIdA, registrationIdB])
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
       )
     )
+    .limit(1)
 
-  if (rows.length !== 2) throw new Error('Registration not found')
-  for (const row of rows) {
-    if (row.pairId != null) {
-      throw new Error('Registration is already paired')
-    }
+  if (!row) throw new Error('Registration not found')
+  if (row.pairId == null) {
+    return { clearedPairId: null, registrationIds: [row.id] }
   }
 
-  const pairId = randomUUID()
+  const pairId = row.pairId
   const now = new Date()
   await db
     .update(eventRegistrations)
-    .set({ pairId, updatedAt: now })
+    .set({ pairId: null, updatedAt: now })
     .where(
       and(
-        eq(eventRegistrations.eventId, eventId),
-        inArray(eventRegistrations.id, [registrationIdA, registrationIdB])
+        eq(eventRegistrations.id, registrationId),
+        eq(eventRegistrations.eventId, eventId)
       )
     )
 
-  return { pairId, registrationIds: [registrationIdA, registrationIdB] }
+  const remaining = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        eq(eventRegistrations.pairId, pairId)
+      )
+    )
+
+  if (remaining.length === 1) {
+    await db
+      .update(eventRegistrations)
+      .set({ pairId: null, updatedAt: now })
+      .where(
+        and(
+          eq(eventRegistrations.id, remaining[0].id),
+          eq(eventRegistrations.eventId, eventId)
+        )
+      )
+    return {
+      clearedPairId: pairId,
+      registrationIds: [registrationId, remaining[0].id],
+    }
+  }
+
+  return { clearedPairId: pairId, registrationIds: [registrationId] }
 }
 
-export async function unpairRegistration(
+/** Dissolve entire group (all members). */
+export async function dissolveGroup(
   eventId: string,
   registrationId: string
 ): Promise<{ clearedPairId: string | null; registrationIds: string[] }> {
@@ -395,6 +751,14 @@ export async function unpairRegistration(
     )
 
   return { clearedPairId: row.pairId, registrationIds: ids }
+}
+
+/** @deprecated Prefer dissolveGroup — clears entire group */
+export async function unpairRegistration(
+  eventId: string,
+  registrationId: string
+): Promise<{ clearedPairId: string | null; registrationIds: string[] }> {
+  return dissolveGroup(eventId, registrationId)
 }
 
 function parseSnapshotAssignments(
@@ -548,9 +912,21 @@ export async function promoteEventDraftSnapshot(
   const snapshot = await getEventDraftSnapshot(eventId, snapshotId)
   if (!snapshot) throw new Error('Snapshot not found')
 
-  const assignments = Object.entries(snapshot.assignments).map(
-    ([registrationId, draftGroup]) => ({ registrationId, draftGroup })
-  )
+  const db = getDb()
+  const lockedRows = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(
+      and(
+        eq(eventRegistrations.eventId, eventId),
+        eq(eventRegistrations.teamLocked, true)
+      )
+    )
+  const lockedIds = new Set(lockedRows.map((r) => r.id))
+
+  const assignments = Object.entries(snapshot.assignments)
+    .filter(([registrationId]) => !lockedIds.has(registrationId))
+    .map(([registrationId, draftGroup]) => ({ registrationId, draftGroup }))
   return bulkUpdateRegistrationDraftGroups(eventId, assignments)
 }
 
@@ -576,6 +952,8 @@ export async function bulkUpdateRegistrationDraftGroups(
   eventId: string,
   assignments: Array<{ registrationId: string; draftGroup: number | null }>
 ): Promise<Array<{ id: string; draftGroup: number | null }>> {
+  await assertTeamsUnlocked(eventId)
+
   if (assignments.length === 0) return []
 
   const parsed = assignments.map((a) => {
@@ -592,7 +970,11 @@ export async function bulkUpdateRegistrationDraftGroups(
   const db = getDb()
   const ids = parsed.map((p) => p.registrationId)
   const existing = await db
-    .select({ id: eventRegistrations.id })
+    .select({
+      id: eventRegistrations.id,
+      draftGroup: eventRegistrations.draftGroup,
+      teamLocked: eventRegistrations.teamLocked,
+    })
     .from(eventRegistrations)
     .where(
       and(
@@ -600,11 +982,22 @@ export async function bulkUpdateRegistrationDraftGroups(
         inArray(eventRegistrations.id, ids)
       )
     )
-  const existingIds = new Set(existing.map((row) => row.id))
+  const existingById = new Map(existing.map((row) => [row.id, row]))
   for (const registrationId of ids) {
-    if (!existingIds.has(registrationId)) {
+    if (!existingById.has(registrationId)) {
       throw new Error(`Registration not found: ${registrationId}`)
     }
+  }
+
+  const lockedConflicts = parsed.filter((a) => {
+    const row = existingById.get(a.registrationId)!
+    return row.teamLocked && row.draftGroup !== a.draftGroup
+  })
+  if (lockedConflicts.length > 0) {
+    const idsList = lockedConflicts.map((c) => c.registrationId).join(', ')
+    throw new Error(
+      `Cannot change draft group for locked signup-team players: ${idsList}`
+    )
   }
 
   // Neon HTTP has no multi-statement transactions; preflight above avoids

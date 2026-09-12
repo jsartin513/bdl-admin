@@ -10,6 +10,11 @@ import {
   useState,
 } from 'react'
 import { EventDraftBoard } from '@/app/components/events/EventDraftBoard'
+import {
+  EventDraftSetup,
+  type DraftSeedMode,
+} from '@/app/components/events/EventDraftSetup'
+import { EventTeamsSection } from '@/app/components/events/EventTeamsSection'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import {
@@ -17,13 +22,19 @@ import {
   copyExistingDraftGroups,
   defaultTeamCount,
   emptySeedDraftGroups,
-  playersPerTeamLabel,
 } from '@/app/lib/events/draft-seed'
+import { resolveTeamName } from '@/app/lib/events/dodgeballhub-export'
 import type {
   EventDraftSnapshotListItem,
   EventRegistrationListItem,
 } from '@/app/lib/events/types'
+import { EVENT_FORMATS, EVENT_TYPES } from '@/app/lib/events/types'
 import { genderGroup } from '@/app/lib/players/gender'
+import {
+  HOME_LEAGUES,
+  HOME_LEAGUE_CODES,
+  type HomeLeague,
+} from '@/app/lib/players/home-league'
 import {
   effectiveSkillLabel,
   effectiveSkillScore,
@@ -31,15 +42,24 @@ import {
   skillMatrixColLabel,
   skillMatrixColumns,
 } from '@/app/lib/players/skill'
+import type { PlayerListItem } from '@/app/lib/players/types'
 import { SkillStyledText } from '@/app/components/SkillStyledText'
 import {
   SkillViewModeToggle,
   useSkillViewMode,
 } from '@/app/hooks/useSkillViewMode'
-import { Dialog, FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import {
+  Button,
+  ConfirmDialog,
+  Dialog,
+  FieldHelp,
+  FOCUS_RING,
+  LiveMessage,
+  Tooltip,
+} from '@/app/components/ui'
+import { ContactPlayersDialog } from '@/app/components/contact/ContactPlayersDialog'
 
-const FOCUS_RING =
-  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
+const DEFAULT_REACH_OUT_LEAGUE: HomeLeague = 'boston_dodgeball_league'
 
 type EventDetail = {
   id: string
@@ -47,12 +67,17 @@ type EventDetail = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  eventFormat: string | null
+  eventFormatLabel: string | null
   ballType: string
   ballTypeLabel: string
   gender: string
   genderLabel: string
   notes: string | null
   pairingEnabled: boolean
+  teamNames: string[]
+  teamsLocked: boolean
+  teamsFinalizedAt: string | null
 }
 
 type ImportAction = {
@@ -71,8 +96,6 @@ type ImportAction = {
 }
 
 type DraftPhase = 'off' | 'setup' | 'board'
-
-type SeedMode = 'auto' | 'empty' | 'existing'
 
 const GENDER_ROWS = ['w_nb_o', 'men', 'unset'] as const
 
@@ -116,7 +139,9 @@ export default function EventTrackerPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-6xl p-6 text-sm text-gray-600">Loading…</div>
+        <div className="team-maker mx-auto max-w-6xl p-6 text-sm text-[var(--tm-muted,#4b5563)]">
+          Loading…
+        </div>
       }
     >
       <EventTrackerPageContent />
@@ -154,10 +179,18 @@ function EventTrackerPageContent() {
   } | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [contactOpen, setContactOpen] = useState(false)
 
   const [draftPhase, setDraftPhase] = useState<DraftPhase>('off')
   const [draftTeamCount, setDraftTeamCount] = useState(1)
-  const [draftSeedMode, setDraftSeedMode] = useState<SeedMode>('auto')
+  const [draftSeedMode, setDraftSeedMode] = useState<DraftSeedMode>('auto')
+  const [confirmDeleteEvent, setConfirmDeleteEvent] = useState(false)
+  const [confirmFinalize, setConfirmFinalize] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState<{
+    id: string
+    label: string
+  } | null>(null)
+  const [confirmImportCommit, setConfirmImportCommit] = useState(false)
   const [draftAssignments, setDraftAssignments] = useState<Map<string, number | null>>(
     () => new Map()
   )
@@ -165,6 +198,20 @@ function EventTrackerPageContent() {
   const [draftError, setDraftError] = useState<string | null>(null)
   const [snapshots, setSnapshots] = useState<EventDraftSnapshotListItem[]>([])
   const [snapshotsBusy, setSnapshotsBusy] = useState(false)
+  const [teamNamesDraft, setTeamNamesDraft] = useState<string[]>([])
+  const [teamNamesSaving, setTeamNamesSaving] = useState(false)
+  const [teamsActionBusy, setTeamsActionBusy] = useState(false)
+
+  const [reachOutLeagues, setReachOutLeagues] = useState<HomeLeague[]>([
+    DEFAULT_REACH_OUT_LEAGUE,
+  ])
+  const [reachOutIncludeOthers, setReachOutIncludeOthers] = useState(false)
+  const [reachOutPlayers, setReachOutPlayers] = useState<PlayerListItem[]>([])
+  const [reachOutLoading, setReachOutLoading] = useState(false)
+  const [reachOutError, setReachOutError] = useState<string | null>(null)
+  const [reachOutCopyMessage, setReachOutCopyMessage] = useState<string | null>(
+    null
+  )
 
   const load = useCallback(async () => {
     if (!eventId) return
@@ -182,6 +229,11 @@ function EventTrackerPageContent() {
       if (!eventRes.ok) throw new Error(eventData.error || 'Failed to load event')
       if (!regRes.ok) throw new Error(regData.error || 'Failed to load roster')
       setEvent(eventData.event)
+      setTeamNamesDraft(
+        Array.isArray(eventData.event.teamNames)
+          ? eventData.event.teamNames.map((n: unknown) => String(n ?? ''))
+          : []
+      )
       setRegistrations(regData.registrations)
       if (snapRes.ok) {
         setSnapshots(snapData.snapshots ?? [])
@@ -203,10 +255,107 @@ function EventTrackerPageContent() {
     void load()
   }, [load])
 
+  const loadReachOut = useCallback(async () => {
+    if (!eventId || reachOutLeagues.length === 0) {
+      setReachOutPlayers([])
+      return
+    }
+    setReachOutLoading(true)
+    setReachOutError(null)
+    try {
+      const params = new URLSearchParams({
+        eventId,
+        eventMatch: 'not_registered',
+        homeLeagues: reachOutLeagues.join(','),
+      })
+      const res = await fetch(`/api/players?${params}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load prospects')
+      setReachOutPlayers(data.players as PlayerListItem[])
+    } catch (err) {
+      setReachOutError(
+        err instanceof Error ? err.message : 'Failed to load prospects'
+      )
+    } finally {
+      setReachOutLoading(false)
+    }
+  }, [eventId, reachOutLeagues])
+
+  useEffect(() => {
+    void loadReachOut()
+  }, [loadReachOut, registrations.length])
+
+  function toggleReachOutLeague(code: HomeLeague) {
+    setReachOutLeagues((prev) => {
+      if (prev.includes(code)) {
+        const next = prev.filter((c) => c !== code)
+        return next.length > 0 ? next : [DEFAULT_REACH_OUT_LEAGUE]
+      }
+      return [...prev, code]
+    })
+  }
+
+  async function copyReachOutEmails() {
+    const emails = reachOutPlayers
+      .map((p) => p.primaryEmail)
+      .filter((e): e is string => Boolean(e?.trim()))
+    if (emails.length === 0) {
+      setReachOutCopyMessage('No emails to copy')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(emails.join(', '))
+      setReachOutCopyMessage(
+        `Copied ${emails.length} email${emails.length === 1 ? '' : 's'}`
+      )
+    } catch {
+      setReachOutCopyMessage('Could not copy to clipboard')
+    }
+  }
+
   const hasExistingGroups = useMemo(
     () => registrations.some((r) => r.draftGroup != null),
     [registrations]
   )
+
+  const hasByotLocked = useMemo(
+    () => registrations.some((r) => r.teamLocked),
+    [registrations]
+  )
+
+  /** Draft groups (1-based) that have ≥1 locked BYOT signup player. */
+  const byotTeamIndexes = useMemo(() => {
+    const set = new Set<number>()
+    for (const r of registrations) {
+      if (r.teamLocked && r.draftGroup != null) set.add(r.draftGroup)
+    }
+    return set
+  }, [registrations])
+
+  const freeAgents = useMemo(() => {
+    return registrations
+      .filter((r) => r.draftGroup == null)
+      .slice()
+      .sort((a, b) => {
+        const an = `${a.firstName} ${a.lastName}`.trim() || a.nickname
+        const bn = `${b.firstName} ${b.lastName}`.trim() || b.nickname
+        return an.localeCompare(bn, undefined, { sensitivity: 'base' })
+      })
+  }, [registrations])
+
+  const showFreeAgentTeamLabel =
+    hasByotLocked || event?.eventFormat === 'byot'
+
+  /** Team count must cover every locked BYOT signup group so seats stay visible. */
+  const minDraftTeamCount = useMemo(() => {
+    let maxLocked = 1
+    for (const r of registrations) {
+      if (r.teamLocked && r.draftGroup != null && r.draftGroup > maxLocked) {
+        maxLocked = r.draftGroup
+      }
+    }
+    return maxLocked
+  }, [registrations])
 
   const counts = useMemo(() => {
     let unassigned = 0
@@ -348,6 +497,121 @@ function EventTrackerPageContent() {
     }
   }
 
+  async function updateEventMeta(patch: {
+    eventType?: string
+    eventFormat?: string | null
+  }) {
+    if (!event) return
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update event')
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              eventType: data.event.eventType,
+              eventTypeLabel: data.event.eventTypeLabel,
+              eventFormat: data.event.eventFormat ?? null,
+              eventFormatLabel: data.event.eventFormatLabel ?? null,
+            }
+          : prev
+      )
+      setMessage('Event updated')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update event')
+    }
+  }
+
+  function applyEventTeamsPatch(data: { event: EventDetail }) {
+    setEvent((prev) =>
+      prev
+        ? {
+            ...prev,
+            teamNames: Array.isArray(data.event.teamNames) ? data.event.teamNames : [],
+            teamsLocked: Boolean(data.event.teamsLocked),
+            teamsFinalizedAt: data.event.teamsFinalizedAt ?? null,
+          }
+        : prev
+    )
+    if (Array.isArray(data.event.teamNames)) {
+      setTeamNamesDraft(data.event.teamNames.map((n) => String(n ?? '')))
+    }
+  }
+
+  async function saveTeamNames() {
+    if (!event) return
+    setTeamNamesSaving(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamNames: teamNamesDraft }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save team names')
+      applyEventTeamsPatch(data)
+      setMessage('Team names saved')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to save team names')
+    } finally {
+      setTeamNamesSaving(false)
+    }
+  }
+
+  async function finalizeTeams() {
+    if (!event) return
+    setTeamsActionBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finalizeTeams: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to finalize teams')
+      applyEventTeamsPatch(data)
+      setMessage('Teams finalized and locked')
+      setConfirmFinalize(false)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to finalize teams')
+    } finally {
+      setTeamsActionBusy(false)
+    }
+  }
+
+  async function setTeamsLocked(teamsLocked: boolean) {
+    if (!event) return
+    setTeamsActionBusy(true)
+    setFormError(null)
+    try {
+      const res = await fetch(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamsLocked }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update lock')
+      applyEventTeamsPatch(data)
+      setMessage(teamsLocked ? 'Teams locked' : 'Teams unlocked — you can edit assignments')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to update lock')
+    } finally {
+      setTeamsActionBusy(false)
+    }
+  }
+
+  function exportDodgeballHub() {
+    window.location.href = `/api/events/${eventId}/export/dodgeballhub`
+  }
+
   async function toggleCaptain(registrationId: string, isCaptain: boolean) {
     setSavingId(registrationId)
     setFormError(null)
@@ -389,17 +653,17 @@ function EventTrackerPageContent() {
         }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to pair players')
+      if (!res.ok) throw new Error(data.error || 'Failed to group')
       await load()
-      setMessage('Players paired')
+      setMessage('Group updated')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to pair players')
+      setFormError(err instanceof Error ? err.message : 'Failed to group')
     } finally {
       setSavingId(null)
     }
   }
 
-  async function unpair(registrationId: string) {
+  async function leaveGroup(registrationId: string) {
     setSavingId(registrationId)
     setFormError(null)
     try {
@@ -408,15 +672,87 @@ function EventTrackerPageContent() {
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ unpair: true }),
+          body: JSON.stringify({ leaveGroup: true }),
         }
       )
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to unpair')
+      if (!res.ok) throw new Error(data.error || 'Failed to leave group')
       await load()
-      setMessage('Pair cleared')
+      setMessage('Left group')
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to unpair')
+      setFormError(err instanceof Error ? err.message : 'Failed to leave group')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function dissolveGroup(registrationId: string) {
+    setSavingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dissolveGroup: true }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to dissolve group')
+      await load()
+      setMessage('Group dissolved')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to dissolve group')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function setSignupOverride(
+    registrationId: string,
+    patch: { draftGroup?: number | null; teamLocked?: boolean }
+  ) {
+    setSavingId(registrationId)
+    setFormError(null)
+    try {
+      const res = await fetch(
+        `/api/events/${eventId}/registrations/${registrationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signupOverride: true, ...patch }),
+        }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update signup team')
+      setRegistrations((prev) =>
+        prev.map((r) =>
+          r.id === registrationId
+            ? {
+                ...r,
+                draftGroup: data.registration.draftGroup,
+                teamLocked: data.registration.teamLocked,
+                isCaptain:
+                  data.registration.draftGroup == null ? false : r.isCaptain,
+              }
+            : r
+        )
+      )
+      if (data.registration.draftGroup != null) {
+        setMaxGroup((prev) => Math.max(prev, data.registration.draftGroup))
+      }
+      setMessage(
+        patch.teamLocked === false
+          ? 'Unlocked from signup team'
+          : patch.teamLocked === true
+            ? 'Locked to signup team'
+            : 'Signup team updated'
+      )
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : 'Failed to update signup team'
+      )
     } finally {
       setSavingId(null)
     }
@@ -430,19 +766,28 @@ function EventTrackerPageContent() {
       gender: r.gender,
       pairId: pairingOn ? r.pairId : null,
       draftGroup: r.draftGroup,
+      teamLocked: r.teamLocked,
     }))
   }
 
   function openDraftSetup() {
     setDraftError(null)
-    setDraftTeamCount(defaultTeamCount(registrations.length))
-    setDraftSeedMode(hasExistingGroups ? 'existing' : 'auto')
+    setDraftTeamCount(
+      Math.max(
+        defaultTeamCount(registrations.length),
+        event?.teamNames?.length ?? 0,
+        ...registrations.map((r) => r.draftGroup ?? 0)
+      ) || 1
+    )
+    setDraftSeedMode(
+      hasByotLocked || hasExistingGroups ? 'existing' : 'auto'
+    )
     setDraftPhase('setup')
   }
 
   function startDraftBoard() {
     const seeds = seedPlayersFromRegistrations()
-    const n = Math.max(1, Math.floor(draftTeamCount))
+    const n = Math.max(minDraftTeamCount, Math.floor(draftTeamCount) || 1)
     let next: Map<string, number | null>
     if (draftSeedMode === 'auto') {
       const seeded = autoSeedDraftGroups(seeds, n)
@@ -463,13 +808,14 @@ function EventTrackerPageContent() {
 
   function reshuffleDraft() {
     const seeds = seedPlayersFromRegistrations()
-    const n = Math.max(1, Math.floor(draftTeamCount))
+    const n = Math.max(minDraftTeamCount, Math.floor(draftTeamCount) || 1)
     const seeded = autoSeedDraftGroups(seeds, n, { shuffle: true })
     const next = new Map<string, number | null>()
     for (const r of registrations) {
       next.set(r.id, seeded.get(r.id) ?? null)
     }
     setDraftAssignments(next)
+    setDraftTeamCount(n)
   }
 
   function discardDraft() {
@@ -482,10 +828,12 @@ function EventTrackerPageContent() {
     setDraftApplying(true)
     setDraftError(null)
     try {
-      const assignments = registrations.map((r) => ({
-        registrationId: r.id,
-        draftGroup: draftAssignments.get(r.id) ?? null,
-      }))
+      const assignments = registrations
+        .filter((r) => !r.teamLocked)
+        .map((r) => ({
+          registrationId: r.id,
+          draftGroup: draftAssignments.get(r.id) ?? null,
+        }))
       const res = await fetch(`/api/events/${eventId}/registrations/bulk`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -495,6 +843,7 @@ function EventTrackerPageContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to apply draft')
       setRegistrations((prev) =>
         prev.map((r) => {
+          if (r.teamLocked) return r
           const draftGroup = draftAssignments.get(r.id) ?? null
           return {
             ...r,
@@ -556,7 +905,11 @@ function EventTrackerPageContent() {
     if (!snap) return
     const next = new Map<string, number | null>()
     for (const r of registrations) {
-      next.set(r.id, snap.assignments[r.id] ?? null)
+      if (r.teamLocked) {
+        next.set(r.id, r.draftGroup)
+      } else {
+        next.set(r.id, snap.assignments[r.id] ?? null)
+      }
     }
     const maxAssigned = Math.max(
       0,
@@ -589,6 +942,7 @@ function EventTrackerPageContent() {
       )
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to rename snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }
@@ -607,6 +961,7 @@ function EventTrackerPageContent() {
       setSnapshots((prev) => prev.filter((s) => s.id !== snapshotId))
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to delete snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }
@@ -628,13 +983,13 @@ function EventTrackerPageContent() {
       setMessage('Snapshot promoted to live roster')
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'Failed to promote snapshot')
+      throw err
     } finally {
       setSnapshotsBusy(false)
     }
   }
 
   async function removeRegistration(registrationId: string, label: string) {
-    if (!window.confirm(`Remove ${label} from this event?`)) return
     setRemovingId(registrationId)
     setFormError(null)
     try {
@@ -646,6 +1001,7 @@ function EventTrackerPageContent() {
       if (!res.ok) throw new Error(data.error || 'Failed to remove player')
       setRegistrations((prev) => prev.filter((r) => r.id !== registrationId))
       setMessage(`Removed ${label} from event`)
+      setConfirmRemove(null)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to remove player')
     } finally {
@@ -654,13 +1010,6 @@ function EventTrackerPageContent() {
   }
 
   async function deleteEvent() {
-    if (
-      !window.confirm(
-        `Delete “${event?.name}”? This removes the event and all its registrations.`
-      )
-    ) {
-      return
-    }
     setDeletingEvent(true)
     setFormError(null)
     try {
@@ -671,6 +1020,7 @@ function EventTrackerPageContent() {
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to delete event')
       setDeletingEvent(false)
+      setConfirmDeleteEvent(false)
     }
   }
 
@@ -704,16 +1054,16 @@ function EventTrackerPageContent() {
 
   async function commitImport() {
     if (!importPreview) {
-      if (
-        !window.confirm(
-          'Import without a dry run? This will create/update players and register them for this event.'
-        )
-      ) {
-        return
-      }
+      setConfirmImportCommit(true)
+      return
     }
+    await runImportCommit()
+  }
+
+  async function runImportCommit() {
     setImportBusy(true)
     setFormError(null)
+    setConfirmImportCommit(false)
     try {
       const res = await fetch('/api/players/import', {
         method: 'POST',
@@ -735,7 +1085,11 @@ function EventTrackerPageContent() {
       setImportPreview(null)
       setImportProfileFields('skip')
       setMessage(
-        `Import done: ${summary.created ?? 0} created, ${summary.updated ?? 0} updated, ${summary.register ?? 0} registered, ${summary.alreadyRegistered ?? 0} already registered`
+        `Import done: ${summary.created ?? 0} created, ${summary.updated ?? 0} updated, ${summary.register ?? 0} registered, ${summary.alreadyRegistered ?? 0} already registered${
+          typeof summary.byotRegistered === 'number'
+            ? `, ${summary.byotRegistered} BYOT / ${summary.freeAgentRegistered ?? 0} free agents`
+            : ''
+        }`
       )
       await load()
     } catch (err) {
@@ -747,19 +1101,21 @@ function EventTrackerPageContent() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl p-6 text-sm text-gray-600">Loading…</div>
+      <div className="team-maker mx-auto max-w-6xl p-6 text-sm text-[var(--tm-muted,#4b5563)]">
+        Loading…
+      </div>
     )
   }
 
   if (!event) {
     return (
-      <div className="mx-auto max-w-6xl p-6 space-y-3">
+      <div className="team-maker mx-auto max-w-6xl space-y-3 p-6">
         <LiveMessage variant="alert" className="text-sm text-red-600">
           {error || 'Event not found'}
         </LiveMessage>
         <Link
           href={withDevMode('/events', devMode)}
-          className="text-sm text-blue-700 hover:underline"
+          className="text-sm text-[var(--tm-link,#1d4ed8)] hover:underline"
         >
           ← Events
         </Link>
@@ -768,61 +1124,111 @@ function EventTrackerPageContent() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6 text-gray-900">
+    <div className="team-maker mx-auto max-w-6xl space-y-6 p-6 text-[var(--tm-fg,#111827)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
             href={withDevMode('/events', devMode)}
-            className="text-sm text-blue-700 hover:underline"
+            className="text-sm text-[var(--tm-link,#1d4ed8)] hover:underline"
           >
             ← Events
           </Link>
-          <h1 className="text-2xl font-semibold mt-1">{event.name}</h1>
-          <p className="text-sm text-gray-600">
-            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel} ·{' '}
+          <h1 className="mt-1 text-2xl font-semibold">{event.name}</h1>
+          <p className="text-sm text-[var(--tm-muted,#4b5563)]">
+            {formatDisplayDate(event.eventDate)} · {event.eventTypeLabel}
+            {event.eventFormatLabel ? ` · ${event.eventFormatLabel}` : ''} ·{' '}
             {event.ballTypeLabel} · {event.genderLabel}
           </p>
           {event.notes ? (
-            <p className="text-sm text-gray-600 mt-1">{event.notes}</p>
+            <p className="mt-1 text-sm text-[var(--tm-muted,#4b5563)]">{event.notes}</p>
           ) : null}
+          <div className="mt-3 flex flex-wrap gap-3">
+            <label className="block text-sm">
+              <span className="text-[var(--tm-muted,#4b5563)]">Type</span>
+              <select
+                className={`mt-1 block rounded border border-[var(--tm-border,#d1d5db)] bg-[var(--tm-surface,#fff)] px-2 py-1.5 ${FOCUS_RING}`}
+                value={event.eventType}
+                onChange={(e) => void updateEventMeta({ eventType: e.target.value })}
+              >
+                {Object.entries(EVENT_TYPES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-[var(--tm-muted,#4b5563)]">Format</span>
+              <select
+                className={`mt-1 block rounded border border-[var(--tm-border,#d1d5db)] bg-[var(--tm-surface,#fff)] px-2 py-1.5 ${FOCUS_RING}`}
+                value={event.eventFormat ?? ''}
+                onChange={(e) =>
+                  void updateEventMeta({
+                    eventFormat: e.target.value === '' ? null : e.target.value,
+                  })
+                }
+              >
+                <option value="">Not set</option>
+                {Object.entries(EVENT_FORMATS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="mt-3">
             <SkillViewModeToggle mode={skillViewMode} onChange={setSkillViewMode} />
           </div>
-          <label className="mt-3 flex items-start gap-2 text-sm text-gray-800">
+          <label className="mt-3 flex items-start gap-2 text-sm text-[var(--tm-fg,#1f2937)]">
             <input
               type="checkbox"
-              className="mt-0.5"
+              className={`mt-0.5 ${FOCUS_RING}`}
               checked={event.pairingEnabled !== false}
               onChange={(e) => void togglePairingEnabled(e.target.checked)}
             />
             <span>
               <span className="inline-flex items-center gap-1.5">
-                Allow pairing
-                <Tooltip
-                  label="About pairing"
-                  content="When enabled, you can pair registrants. Paired players stay on the same team during draft."
+                Allow free-agent grouping
+                  <Tooltip
+                  label="About grouping"
+                  content="When enabled, you can group unassigned free agents so they stay together when placed on a team. Players already on a team cannot be grouped."
                 />
               </span>
               <FieldHelp>
-                Paired players are kept together when you assign or draft teams.
+                Only unassigned free agents can be grouped; groups move together when
+                you place them on teams.
               </FieldHelp>
             </span>
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
           {draftPhase === 'off' ? (
-            <button
-              type="button"
-              className={`rounded border border-blue-600 px-3 py-2 text-sm text-blue-700 ${FOCUS_RING}`}
-              disabled={registrations.length === 0}
+            <Button
+              variant="outline"
+              disabled={registrations.length === 0 || event.teamsLocked}
+              title={
+                event.teamsLocked
+                  ? hasByotLocked
+                    ? 'Unlock teams to assign free agents'
+                    : 'Unlock teams to enter draft mode'
+                  : undefined
+              }
               onClick={openDraftSetup}
             >
-              Enter draft mode
-            </button>
+              {hasByotLocked ? 'Assign free agents' : 'Enter draft mode'}
+            </Button>
           ) : null}
-          <button
-            type="button"
-            className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
+          <Button
+            variant="secondary"
+            className="border-teal-600 text-teal-800"
+            disabled={registrations.length === 0}
+            onClick={() => setContactOpen(true)}
+          >
+            Contact registered players
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
@@ -831,15 +1237,14 @@ function EventTrackerPageContent() {
             }}
           >
             Import TeamLinkt CSV
-          </button>
-          <button
-            type="button"
-            className={`rounded border border-red-300 px-3 py-2 text-sm text-red-700 disabled:opacity-40 ${FOCUS_RING}`}
+          </Button>
+          <Button
+            variant="danger"
             disabled={deletingEvent}
-            onClick={() => void deleteEvent()}
+            onClick={() => setConfirmDeleteEvent(true)}
           >
             {deletingEvent ? 'Deleting…' : 'Delete event'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -859,120 +1264,49 @@ function EventTrackerPageContent() {
         </LiveMessage>
       ) : null}
 
+      <EventTeamsSection
+        hasByotLocked={hasByotLocked}
+        teamsLocked={event.teamsLocked}
+        teamsFinalizedAt={event.teamsFinalizedAt}
+        teamNamesDraft={teamNamesDraft}
+        onTeamNamesDraftChange={setTeamNamesDraft}
+        byotTeamIndexes={byotTeamIndexes}
+        showFreeAgentTeamLabel={showFreeAgentTeamLabel}
+        freeAgents={freeAgents}
+        teamsActionBusy={teamsActionBusy}
+        teamNamesSaving={teamNamesSaving}
+        hasExistingGroups={hasExistingGroups}
+        onFinalize={() => setConfirmFinalize(true)}
+        onSetLocked={(locked) => void setTeamsLocked(locked)}
+        onExport={exportDodgeballHub}
+        onSaveTeamNames={() => void saveTeamNames()}
+      />
+
       {draftPhase !== 'board' && counts.unassigned > 0 ? (
         <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          className="rounded-lg border border-[var(--tm-amber-border,#fcd34d)] bg-[var(--tm-amber-bg,#fffbeb)] px-4 py-3 text-sm text-[var(--tm-amber-fg,#78350f)]"
           role="status"
         >
           <p className="font-medium">
             {counts.unassigned} registered{' '}
             {counts.unassigned === 1 ? 'player is' : 'players are'} not on a team
           </p>
-          {draftPhase === 'off' ? (
-            <button
-              type="button"
-              className={`rounded border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 ${FOCUS_RING}`}
-              onClick={() => setDraftFilter('unassigned')}
-            >
-              Show unassigned
-            </button>
-          ) : null}
         </div>
       ) : null}
 
       {draftPhase === 'setup' ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-4 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold">Draft setup</h2>
-            <FieldHelp className="text-sm">
-              Local workspace only until you Apply. Default team size targets ~7–8
-              players.
-            </FieldHelp>
-          </div>
-          <label className="block text-sm max-w-xs">
-            <span className="text-gray-600">Number of teams</span>
-            <input
-              type="number"
-              min={1}
-              max={Math.max(1, registrations.length)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-              value={draftTeamCount}
-              onChange={(e) =>
-                setDraftTeamCount(Number.parseInt(e.target.value, 10) || 1)
-              }
-            />
-            <FieldHelp>
-              ~{playersPerTeamLabel(registrations.length, draftTeamCount)}{' '}
-              players per team
-            </FieldHelp>
-          </label>
-          <fieldset className="space-y-2 text-sm">
-            <legend className="text-gray-600 mb-1">Start with</legend>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="seedMode"
-                checked={draftSeedMode === 'auto'}
-                onChange={() => setDraftSeedMode('auto')}
-              />
-              <span className="inline-flex items-center gap-1.5">
-                Auto-seed (gender-balanced, skill-aware)
-                <Tooltip
-                  label="Auto-seed"
-                  content="Distributes players across teams balancing gender mix and skill levels."
-                />
-              </span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="seedMode"
-                checked={draftSeedMode === 'empty'}
-                onChange={() => setDraftSeedMode('empty')}
-              />
-              <span className="inline-flex items-center gap-1.5">
-                Empty teams (all players unassigned)
-                <Tooltip
-                  label="Empty teams"
-                  content="Creates the requested number of teams with every player left unassigned."
-                />
-              </span>
-            </label>
-            {hasExistingGroups ? (
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="seedMode"
-                  checked={draftSeedMode === 'existing'}
-                  onChange={() => setDraftSeedMode('existing')}
-                />
-                <span className="inline-flex items-center gap-1.5">
-                  Copy current draft groups
-                  <Tooltip
-                    label="Copy current draft groups"
-                    content="Keeps each player on their current draft group as the starting point."
-                  />
-                </span>
-              </label>
-            ) : null}
-          </fieldset>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`rounded border px-3 py-2 text-sm ${FOCUS_RING}`}
-              onClick={discardDraft}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={`rounded bg-blue-600 px-3 py-2 text-sm text-white ${FOCUS_RING}`}
-              onClick={startDraftBoard}
-            >
-              Start drafting
-            </button>
-          </div>
-        </div>
+        <EventDraftSetup
+          hasByotLocked={hasByotLocked}
+          minDraftTeamCount={minDraftTeamCount}
+          registrationCount={registrations.length}
+          draftTeamCount={draftTeamCount}
+          onDraftTeamCountChange={setDraftTeamCount}
+          draftSeedMode={draftSeedMode}
+          onDraftSeedModeChange={setDraftSeedMode}
+          hasExistingGroups={hasExistingGroups}
+          onCancel={discardDraft}
+          onStart={startDraftBoard}
+        />
       ) : null}
 
       {draftPhase === 'board' ? (
@@ -988,6 +1322,9 @@ function EventTrackerPageContent() {
           error={draftError}
           pairingEnabled={event.pairingEnabled !== false}
           skillViewMode={skillViewMode}
+          teamNames={event.teamNames ?? []}
+          teamsLocked={event.teamsLocked}
+          byotMode={hasByotLocked}
           snapshots={snapshots}
           snapshotsBusy={snapshotsBusy}
           onSaveSnapshot={saveSnapshot}
@@ -998,19 +1335,19 @@ function EventTrackerPageContent() {
         />
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 text-sm">
-        <div className="rounded border border-gray-200 px-3 py-2">
-          <div className="text-gray-500">Total</div>
+      <div className="grid gap-3 text-sm sm:grid-cols-2">
+        <div className="rounded border border-[var(--tm-border,#e5e7eb)] px-3 py-2">
+          <div className="text-[var(--tm-muted,#6b7280)]">Total</div>
           <div className="text-xl font-semibold">{counts.total}</div>
         </div>
         <div
           className={`rounded border px-3 py-2 ${
             counts.unassigned > 0
-              ? 'border-amber-300 bg-amber-50/60'
-              : 'border-gray-200'
+              ? 'border-[var(--tm-amber-border,#fcd34d)] bg-[var(--tm-amber-bg,#fffbeb)]'
+              : 'border-[var(--tm-border,#e5e7eb)]'
           }`}
         >
-          <div className="text-gray-500">Draft buckets</div>
+          <div className="text-[var(--tm-muted,#6b7280)]">Draft buckets</div>
           <div>
             <span
               className={
@@ -1025,7 +1362,10 @@ function EventTrackerPageContent() {
           {groupOptions.length > 0 ? (
             <div className="text-xs mt-1 text-gray-600">
               {groupOptions
-                .map((g) => `G${g}: ${counts.byGroup.get(g) ?? 0}`)
+                .map(
+                  (g) =>
+                    `${resolveTeamName(g, event.teamNames)}: ${counts.byGroup.get(g) ?? 0}`
+                )
                 .join(' · ')}
             </div>
           ) : null}
@@ -1105,15 +1445,43 @@ function EventTrackerPageContent() {
                 <option value="unassigned">Unassigned</option>
                 {groupOptions.map((g) => (
                   <option key={g} value={g}>
-                    Group {g}
+                    {resolveTeamName(g, event.teamNames)}
                   </option>
                 ))}
               </select>
             </label>
+            {counts.unassigned > 0 && draftFilter !== 'unassigned' ? (
+              <button
+                type="button"
+                className={`rounded border border-amber-400 bg-amber-50 px-2 py-1 text-sm text-amber-950 ${FOCUS_RING}`}
+                onClick={() => setDraftFilter('unassigned')}
+              >
+                Show unassigned ({counts.unassigned})
+              </button>
+            ) : null}
+            {draftFilter !== 'all' ? (
+              <span className="inline-flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                <span>
+                  Showing{' '}
+                  {draftFilter === 'unassigned'
+                    ? 'unassigned'
+                    : resolveTeamName(draftFilter, event.teamNames)}{' '}
+                  ({filtered.length})
+                </span>
+                <button
+                  type="button"
+                  className={`text-xs text-blue-700 hover:underline ${FOCUS_RING}`}
+                  onClick={() => setDraftFilter('all')}
+                >
+                  Clear filter
+                </button>
+              </span>
+            ) : null}
             <button
               type="button"
               className={`rounded border px-2 py-1 text-sm ${FOCUS_RING}`}
               onClick={() => setMaxGroup((n) => n + 1)}
+              disabled={event.teamsLocked}
             >
               Add group {maxGroup + 1}
             </button>
@@ -1131,8 +1499,9 @@ function EventTrackerPageContent() {
                   <th scope="col" className="px-3 py-2 font-medium">Draft group</th>
                   <th scope="col" className="px-3 py-2 font-medium">Captain</th>
                   {event.pairingEnabled !== false ? (
-                    <th scope="col" className="px-3 py-2 font-medium">Pair</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Group</th>
                   ) : null}
+                  <th scope="col" className="px-3 py-2 font-medium">Lock</th>
                   <th scope="col" className="px-3 py-2 font-medium">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -1142,7 +1511,7 @@ function EventTrackerPageContent() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={event.pairingEnabled !== false ? 8 : 7}
+                      colSpan={event.pairingEnabled !== false ? 9 : 8}
                       className="px-3 py-6 text-center text-gray-500"
                     >
                       {registrations.length === 0
@@ -1156,12 +1525,27 @@ function EventTrackerPageContent() {
                       r.nickname || `${r.firstName} ${r.lastName}`
                     const badge = captainBadge(r, registrations)
                     const onTeam = r.draftGroup != null
-                    const unpairedOptions = registrations.filter(
-                      (other) =>
-                        other.id !== r.id &&
-                        other.pairId == null &&
-                        r.pairId == null
-                    )
+                    const canGroup = !r.teamLocked && r.draftGroup == null
+                    const addableOptions = canGroup
+                      ? registrations.filter(
+                          (other) =>
+                            other.id !== r.id &&
+                            !other.teamLocked &&
+                            other.draftGroup == null &&
+                            other.pairId == null
+                        )
+                      : []
+                    const joinOptions = canGroup
+                      ? registrations.filter(
+                          (other) =>
+                            other.id !== r.id &&
+                            !other.teamLocked &&
+                            other.draftGroup == null &&
+                            ((r.pairId == null && other.pairId == null) ||
+                              (r.pairId == null && other.pairId != null) ||
+                              (r.pairId != null && other.pairId == null))
+                        )
+                      : []
                     return (
                       <tr
                         key={r.id}
@@ -1174,6 +1558,20 @@ function EventTrackerPageContent() {
                           >
                             {label}
                           </SkillStyledText>
+                          {r.teamLocked ? (
+                            <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                              Locked
+                            </span>
+                          ) : onTeam && showFreeAgentTeamLabel ? (
+                            <Tooltip
+                              label="Free agent"
+                              content="Added to this team after signup (not an original BYOT member)."
+                            >
+                              <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                                FA
+                              </span>
+                            </Tooltip>
+                          ) : null}
                           {r.hasStrongPersonality ? (
                             <Tooltip
                               label="Strong personality"
@@ -1199,9 +1597,16 @@ function EventTrackerPageContent() {
                               </span>
                             </Tooltip>
                           ) : null}
-                          {event.pairingEnabled !== false && r.partnerNickname ? (
+                          {event.pairingEnabled !== false &&
+                          r.groupMembers.length > 0 ? (
                             <div className="text-xs text-violet-700">
-                              Paired with {r.partnerNickname}
+                              Group with{' '}
+                              {r.groupMembers.map((m) => m.nickname).join(', ')}
+                            </div>
+                          ) : event.pairingEnabled !== false &&
+                            r.partnerNickname ? (
+                            <div className="text-xs text-violet-700">
+                              Grouped with {r.partnerNickname}
                             </div>
                           ) : null}
                           <div className="text-xs text-gray-500">
@@ -1218,7 +1623,18 @@ function EventTrackerPageContent() {
                         <td className="px-3 py-2">
                           <select
                             className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
-                            disabled={savingId === r.id}
+                            disabled={
+                              savingId === r.id ||
+                              event.teamsLocked ||
+                              r.teamLocked
+                            }
+                            title={
+                              event.teamsLocked
+                                ? 'Unlock teams to change assignments'
+                                : r.teamLocked
+                                  ? 'Locked signup — use Unlock to move'
+                                  : undefined
+                            }
                             value={r.draftGroup == null ? '' : String(r.draftGroup)}
                             onChange={(e) => {
                               const v = e.target.value
@@ -1231,7 +1647,7 @@ function EventTrackerPageContent() {
                             <option value="">Unassigned</option>
                             {groupOptions.map((g) => (
                               <option key={g} value={g}>
-                                Group {g}
+                                {resolveTeamName(g, event.teamNames)}
                               </option>
                             ))}
                           </select>
@@ -1266,16 +1682,49 @@ function EventTrackerPageContent() {
                         </td>
                         {event.pairingEnabled !== false ? (
                           <td className="px-3 py-2">
-                            {r.pairId ? (
-                              <button
-                                type="button"
-                                className="text-xs text-violet-700 hover:underline disabled:opacity-40"
-                                disabled={savingId === r.id}
-                                onClick={() => void unpair(r.id)}
-                              >
-                                Unpair
-                              </button>
-                            ) : unpairedOptions.length > 0 ? (
+                            {!canGroup && !r.pairId ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : r.pairId ? (
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  className="text-left text-xs text-violet-700 hover:underline disabled:opacity-40"
+                                  disabled={savingId === r.id}
+                                  onClick={() => void leaveGroup(r.id)}
+                                >
+                                  Leave group
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-left text-xs text-violet-700 hover:underline disabled:opacity-40"
+                                  disabled={savingId === r.id}
+                                  onClick={() => void dissolveGroup(r.id)}
+                                >
+                                  Dissolve
+                                </button>
+                                {canGroup && addableOptions.length > 0 ? (
+                                  <select
+                                    className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
+                                    disabled={savingId === r.id}
+                                    defaultValue=""
+                                    onChange={(e) => {
+                                      const partnerId = e.target.value
+                                      e.target.value = ''
+                                      if (!partnerId) return
+                                      void pairWith(r.id, partnerId)
+                                    }}
+                                  >
+                                    <option value="">Add to group…</option>
+                                    {addableOptions.map((other) => (
+                                      <option key={other.id} value={other.id}>
+                                        {other.nickname ||
+                                          `${other.firstName} ${other.lastName}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : null}
+                              </div>
+                            ) : joinOptions.length > 0 ? (
                               <select
                                 className="max-w-[10rem] rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40"
                                 disabled={savingId === r.id}
@@ -1287,11 +1736,12 @@ function EventTrackerPageContent() {
                                   void pairWith(r.id, partnerId)
                                 }}
                               >
-                                <option value="">Pair with…</option>
-                                {unpairedOptions.map((other) => (
+                                <option value="">Group with…</option>
+                                {joinOptions.map((other) => (
                                   <option key={other.id} value={other.id}>
                                     {other.nickname ||
                                       `${other.firstName} ${other.lastName}`}
+                                    {other.pairId ? ' (group)' : ''}
                                   </option>
                                 ))}
                               </select>
@@ -1301,11 +1751,43 @@ function EventTrackerPageContent() {
                           </td>
                         ) : null}
                         <td className="px-3 py-2">
+                          {r.draftGroup == null && !r.teamLocked ? (
+                            <span className="text-xs text-gray-400">—</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`text-xs disabled:opacity-40 ${
+                                r.teamLocked
+                                  ? 'font-medium text-amber-800 hover:underline'
+                                  : 'text-gray-500 hover:underline'
+                              }`}
+                              disabled={savingId === r.id || event.teamsLocked}
+                              title={
+                                event.teamsLocked
+                                  ? 'Unlock teams first'
+                                  : r.teamLocked
+                                    ? 'Allow moving this player when assigning'
+                                    : 'Lock to current team (signup)'
+                              }
+                              onClick={() =>
+                                void setSignupOverride(r.id, {
+                                  teamLocked: !r.teamLocked,
+                                  draftGroup: r.draftGroup,
+                                })
+                              }
+                            >
+                              {r.teamLocked ? 'Unlock' : 'Lock'}
+                            </button>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
                           <button
                             type="button"
-                            className="text-xs text-red-700 hover:underline disabled:opacity-40"
+                            className={`min-h-11 text-xs text-red-700 hover:underline disabled:opacity-40 md:min-h-0 ${FOCUS_RING}`}
                             disabled={removingId === r.id}
-                            onClick={() => void removeRegistration(r.id, label)}
+                            onClick={() =>
+                              setConfirmRemove({ id: r.id, label })
+                            }
                           >
                             Remove
                           </button>
@@ -1318,6 +1800,181 @@ function EventTrackerPageContent() {
             </table>
           </div>
         </>
+      ) : null}
+
+      {draftPhase !== 'board' ? (
+        <section className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Reach out</h2>
+              <FieldHelp>
+                Players with selected home leagues who are not registered for this
+                event.
+              </FieldHelp>
+              {!reachOutLoading && !reachOutError ? (
+                <p className="mt-1 text-sm text-gray-600">
+                  {reachOutPlayers.length} not registered
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={`rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-40 ${FOCUS_RING}`}
+              disabled={reachOutLoading || reachOutPlayers.length === 0}
+              onClick={() => void copyReachOutEmails()}
+            >
+              Copy emails
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={reachOutIncludeOthers}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setReachOutIncludeOthers(checked)
+                  if (!checked) {
+                    setReachOutLeagues([DEFAULT_REACH_OUT_LEAGUE])
+                  }
+                }}
+              />
+              Include other home leagues
+            </label>
+            {reachOutIncludeOthers ? (
+              <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 ${FOCUS_RING}`}
+                    onClick={() => setReachOutLeagues([...HOME_LEAGUE_CODES])}
+                  >
+                    All leagues
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 hover:bg-gray-50 ${FOCUS_RING}`}
+                    onClick={() => setReachOutLeagues([DEFAULT_REACH_OUT_LEAGUE])}
+                  >
+                    BDL only
+                  </button>
+                </div>
+                <div className="grid gap-1 sm:grid-cols-2">
+                  {HOME_LEAGUE_CODES.map((code) => (
+                    <label
+                      key={code}
+                      className="flex items-center gap-2 text-sm text-gray-800"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={reachOutLeagues.includes(code)}
+                        onChange={() => toggleReachOutLeague(code)}
+                      />
+                      {HOME_LEAGUES[code]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {reachOutCopyMessage ? (
+            <LiveMessage variant="status" className="text-sm text-green-700">
+              {reachOutCopyMessage}
+            </LiveMessage>
+          ) : null}
+          {reachOutError ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {reachOutError}
+            </LiveMessage>
+          ) : null}
+
+          <div className="overflow-x-auto rounded border border-gray-200">
+            <table className="min-w-full text-sm">
+              <caption className="sr-only">
+                Unregistered local players for outreach
+              </caption>
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Name
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Skill
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Gender
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Email
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Home leagues
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {reachOutLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-6 text-center text-gray-500"
+                    >
+                      Loading…
+                    </td>
+                  </tr>
+                ) : reachOutPlayers.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-6 text-center text-gray-500"
+                    >
+                      No matching players to reach out to.
+                    </td>
+                  </tr>
+                ) : (
+                  reachOutPlayers.map((p) => {
+                    const label =
+                      p.nickname || `${p.firstName} ${p.lastName}`
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`border-t border-gray-100 ${genderRowClass(p.gender)}`}
+                      >
+                        <td className="px-3 py-2">
+                          <SkillStyledText
+                            score={effectiveSkillScore(p, skillViewMode)}
+                            mode={skillViewMode}
+                          >
+                            {label}
+                          </SkillStyledText>
+                          <div className="text-xs text-gray-500">
+                            {p.firstName} {p.lastName}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          {effectiveSkillScore(p, skillViewMode) != null
+                            ? effectiveSkillLabel(p, skillViewMode)
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">{p.genderGroupLabel}</td>
+                        <td className="px-3 py-2 text-xs">
+                          {p.primaryEmail ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-700">
+                          {p.homeLeagues.length > 0
+                            ? p.homeLeagues.map((h) => h.label).join(', ')
+                            : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : null}
 
       <Dialog
@@ -1399,8 +2056,9 @@ function EventTrackerPageContent() {
               placeholder="Or paste CSV contents here…"
             />
             <FieldHelp>
-              Paste here if you do not have a file handy. Dry run previews changes
-              before commit.
+              Paste here if you do not have a file handy. Include a Team Name
+              column for BYOT players; blank team = free agent. Dry run previews
+              changes before commit.
             </FieldHelp>
           </div>
           {formError ? (
@@ -1418,6 +2076,12 @@ function EventTrackerPageContent() {
                   <>
                     ; {importPreview.summary.register} will register,{' '}
                     {importPreview.summary.alreadyRegistered ?? 0} already registered
+                  </>
+                ) : null}
+                {typeof importPreview.summary.byot === 'number' ? (
+                  <>
+                    ; {importPreview.summary.byot} BYOT /{' '}
+                    {importPreview.summary.freeAgents ?? 0} free agents
                   </>
                 ) : null}
               </LiveMessage>
@@ -1477,6 +2141,69 @@ function EventTrackerPageContent() {
           </div>
         </div>
       </Dialog>
+
+      {contactOpen && event ? (
+        <ContactPlayersDialog
+          open={contactOpen}
+          onClose={() => setContactOpen(false)}
+          audience={{
+            mode: 'filter',
+            filters: { eventId },
+            label: `${registrations.length} registered for ${event.name}`,
+          }}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmDeleteEvent}
+        onClose={() => setConfirmDeleteEvent(false)}
+        title="Delete event"
+        danger
+        confirmLabel={deletingEvent ? 'Deleting…' : 'Delete'}
+        busy={deletingEvent}
+        onConfirm={() => void deleteEvent()}
+      >
+        Delete “{event.name}”? This removes the event and all its registrations.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmFinalize}
+        onClose={() => setConfirmFinalize(false)}
+        title="Finalize teams"
+        confirmLabel={teamsActionBusy ? 'Finalizing…' : 'Finalize'}
+        busy={teamsActionBusy}
+        onConfirm={() => void finalizeTeams()}
+      >
+        Finalize teams? This locks assignments and unlocks DodgeballHub export.
+        You can unlock later for late registrations.
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmRemove != null}
+        onClose={() => setConfirmRemove(null)}
+        title="Remove registration"
+        danger
+        confirmLabel={removingId ? 'Removing…' : 'Remove'}
+        busy={removingId != null}
+        onConfirm={() => {
+          if (!confirmRemove) return
+          void removeRegistration(confirmRemove.id, confirmRemove.label)
+        }}
+      >
+        Remove {confirmRemove?.label} from this event?
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmImportCommit}
+        onClose={() => setConfirmImportCommit(false)}
+        title="Import without dry run"
+        confirmLabel={importBusy ? 'Importing…' : 'Import now'}
+        busy={importBusy}
+        onConfirm={() => void runImportCommit()}
+      >
+        Import without a dry run? This will create/update players and register
+        them for this event.
+      </ConfirmDialog>
     </div>
   )
 }

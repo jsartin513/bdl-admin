@@ -7,9 +7,11 @@ import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import {
   ballTypeLabel,
+  eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
   isValidBallType,
+  isValidEventFormat,
   isValidEventGender,
   isValidEventType,
 } from '@/app/lib/events/types'
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },
@@ -50,10 +53,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       name?: string
       eventDate?: string
       eventType?: string | null
+      eventFormat?: string | null
       ballType?: string | null
       gender?: string | null
       notes?: string | null
       pairingEnabled?: boolean
+      teamNames?: string[]
+      teamsLocked?: boolean
+      finalizeTeams?: boolean
     }
 
     if (
@@ -62,6 +69,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       !isValidEventType(body.eventType)
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
+    }
+    if (
+      body.eventFormat != null &&
+      body.eventFormat !== '' &&
+      !isValidEventFormat(body.eventFormat)
+    ) {
+      return NextResponse.json({ error: 'Invalid eventFormat' }, { status: 400 })
     }
     if (
       body.ballType != null &&
@@ -88,11 +102,39 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
+    if (body.teamNames !== undefined && !Array.isArray(body.teamNames)) {
+      return NextResponse.json(
+        { error: 'teamNames must be an array of strings' },
+        { status: 400 }
+      )
+    }
+
+    if (
+      body.teamsLocked !== undefined &&
+      typeof body.teamsLocked !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { error: 'teamsLocked must be a boolean' },
+        { status: 400 }
+      )
+    }
+
+    if (
+      body.finalizeTeams !== undefined &&
+      typeof body.finalizeTeams !== 'boolean'
+    ) {
+      return NextResponse.json(
+        { error: 'finalizeTeams must be a boolean' },
+        { status: 400 }
+      )
+    }
+
     const event = await updateEvent(id, body)
     return NextResponse.json({
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },

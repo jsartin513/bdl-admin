@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
+  alertWatchedAdminLoginAttempt,
   clearAdminOAuthStateCookie,
   isAllowedAdminEmail,
   readAdminOAuthState,
   setAdminSessionCookie,
 } from '@/app/lib/admin-auth'
+import { safeAdminNextPath } from '@/app/lib/admin-next'
 
 function adminBaseUrl(request: NextRequest): URL {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
@@ -78,15 +80,14 @@ export async function GET(request: NextRequest) {
     return adminErrorRedirect(request, 'invalid_google_identity')
   }
 
-  if (!isAllowedAdminEmail(email)) {
+  const allowed = isAllowedAdminEmail(email)
+  void alertWatchedAdminLoginAttempt(email, { app: 'bdl-admin', allowed })
+  if (!allowed) {
     return adminErrorRedirect(request, 'email_not_allowed')
   }
 
   const nextParam = request.cookies.get('admin_oauth_next')?.value
-  const destination =
-    nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
-      ? nextParam
-      : '/schedules'
+  const destination = safeAdminNextPath(nextParam)
 
   const response = NextResponse.redirect(new URL(destination, request.url))
   clearAdminOAuthStateCookie(response)

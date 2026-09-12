@@ -1,12 +1,13 @@
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import { importBatches, playerEmails, players } from '@/app/db/schema'
-import { upsertEventRegistration } from '@/app/lib/events/mutations'
+import { updateEvent, upsertEventRegistration } from '@/app/lib/events/mutations'
 import { getEvent, getRegisteredPlayerIds } from '@/app/lib/events/queries'
 import {
   createPlayer,
   ensurePlayerAlias,
   ensurePlayerEmail,
+  ensurePlayerPhone,
   updatePlayer,
 } from '@/app/lib/players/mutations'
 import { getPlayerSnapshot } from '@/app/lib/players/queries'
@@ -23,9 +24,12 @@ export type TeamlinktRow = {
   firstName: string
   lastName: string
   email: string | null
+  phone: string | null
   jerseyNumber: number | null
   skillLevel: number | null
   gender: Gender | null
+  /** Signup team name from CSV; null/empty = free agent */
+  teamName: string | null
   raw: Record<string, string>
 }
 
@@ -81,6 +85,61 @@ export function summarizeRegistrationPreview(
 }
 
 /**
+ * Build ordered unique team names from CSV rows (first appearance wins).
+ * Empty / null team names are free agents and are ignored here.
+ */
+export function collectTeamNamesFromRows(rows: TeamlinktRow[]): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const row of rows) {
+    const name = row.teamName?.trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names
+}
+
+/**
+ * Merge CSV-discovered team names into existing event teamNames.
+ * Matching is case-insensitive; new names are appended.
+ * Returns final teamNames list and a lookup from lowercase name → draftGroup (1-based).
+ */
+export function mergeByotTeamNames(
+  existingTeamNames: string[],
+  discoveredNames: string[]
+): { teamNames: string[]; draftGroupByTeamKey: Map<string, number> } {
+  const teamNames = [...existingTeamNames.map((n) => n.trim()).filter(Boolean)]
+  const draftGroupByTeamKey = new Map<string, number>()
+  for (let i = 0; i < teamNames.length; i++) {
+    draftGroupByTeamKey.set(teamNames[i].toLowerCase(), i + 1)
+  }
+  for (const name of discoveredNames) {
+    const key = name.toLowerCase()
+    if (draftGroupByTeamKey.has(key)) continue
+    teamNames.push(name)
+    draftGroupByTeamKey.set(key, teamNames.length)
+  }
+  return { teamNames, draftGroupByTeamKey }
+}
+
+export function summarizeByotPreview(rows: TeamlinktRow[]): {
+  byot: number
+  freeAgents: number
+  teamNames: string[]
+} {
+  let byot = 0
+  let freeAgents = 0
+  for (const row of rows) {
+    if (row.teamName?.trim()) byot++
+    else freeAgents++
+  }
+  return { byot, freeAgents, teamNames: collectTeamNamesFromRows(rows) }
+}
+
+/**
  * How TeamLinkt updates skill / gender / jersey on existing players.
  * - skip (default): never change those fields; new players still get CSV values
  * - fill_blank: only set a field when the player currently has it unset
@@ -114,14 +173,28 @@ const HEADER_ALIASES: Record<string, string[]> = {
   firstName: ['first name', 'firstname', 'first', 'player first name', 'given name'],
   lastName: ['last name', 'lastname', 'last', 'player last name', 'surname', 'family name'],
   email: ['email', 'e-mail', 'email address', 'player email', 'contact email'],
+  phone: [
+    'phone',
+    'phone number',
+    'mobile',
+    'mobile phone',
+    'cell',
+    'cell phone',
+    'telephone',
+    'player phone',
+    'contact phone',
+  ],
   jerseyNumber: [
     'jersey',
     'jersey number',
     'jersey #',
     'jersey no',
+    'jersey num',
     'number',
     '#',
     'player number',
+    'uniform number',
+    'shirt number',
   ],
   skillLevel: [
     'skill',
@@ -134,6 +207,14 @@ const HEADER_ALIASES: Record<string, string[]> = {
     'ability level',
   ],
   gender: ['gender', 'sex', 'player gender'],
+  teamName: [
+    'team',
+    'team name',
+    'teamname',
+    'squad',
+    'squad name',
+    'byot team',
+  ],
 }
 
 function normalizeHeader(h: string): string {
@@ -144,17 +225,21 @@ function mapHeaders(headers: string[]): {
   firstName?: number
   lastName?: number
   email?: number
+  phone?: number
   jerseyNumber?: number
   skillLevel?: number
   gender?: number
+  teamName?: number
 } {
   const mapped: {
     firstName?: number
     lastName?: number
     email?: number
+    phone?: number
     jerseyNumber?: number
     skillLevel?: number
     gender?: number
+    teamName?: number
   } = {}
 
   headers.forEach((header, index) => {
@@ -226,13 +311,20 @@ export function parseTeamlinktCsv(csvText: string): {
   rows: TeamlinktRow[]
   headers: string[]
   mapping: ReturnType<typeof mapHeaders>
+  warnings: string[]
   error?: string
 } {
   // Strip BOM if present (common from Excel / TeamLinkt exports)
   const text = csvText.replace(/^\uFEFF/, '')
   const table = parseCsv(text)
   if (table.length < 2) {
-    return { rows: [], headers: [], mapping: {}, error: 'CSV must include a header row and data' }
+    return {
+      rows: [],
+      headers: [],
+      mapping: {},
+      warnings: [],
+      error: 'CSV must include a header row and data',
+    }
   }
 
   const headers = table[0]
@@ -242,6 +334,7 @@ export function parseTeamlinktCsv(csvText: string): {
       rows: [],
       headers,
       mapping,
+      warnings: [],
       error:
         'Could not find First Name and Last Name columns. Expected TeamLinkt-style headers.',
     }
@@ -273,6 +366,10 @@ export function parseTeamlinktCsv(csvText: string): {
       mapping.email !== undefined ? (cells[mapping.email] ?? '').trim() : ''
     const email = emailRaw ? normalizeEmail(emailRaw) : null
 
+    const phoneRaw =
+      mapping.phone !== undefined ? (cells[mapping.phone] ?? '').trim() : ''
+    const phone = phoneRaw || null
+
     let jerseyNumber: number | null = null
     if (mapping.jerseyNumber !== undefined) {
       const j = (cells[mapping.jerseyNumber] ?? '').trim()
@@ -292,6 +389,12 @@ export function parseTeamlinktCsv(csvText: string): {
       gender = parseGender(cells[mapping.gender] ?? '')
     }
 
+    let teamName: string | null = null
+    if (mapping.teamName !== undefined) {
+      const t = (cells[mapping.teamName] ?? '').trim()
+      teamName = t || null
+    }
+
     if (!firstName && !lastName && !email) continue
 
     rows.push({
@@ -299,14 +402,46 @@ export function parseTeamlinktCsv(csvText: string): {
       firstName,
       lastName,
       email,
+      phone,
       jerseyNumber,
       skillLevel,
       gender,
+      teamName,
       raw,
     })
   }
 
-  return { rows, headers, mapping }
+  const warnings: string[] = []
+  if (mapping.jerseyNumber === undefined) {
+    warnings.push(
+      'No Jersey Number column found. Association members exports usually omit it — unset jerseys will not be filled. Use a team roster / participants export that includes Jersey Number.'
+    )
+  } else {
+    const header = headers[mapping.jerseyNumber]
+    const rawValues = rows.map((r) => (r.raw[header] ?? '').trim()).filter(Boolean)
+    const parsedCount = rows.filter((r) => r.jerseyNumber != null).length
+    if (rawValues.length > 0 && parsedCount === 0) {
+      warnings.push(
+        'Jersey column present but no numbers parsed. Use numeric values (e.g. 7 or #7).'
+      )
+    }
+  }
+  if (mapping.skillLevel === undefined) {
+    warnings.push(
+      'No Skill / Skill Level column found. Association members exports usually omit it — unset skills will not be filled. Export with player additional info / custom questions, or add a Skill Level column (1–4 or Intermediate/Advanced).'
+    )
+  } else {
+    const header = headers[mapping.skillLevel]
+    const rawValues = rows.map((r) => (r.raw[header] ?? '').trim()).filter(Boolean)
+    const parsedCount = rows.filter((r) => r.skillLevel != null).length
+    if (rawValues.length > 0 && parsedCount === 0) {
+      warnings.push(
+        'Skill column present but no values parsed. Use 1–4 or labels like Intermediate / Advanced.'
+      )
+    }
+  }
+
+  return { rows, headers, mapping, warnings }
 }
 
 type MatchIndex = {
@@ -389,20 +524,32 @@ export async function previewTeamlinktImport(
 ): Promise<{
   actions: ImportPreviewAction[]
   headers: string[]
+  warnings: string[]
   registrationSummary?: { register: number; alreadyRegistered: number }
+  byotSummary?: { byot: number; freeAgents: number; teamNames: string[] }
   error?: string
 }> {
   const profileFields = resolveProfileFieldsMode(options)
   const parsed = parseTeamlinktCsv(csvText)
   if (parsed.error) {
-    return { actions: [], headers: parsed.headers, error: parsed.error }
+    return {
+      actions: [],
+      headers: parsed.headers,
+      warnings: parsed.warnings,
+      error: parsed.error,
+    }
   }
 
   let registeredPlayerIds = new Set<string>()
   if (eventId) {
     const event = await getEvent(eventId)
     if (!event) {
-      return { actions: [], headers: parsed.headers, error: 'Event not found' }
+      return {
+      actions: [],
+      headers: parsed.headers,
+      warnings: parsed.warnings,
+      error: 'Event not found',
+    }
     }
     registeredPlayerIds = await getRegisteredPlayerIds(eventId)
   }
@@ -561,8 +708,12 @@ export async function previewTeamlinktImport(
   return {
     actions,
     headers: parsed.headers,
+    warnings: parsed.warnings,
     registrationSummary: eventId
       ? summarizeRegistrationPreview(actions, registeredPlayerIds)
+      : undefined,
+    byotSummary: eventId
+      ? summarizeByotPreview(parsed.rows)
       : undefined,
   }
 }
@@ -581,12 +732,29 @@ export async function commitTeamlinktImport(input: {
     throw new Error(preview.error)
   }
 
+  let draftGroupByTeamKey = new Map<string, number>()
+  let byotTeamNames: string[] = []
+  if (eventId && preview.byotSummary && preview.byotSummary.teamNames.length > 0) {
+    const event = await getEvent(eventId)
+    if (!event) throw new Error('Event not found')
+    const merged = mergeByotTeamNames(event.teamNames, preview.byotSummary.teamNames)
+    byotTeamNames = merged.teamNames
+    draftGroupByTeamKey = merged.draftGroupByTeamKey
+    if (
+      JSON.stringify(event.teamNames) !== JSON.stringify(merged.teamNames)
+    ) {
+      await updateEvent(eventId, { teamNames: merged.teamNames })
+    }
+  }
+
   const db = getDb()
   const [batch] = await db
     .insert(importBatches)
     .values({
       filename: input.filename,
       actor: input.actor,
+      source: 'teamlinkt',
+      csvText: input.csvText,
       rowCount: preview.actions.length,
       summary: {},
       eventId: eventId ?? undefined,
@@ -599,17 +767,38 @@ export async function commitTeamlinktImport(input: {
   let ambiguous = 0
   let register = 0
   let alreadyRegistered = 0
+  let byotRegistered = 0
+  let freeAgentRegistered = 0
   const errors: string[] = []
 
-  async function registerPlayer(playerId: string) {
+  function byotAssignmentForRow(row: TeamlinktRow): {
+    draftGroup: number | null
+    teamLocked: boolean
+  } {
+    const name = row.teamName?.trim()
+    if (!name) return { draftGroup: null, teamLocked: false }
+    const draftGroup = draftGroupByTeamKey.get(name.toLowerCase()) ?? null
+    if (draftGroup == null) return { draftGroup: null, teamLocked: false }
+    return { draftGroup, teamLocked: true }
+  }
+
+  async function registerPlayer(playerId: string, row: TeamlinktRow) {
     if (!eventId) return
+    const { draftGroup, teamLocked } = byotAssignmentForRow(row)
     const result = await upsertEventRegistration({
       eventId,
       playerId,
       importBatchId: batch.id,
+      draftGroup,
+      teamLocked,
     })
-    if (result.created) register++
-    else alreadyRegistered++
+    if (result.created) {
+      register++
+      if (teamLocked) byotRegistered++
+      else freeAgentRegistered++
+    } else {
+      alreadyRegistered++
+    }
   }
 
   for (const item of preview.actions) {
@@ -625,7 +814,7 @@ export async function commitTeamlinktImport(input: {
         // (except records flagged excludeFromRegistration, e.g. merged players)
         const registerId = playerIdForRegistration(item)
         if (eventId && registerId) {
-          await registerPlayer(registerId)
+          await registerPlayer(registerId, item.row)
         }
         continue
       }
@@ -642,8 +831,18 @@ export async function commitTeamlinktImport(input: {
           source: 'import',
           importBatchId: batch.id,
         })
+        if (snap?.id && item.row.phone) {
+          try {
+            await ensurePlayerPhone(snap.id, item.row.phone, {
+              actor: input.actor,
+              importBatchId: batch.id,
+            })
+          } catch {
+            // Phone conflicts shouldn't fail the whole create
+          }
+        }
         created++
-        if (snap?.id) await registerPlayer(snap.id)
+        if (snap?.id) await registerPlayer(snap.id, item.row)
         continue
       }
 
@@ -682,6 +881,17 @@ export async function commitTeamlinktImport(input: {
         })
       }
 
+      if (item.row.phone) {
+        try {
+          await ensurePlayerPhone(item.playerId, item.row.phone, {
+            actor: input.actor,
+            importBatchId: batch.id,
+          })
+        } catch {
+          // Phone conflicts shouldn't fail the row update
+        }
+      }
+
       if (item.row.firstName.toLowerCase() !== snap.firstName.toLowerCase()) {
         await ensurePlayerAlias(item.playerId, item.row.firstName, {
           actor: input.actor,
@@ -690,7 +900,7 @@ export async function commitTeamlinktImport(input: {
       }
 
       updated++
-      await registerPlayer(item.playerId)
+      await registerPlayer(item.playerId, item.row)
     } catch (err) {
       errors.push(
         `Row ${item.row.rowNumber}: ${err instanceof Error ? err.message : 'Unknown error'}`
@@ -705,9 +915,120 @@ export async function commitTeamlinktImport(input: {
     ambiguous,
     errors,
     profileFields,
-    ...(eventId ? { register, alreadyRegistered, eventId } : {}),
+    ...(eventId
+      ? {
+          register,
+          alreadyRegistered,
+          eventId,
+          byotRegistered,
+          freeAgentRegistered,
+          byotTeamNames,
+        }
+      : {}),
   }
   await db.update(importBatches).set({ summary }).where(eq(importBatches.id, batch.id))
 
-  return { batchId: batch.id, summary, actions: preview.actions }
+  return {
+    batchId: batch.id,
+    summary,
+    actions: preview.actions,
+    warnings: preview.warnings,
+  }
+}
+
+export type SavedImportBatchListItem = {
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  hasCsv: boolean
+  createdAt: string
+}
+
+export async function listSavedImportBatches(limit = 25): Promise<SavedImportBatchListItem[]> {
+  const db = getDb()
+  const rows = await db
+    .select({
+      id: importBatches.id,
+      filename: importBatches.filename,
+      actor: importBatches.actor,
+      source: importBatches.source,
+      rowCount: importBatches.rowCount,
+      summary: importBatches.summary,
+      csvText: importBatches.csvText,
+      createdAt: importBatches.createdAt,
+    })
+    .from(importBatches)
+    .orderBy(desc(importBatches.createdAt))
+    .limit(limit)
+
+  return rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    actor: r.actor,
+    source: r.source,
+    rowCount: r.rowCount,
+    summary: r.summary ?? {},
+    hasCsv: Boolean(r.csvText && r.csvText.trim()),
+    createdAt: r.createdAt.toISOString(),
+  }))
+}
+
+export async function getSavedImportBatch(id: string): Promise<{
+  id: string
+  filename: string
+  actor: string
+  source: string
+  rowCount: number
+  summary: Record<string, unknown>
+  csvText: string | null
+  createdAt: string
+} | null> {
+  const db = getDb()
+  const [row] = await db.select().from(importBatches).where(eq(importBatches.id, id)).limit(1)
+  if (!row) return null
+  return {
+    id: row.id,
+    filename: row.filename,
+    actor: row.actor,
+    source: row.source,
+    rowCount: row.rowCount,
+    summary: row.summary ?? {},
+    csvText: row.csvText,
+    createdAt: row.createdAt.toISOString(),
+  }
+}
+
+/** Store CSV for later re-apply without writing player changes. */
+export async function saveTeamlinktImportCsv(input: {
+  csvText: string
+  filename: string
+  actor: string
+}) {
+  const parsed = parseTeamlinktCsv(input.csvText)
+  if (parsed.error) {
+    throw new Error(parsed.error)
+  }
+
+  const db = getDb()
+  const [batch] = await db
+    .insert(importBatches)
+    .values({
+      filename: input.filename,
+      actor: input.actor,
+      source: 'teamlinkt',
+      csvText: input.csvText,
+      rowCount: parsed.rows.length,
+      summary: { savedOnly: true, warnings: parsed.warnings },
+    })
+    .returning()
+
+  return {
+    batchId: batch.id,
+    rowCount: parsed.rows.length,
+    warnings: parsed.warnings,
+    headers: parsed.headers,
+  }
 }

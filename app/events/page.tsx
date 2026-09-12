@@ -6,6 +6,7 @@ import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import {
   BALL_TYPES,
+  EVENT_FORMATS,
   EVENT_GENDERS,
   EVENT_TYPES,
   type EventListItem,
@@ -53,6 +54,7 @@ function EventsPageContent() {
   const [name, setName] = useState('')
   const [eventDate, setEventDate] = useState('')
   const [eventType, setEventType] = useState<string>('tournament')
+  const [eventFormat, setEventFormat] = useState<string>('')
   const [ballType, setBallType] = useState<string>('foam')
   const [gender, setGender] = useState<string>('mixed')
   const [notes, setNotes] = useState('')
@@ -87,6 +89,7 @@ function EventsPageContent() {
           name,
           eventDate,
           eventType,
+          eventFormat: eventFormat || null,
           ballType,
           gender,
           notes: notes.trim() || null,
@@ -98,6 +101,7 @@ function EventsPageContent() {
       setName('')
       setEventDate('')
       setEventType('tournament')
+      setEventFormat('')
       setBallType('foam')
       setGender('mixed')
       setNotes('')
@@ -157,6 +161,7 @@ function EventsPageContent() {
                 <th scope="col" className="px-3 py-2 font-medium">Date</th>
                 <th scope="col" className="px-3 py-2 font-medium">Name</th>
                 <th scope="col" className="px-3 py-2 font-medium">Type</th>
+                <th scope="col" className="px-3 py-2 font-medium">Format</th>
                 <th scope="col" className="px-3 py-2 font-medium">Ball</th>
                 <th scope="col" className="px-3 py-2 font-medium">Gender</th>
                 <th scope="col" className="px-3 py-2 font-medium">Registrations</th>
@@ -177,6 +182,7 @@ function EventsPageContent() {
                     </Link>
                   </td>
                   <td className="px-3 py-2">{event.eventTypeLabel}</td>
+                  <td className="px-3 py-2">{event.eventFormatLabel ?? '—'}</td>
                   <td className="px-3 py-2">{event.ballTypeLabel}</td>
                   <td className="px-3 py-2">{event.genderLabel}</td>
                   <td className="px-3 py-2">{event.registrationCount}</td>
@@ -217,7 +223,7 @@ function EventsPageContent() {
               Type
               <Tooltip
                 label="About event type"
-                content="Tournament, clinic, or other gathering — used for filtering and history."
+                content="Tournament, league, open gym, or other — used for filtering and history."
               />
             </span>
             <select
@@ -226,6 +232,27 @@ function EventsPageContent() {
               onChange={(e) => setEventType(e.target.value)}
             >
               {Object.entries(EVENT_TYPES).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="inline-flex items-center gap-1.5 text-gray-600">
+              Format
+              <Tooltip
+                label="About event format"
+                content="BYOT, Remix, or Draft — labels how teams are formed. Does not change team-maker rules by itself."
+              />
+            </span>
+            <select
+              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              value={eventFormat}
+              onChange={(e) => setEventFormat(e.target.value)}
+            >
+              <option value="">Not set</option>
+              {Object.entries(EVENT_FORMATS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

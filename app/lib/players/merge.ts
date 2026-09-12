@@ -5,6 +5,7 @@ import {
   playerChanges,
   playerEmails,
   playerHomeLeagues,
+  playerPhones,
   players,
 } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
@@ -210,6 +211,39 @@ export async function mergePlayers(input: {
       .where(eq(playerEmails.id, prefer.id))
   }
 
+  // Move phones (skip duplicates)
+  const existingPhones = new Set(survivorBefore.phones.map((p) => p.phoneE164))
+  for (const loser of loserSnapshots) {
+    for (const phone of loser.phones) {
+      if (existingPhones.has(phone.phoneE164)) {
+        await db.delete(playerPhones).where(eq(playerPhones.id, phone.id))
+        continue
+      }
+      await db
+        .update(playerPhones)
+        .set({ playerId: survivorId, isPrimary: false })
+        .where(eq(playerPhones.id, phone.id))
+      existingPhones.add(phone.phoneE164)
+    }
+  }
+
+  const survivorPhones = await db
+    .select()
+    .from(playerPhones)
+    .where(eq(playerPhones.playerId, survivorId))
+  if (survivorPhones.length > 0 && !survivorPhones.some((p) => p.isPrimary)) {
+    const prefer =
+      survivorPhones.find(
+        (p) =>
+          p.phoneE164 ===
+          survivorBefore.phones.find((x) => x.isPrimary)?.phoneE164
+      ) ?? survivorPhones[0]
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: true })
+      .where(eq(playerPhones.id, prefer.id))
+  }
+
   // Move aliases
   const existingAliases = new Set(
     survivorBefore.aliases.map((a) => a.alias.toLowerCase())
@@ -311,16 +345,19 @@ export async function mergePlayers(input: {
 }
 
 type SnapshotEmail = { id?: string; email: string; isPrimary?: boolean }
+type SnapshotPhone = { id?: string; phoneE164: string; isPrimary?: boolean }
 type SnapshotAlias = { id?: string; alias: string }
 type SnapshotHomeLeague = { id?: string; homeLeague: string; sortOrder?: number }
 
 function readMergeBefore(before: Record<string, unknown> | null | undefined): {
   emails: SnapshotEmail[]
+  phones: SnapshotPhone[]
   aliases: SnapshotAlias[]
   homeLeagues: SnapshotHomeLeague[]
   firstName: string | null
 } {
   const emailsRaw = before?.emails
+  const phonesRaw = before?.phones
   const aliasesRaw = before?.aliases
   const homeLeaguesRaw = before?.homeLeagues
   const emails: SnapshotEmail[] = []
@@ -331,6 +368,18 @@ function readMergeBefore(before: Record<string, unknown> | null | undefined): {
       if (typeof email !== 'string' || !email.trim()) continue
       emails.push({
         email: normalizeEmail(email),
+        isPrimary: Boolean((item as { isPrimary?: unknown }).isPrimary),
+      })
+    }
+  }
+  const phones: SnapshotPhone[] = []
+  if (Array.isArray(phonesRaw)) {
+    for (const item of phonesRaw) {
+      if (!item || typeof item !== 'object') continue
+      const phoneE164 = (item as { phoneE164?: unknown }).phoneE164
+      if (typeof phoneE164 !== 'string' || !phoneE164.trim()) continue
+      phones.push({
+        phoneE164: phoneE164.trim(),
         isPrimary: Boolean((item as { isPrimary?: unknown }).isPrimary),
       })
     }
@@ -360,7 +409,7 @@ function readMergeBefore(before: Record<string, unknown> | null | undefined): {
   homeLeagues.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
   const firstName =
     typeof before?.firstName === 'string' ? before.firstName.trim() : null
-  return { emails, aliases, homeLeagues, firstName }
+  return { emails, phones, aliases, homeLeagues, firstName }
 }
 
 /**
@@ -406,6 +455,9 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
     }) ?? null
   const survivorOwnedBefore = readMergeBefore(survivorMergeEvent?.before ?? null)
   const survivorHadEmail = new Set(survivorOwnedBefore.emails.map((e) => e.email))
+  const survivorHadPhone = new Set(
+    survivorOwnedBefore.phones.map((p) => p.phoneE164)
+  )
   const survivorHadAlias = new Set(
     survivorOwnedBefore.aliases.map((a) => a.alias.toLowerCase())
   )
@@ -463,6 +515,45 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
       .update(playerEmails)
       .set({ isPrimary: true })
       .where(eq(playerEmails.id, emails[0].id))
+  }
+
+  // Restore phones that were moved from this player onto the survivor.
+  for (const phone of mergeBefore.phones) {
+    if (canDetectSurvivorOwned && survivorHadPhone.has(phone.phoneE164)) continue
+
+    const [existing] = await db
+      .select()
+      .from(playerPhones)
+      .where(eq(playerPhones.phoneE164, phone.phoneE164))
+      .limit(1)
+
+    if (!existing) {
+      await db.insert(playerPhones).values({
+        playerId,
+        phoneE164: phone.phoneE164,
+        isPrimary: Boolean(phone.isPrimary),
+      })
+      continue
+    }
+
+    if (existing.playerId === playerId) continue
+
+    if (existing.playerId === survivorId && canDetectSurvivorOwned) {
+      await db
+        .update(playerPhones)
+        .set({ playerId, isPrimary: Boolean(phone.isPrimary) })
+        .where(eq(playerPhones.id, existing.id))
+    }
+  }
+
+  for (const id of [playerId, survivorId]) {
+    const phones = await db.select().from(playerPhones).where(eq(playerPhones.playerId, id))
+    if (phones.length === 0) continue
+    if (phones.some((p) => p.isPrimary)) continue
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: true })
+      .where(eq(playerPhones.id, phones[0].id))
   }
 
   // Restore aliases that were moved (skip ones the survivor already had).

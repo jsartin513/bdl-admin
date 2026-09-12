@@ -1,10 +1,19 @@
 export const EVENT_TYPES = {
   tournament: 'Tournament',
+  league: 'League',
   open_gym: 'Open gym',
   other: 'Other',
 } as const
 
 export type EventType = keyof typeof EVENT_TYPES
+
+export const EVENT_FORMATS = {
+  byot: 'BYOT',
+  remix: 'Remix',
+  draft: 'Draft',
+} as const
+
+export type EventFormat = keyof typeof EVENT_FORMATS
 
 export const BALL_TYPES = {
   foam: 'Foam',
@@ -32,10 +41,15 @@ export type EventRecord = {
   name: string
   eventDate: string
   eventType: string
+  /** Canonical: byot | remix | draft | null (unset) */
+  eventFormat: string | null
   ballType: string
   gender: string
   notes: string | null
   pairingEnabled: boolean
+  teamNames: string[]
+  teamsLocked: boolean
+  teamsFinalizedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -46,6 +60,8 @@ export type EventListItem = {
   eventDate: string
   eventType: string
   eventTypeLabel: string
+  eventFormat: string | null
+  eventFormatLabel: string | null
   ballType: string
   ballTypeLabel: string
   gender: string
@@ -60,6 +76,11 @@ export type EventRegistrationHomeLeague = {
   logoUrl: string | null
 }
 
+export type EventRegistrationGroupMember = {
+  registrationId: string
+  nickname: string
+}
+
 export type EventRegistrationListItem = {
   id: string
   eventId: string
@@ -67,9 +88,14 @@ export type EventRegistrationListItem = {
   status: string
   draftGroup: number | null
   isCaptain: boolean
+  /** BYOT: signup team is locked; cannot move via draft board / bulk apply */
+  teamLocked: boolean
   pairId: string | null
+  /** For groups of exactly 2; prefer groupMembers for N-person groups */
   partnerRegistrationId: string | null
   partnerNickname: string | null
+  /** Other members of the same pairId group (excludes self) */
+  groupMembers: EventRegistrationGroupMember[]
   registeredAt: Date
   updatedAt: Date
   firstName: string
@@ -105,12 +131,40 @@ export type EventDraftSnapshotListItem = {
 }
 
 export function isValidEventType(value: unknown): value is EventType {
-  return value === 'tournament' || value === 'open_gym' || value === 'other'
+  return (
+    value === 'tournament' ||
+    value === 'league' ||
+    value === 'open_gym' ||
+    value === 'other'
+  )
 }
 
 export function eventTypeLabel(type: string | null | undefined): string {
   if (type && isValidEventType(type)) return EVENT_TYPES[type]
   return EVENT_TYPES.other
+}
+
+export function isValidEventFormat(value: unknown): value is EventFormat {
+  return value === 'byot' || value === 'remix' || value === 'draft'
+}
+
+/** Parse format from API input; empty/null clears. Undefined means omit. */
+export function parseEventFormat(
+  value: unknown
+): EventFormat | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  if (!isValidEventFormat(value)) {
+    throw new Error('Invalid eventFormat')
+  }
+  return value
+}
+
+export function eventFormatLabel(
+  format: string | null | undefined
+): string | null {
+  if (format && isValidEventFormat(format)) return EVENT_FORMATS[format]
+  return null
 }
 
 export function isValidBallType(value: unknown): value is BallType {

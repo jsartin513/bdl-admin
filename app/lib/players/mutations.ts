@@ -1,7 +1,7 @@
 import { and, asc, eq, max } from 'drizzle-orm'
 import { del, put } from '@vercel/blob'
 import { getDb } from '@/app/lib/db'
-import { playerAliases, playerEmails, playerHomeLeagues, players } from '@/app/db/schema'
+import { playerAliases, playerEmails, playerHomeLeagues, playerPhones, players } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
 import {
   bulkPatchHasCoreFields,
@@ -18,6 +18,11 @@ import {
   type SkillAreas,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
+import { normalizePhoneE164 } from '@/app/lib/contact/phone'
+import {
+  setEmailOptOut,
+  setMessagingOptIn,
+} from '@/app/lib/contact/audience'
 import { isValidHomeLeague } from '@/app/lib/players/home-league'
 import {
   getPlayerSnapshot,
@@ -395,6 +400,211 @@ export async function setPrimaryEmail(
     .update(playerEmails)
     .set({ isPrimary: true })
     .where(and(eq(playerEmails.id, emailId), eq(playerEmails.playerId, playerId)))
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+async function findPhoneOwner(phoneE164: string): Promise<string | null> {
+  const db = getDb()
+  const [row] = await db
+    .select({ playerId: playerPhones.playerId })
+    .from(playerPhones)
+    .where(eq(playerPhones.phoneE164, phoneE164))
+    .limit(1)
+  return row?.playerId ?? null
+}
+
+export async function addPlayerPhone(
+  playerId: string,
+  phoneRaw: string,
+  opts: { actor: string; makePrimary?: boolean }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const phoneE164 = normalizePhoneE164(phoneRaw)
+  if (!phoneE164) throw new Error('Invalid phone number')
+
+  const existing = await findPhoneOwner(phoneE164)
+  if (existing && existing !== playerId) {
+    throw new Error('Phone already belongs to another player')
+  }
+  if (before.phones.some((p) => p.phoneE164 === phoneE164)) {
+    throw new Error('Phone already on this player')
+  }
+
+  const db = getDb()
+  const makePrimary = opts.makePrimary ?? before.phones.length === 0
+  if (makePrimary) {
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: false })
+      .where(eq(playerPhones.playerId, playerId))
+  }
+
+  await db.insert(playerPhones).values({
+    playerId,
+    phoneE164,
+    isPrimary: makePrimary,
+  })
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function removePlayerPhone(
+  playerId: string,
+  phoneId: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .delete(playerPhones)
+    .where(and(eq(playerPhones.id, phoneId), eq(playerPhones.playerId, playerId)))
+
+  const remaining = await getPlayerSnapshot(playerId)
+  if (
+    remaining &&
+    remaining.phones.length > 0 &&
+    !remaining.phones.some((p) => p.isPrimary)
+  ) {
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: true })
+      .where(eq(playerPhones.id, remaining.phones[0].id))
+  }
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+export async function setPrimaryPhone(
+  playerId: string,
+  phoneId: string,
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  const db = getDb()
+  await db
+    .update(playerPhones)
+    .set({ isPrimary: false })
+    .where(eq(playerPhones.playerId, playerId))
+  await db
+    .update(playerPhones)
+    .set({ isPrimary: true })
+    .where(and(eq(playerPhones.id, phoneId), eq(playerPhones.playerId, playerId)))
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'admin',
+    actor: opts.actor,
+    changeType: 'update',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+  })
+  return after
+}
+
+/** Attach phone if missing; no-op if already on player. Throws if on another player. */
+export async function ensurePlayerPhone(
+  playerId: string,
+  phoneRaw: string,
+  opts: { actor: string; importBatchId?: string | null }
+) {
+  const phoneE164 = normalizePhoneE164(phoneRaw)
+  if (!phoneE164) return getPlayerSnapshot(playerId)
+
+  const owner = await findPhoneOwner(phoneE164)
+  if (owner === playerId) return getPlayerSnapshot(playerId)
+  if (owner) throw new Error(`Phone ${phoneE164} belongs to another player`)
+
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+
+  const db = getDb()
+  await db.insert(playerPhones).values({
+    playerId,
+    phoneE164,
+    isPrimary: before.phones.length === 0,
+  })
+
+  const after = await getPlayerSnapshot(playerId)
+  await writePlayerChange({
+    playerId,
+    source: 'import',
+    actor: opts.actor,
+    changeType: 'import',
+    before: snapshotToJson(before),
+    after: after ? snapshotToJson(after) : null,
+    importBatchId: opts.importBatchId,
+  })
+  return after
+}
+
+export async function updatePlayerMessagingPrefs(
+  playerId: string,
+  patch: {
+    emailOptOut?: boolean
+    smsOptIn?: boolean
+    whatsappOptIn?: boolean
+  },
+  opts: { actor: string }
+) {
+  const before = await getPlayerSnapshot(playerId)
+  if (!before) throw new Error('Player not found')
+  if (before.isMerged) throw new Error('Cannot edit a merged player')
+
+  if (patch.emailOptOut !== undefined) {
+    await setEmailOptOut({ playerId, optedOut: patch.emailOptOut })
+  }
+  if (patch.smsOptIn !== undefined) {
+    await setMessagingOptIn({
+      playerId,
+      channel: 'sms',
+      optedIn: patch.smsOptIn,
+    })
+  }
+  if (patch.whatsappOptIn !== undefined) {
+    await setMessagingOptIn({
+      playerId,
+      channel: 'whatsapp',
+      optedIn: patch.whatsappOptIn,
+    })
+  }
 
   const after = await getPlayerSnapshot(playerId)
   await writePlayerChange({

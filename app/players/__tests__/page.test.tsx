@@ -23,6 +23,7 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     genderGroupLabel: 'W/NB/O',
     photoUrl: null,
     primaryEmail: null,
+    primaryPhone: null,
     isMerged: false,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
@@ -53,8 +54,10 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
     emails: [],
+    phones: [],
     aliases: [],
     homeLeagues: [],
+    messagingPrefs: null,
     ...overrides,
   }
 }
@@ -445,7 +448,9 @@ describe('PlayersPage home leagues', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByText('Home leagues')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Fields' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home leagues' }))
+    expect(screen.getByRole('heading', { name: 'Home leagues' })).toBeInTheDocument()
 
     await userEvent.selectOptions(
       screen.getByDisplayValue('Select home league'),
@@ -548,6 +553,23 @@ describe('PlayersPage tournament filters and columns', () => {
       expect(
         urls.some((url) =>
           url.includes('eventId=11111111-1111-4111-8111-111111111111')
+        )
+      ).toBe(true)
+    })
+
+    const statusSelect = screen.getByLabelText(
+      'Filter by event registration status'
+    )
+    expect(statusSelect).toHaveValue('registered')
+    await userEvent.selectOptions(statusSelect, 'not_registered')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(
+        urls.some(
+          (url) =>
+            url.includes('eventId=11111111-1111-4111-8111-111111111111') &&
+            url.includes('eventMatch=not_registered')
         )
       ).toBe(true)
     })

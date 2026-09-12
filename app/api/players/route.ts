@@ -4,45 +4,17 @@ import {
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
 import { listPlayers } from '@/app/lib/players/queries'
+import { parseListPlayersSearchParams } from '@/app/lib/players/list-params'
 import { createPlayer } from '@/app/lib/players/mutations'
-import { isValidSkillLevel } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
-import { isValidHomeLeague } from '@/app/lib/players/home-league'
 
 export async function GET(request: NextRequest) {
   const session = getAdminSessionFromRequest(request)
   if (!session) return adminUnauthorizedResponse()
 
   try {
-    const { searchParams } = request.nextUrl
-    const q = searchParams.get('q') ?? undefined
-    const skillParam = searchParams.get('skill')
-    const homeLeagueParam = searchParams.get('homeLeague')
-    const eventIdParam = searchParams.get('eventId')
-    const includeMerged = searchParams.get('includeMerged') === '1'
-
-    let skill: number | 'unset' | null = null
-    if (skillParam === 'unset') skill = 'unset'
-    else if (skillParam) {
-      const n = Number(skillParam)
-      if (isValidSkillLevel(n)) skill = n
-    }
-
-    let homeLeague: string | 'unset' | null = null
-    if (homeLeagueParam === 'unset') homeLeague = 'unset'
-    else if (homeLeagueParam && isValidHomeLeague(homeLeagueParam)) {
-      homeLeague = homeLeagueParam
-    }
-
-    const eventId =
-      eventIdParam &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        eventIdParam
-      )
-        ? eventIdParam
-        : null
-
-    const players = await listPlayers({ q, skill, homeLeague, eventId, includeMerged })
+    const opts = parseListPlayersSearchParams(request.nextUrl.searchParams)
+    const players = await listPlayers(opts)
     return NextResponse.json({ players })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to list players'

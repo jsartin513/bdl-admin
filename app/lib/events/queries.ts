@@ -9,12 +9,14 @@ import {
 } from '@/app/db/schema'
 import {
   ballTypeLabel,
+  eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
   type EventListItem,
   type EventRecord,
   type EventRegistrationListItem,
 } from '@/app/lib/events/types'
+import { normalizeTeamNames } from '@/app/lib/events/dodgeballhub-export'
 import {
   resolveNickname,
   skillLevelLabel,
@@ -33,6 +35,7 @@ export async function listEvents(): Promise<EventListItem[]> {
       name: events.name,
       eventDate: events.eventDate,
       eventType: events.eventType,
+      eventFormat: events.eventFormat,
       ballType: events.ballType,
       gender: events.gender,
       notes: events.notes,
@@ -49,6 +52,8 @@ export async function listEvents(): Promise<EventListItem[]> {
     eventDate: r.eventDate,
     eventType: r.eventType,
     eventTypeLabel: eventTypeLabel(r.eventType),
+    eventFormat: r.eventFormat,
+    eventFormatLabel: eventFormatLabel(r.eventFormat),
     ballType: r.ballType,
     ballTypeLabel: ballTypeLabel(r.ballType),
     gender: r.gender,
@@ -61,7 +66,11 @@ export async function listEvents(): Promise<EventListItem[]> {
 export async function getEvent(id: string): Promise<EventRecord | null> {
   const db = getDb()
   const [row] = await db.select().from(events).where(eq(events.id, id)).limit(1)
-  return row ?? null
+  if (!row) return null
+  return {
+    ...row,
+    teamNames: normalizeTeamNames(row.teamNames),
+  }
 }
 
 export async function listEventRegistrations(
@@ -76,6 +85,7 @@ export async function listEventRegistrations(
       status: eventRegistrations.status,
       draftGroup: eventRegistrations.draftGroup,
       isCaptain: eventRegistrations.isCaptain,
+      teamLocked: eventRegistrations.teamLocked,
       pairId: eventRegistrations.pairId,
       registeredAt: eventRegistrations.registeredAt,
       updatedAt: eventRegistrations.updatedAt,
@@ -165,6 +175,10 @@ export async function listEventRegistrations(
 
   return rows.map((r) => {
     const partnerRegistrationId = partnerByRegistrationId.get(r.id) ?? null
+    const groupMateIds =
+      r.pairId != null
+        ? (byPairId.get(r.pairId) ?? []).filter((id) => id !== r.id)
+        : []
     return {
       id: r.id,
       eventId: r.eventId,
@@ -172,11 +186,16 @@ export async function listEventRegistrations(
       status: r.status,
       draftGroup: r.draftGroup,
       isCaptain: r.isCaptain,
+      teamLocked: r.teamLocked,
       pairId: r.pairId,
       partnerRegistrationId,
       partnerNickname: partnerRegistrationId
         ? (nicknameById.get(partnerRegistrationId) ?? null)
         : null,
+      groupMembers: groupMateIds.map((registrationId) => ({
+        registrationId,
+        nickname: nicknameById.get(registrationId) ?? '',
+      })),
       registeredAt: r.registeredAt,
       updatedAt: r.updatedAt,
       firstName: r.firstName,

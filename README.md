@@ -33,6 +33,8 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The admin app deploys with the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) (Git: `preview` → `main`).
+
+**Video Tools** also needs a separate Fly.io worker (`bdl-video-merge`) for ffmpeg merges — that is not part of the Vercel deploy. See [`.cursor/video-tools-runbook.md`](.cursor/video-tools-runbook.md) and [`workers/video-merge/README.md`](workers/video-merge/README.md).
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
