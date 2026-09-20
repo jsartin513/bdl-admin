@@ -26,6 +26,9 @@ jobs:
       - name: Run linter
         run: npm run lint
 
+      - name: Check Drizzle migration journal
+        run: npm run db:check-migrations
+
       - name: Run tests
         run: npm run test:run
 
