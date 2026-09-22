@@ -2,7 +2,9 @@
   "name": "bdl-admin",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
+    "install:deps": "bash scripts/with-bdl-git-auth.sh",
     "dev": "next dev --turbopack",
     "build": "npm run db:migrate:deploy && next build",
     "start": "next start",
@@ -23,6 +25,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@bdl/board-apps": "github:jsartin513/bdl-packages#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
