@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
-import { getBoardAppLinks, type BoardAppId } from '@/app/lib/board-apps'
+import { getBoardAppLinks, type BoardAppId } from '@bdl/board-apps'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300'
