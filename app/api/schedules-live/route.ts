@@ -1,4 +1,6 @@
+import { errorMessage } from '@bdl/board-apps'
 import { NextRequest, NextResponse } from 'next/server'
+import { log } from '@/app/lib/app-log'
 
 const API_KEY = process.env.GOOGLE_DRIVE_API_KEY
 
@@ -167,7 +169,7 @@ export async function GET(request: NextRequest) {
       csvData,
     })
   } catch (err) {
-    console.error('schedules-live error:', err)
+    log.error('api.failed', { message: errorMessage(err), route: 'schedules-live' })
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to fetch schedule' },
       { status: 500 }

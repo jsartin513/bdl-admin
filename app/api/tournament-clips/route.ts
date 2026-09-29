@@ -1,5 +1,7 @@
+import { errorMessage } from '@bdl/board-apps';
 import { del, list, put } from '@vercel/blob';
 import { NextRequest, NextResponse } from 'next/server';
+import { log } from '@/app/lib/app-log';
 
 const PREFIX = 'tournament-audio/';
 
@@ -83,7 +85,7 @@ export async function GET() {
     });
     return NextResponse.json({ clips });
   } catch (err) {
-    console.error('tournament-clips GET:', err);
+    log.error('api.failed', { message: errorMessage(err), route: 'tournament-clips' });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to list clips' },
       { status: 500 }
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
       slug,
     });
   } catch (err) {
-    console.error('tournament-clips POST:', err);
+    log.error('api.failed', { message: errorMessage(err), route: 'tournament-clips' });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to upload clip' },
       { status: 500 }
@@ -162,7 +164,7 @@ export async function DELETE(request: NextRequest) {
       message.includes('tournament') || message.includes('pathname') || message.includes('invalid')
         ? 400
         : 500;
-    console.error('tournament-clips DELETE:', err);
+    log.error('api.failed', { message: errorMessage(err), route: 'tournament-clips' });
     return NextResponse.json({ error: message }, { status });
   }
 }

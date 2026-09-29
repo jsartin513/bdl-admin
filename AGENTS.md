@@ -72,3 +72,7 @@ self-contained feature that works with zero secrets is the **`/tournament`
 schedule + audio-cue generator** (reads the bundled `throwdown_5_schedule.csv`).
 
 See also [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
+
+### Logging
+
+API routes log structured JSON via `@bdl/board-apps` (`createAppLog('admin')` or [`app/lib/app-log.ts`](app/lib/app-log.ts)). Team-wide Vercel → Axiom drain and alert setup: [bdl-packages OBSERVABILITY.md](https://github.com/jsartin513/bdl-packages/blob/main/OBSERVABILITY.md).

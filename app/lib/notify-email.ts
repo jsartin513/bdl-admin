@@ -1,3 +1,5 @@
+import { log } from '@/app/lib/app-log'
+
 /**
  * Optional outbound email for admin job completion.
  * Sends only when RESEND_API_KEY and NOTIFY_FROM_EMAIL are set.
@@ -47,11 +49,10 @@ export async function sendNotifyEmail(
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error(
-        '[notify-email] Resend error',
-        res.status,
-        body.slice(0, 500)
-      )
+      log.error('email.failed', {
+        message: `resend_http_${res.status}`,
+        status: res.status,
+      })
       return {
         sent: false,
         error: `Resend returned ${res.status}`,
@@ -61,7 +62,7 @@ export async function sendNotifyEmail(
     return { sent: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'send failed'
-    console.error('[notify-email]', message)
+    log.error('email.failed', { message })
     return { sent: false, error: message }
   }
 }
