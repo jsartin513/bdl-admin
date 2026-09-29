@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  ADMIN_SESSION_COOKIE,
+  getAdminSessionCookieName,
   readAdminSessionEdge,
 } from '@/app/lib/admin-session-edge'
 
@@ -26,7 +26,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value
+  const cookieName = getAdminSessionCookieName(request.nextUrl.hostname)
+  const token = request.cookies.get(cookieName)?.value
   const session = await readAdminSessionEdge(token)
 
   if (session) {
