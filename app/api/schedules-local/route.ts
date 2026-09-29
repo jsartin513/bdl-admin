@@ -1,4 +1,6 @@
+import { errorMessage } from '@bdl/board-apps'
 import { NextRequest, NextResponse } from 'next/server'
+import { log } from '@/app/lib/app-log'
 import fs from 'node:fs'
 import path from 'node:path'
 import * as XLSX from 'xlsx'
@@ -184,7 +186,7 @@ export async function GET(request: NextRequest) {
       csvData: weekSheetToCsv(workbook.Sheets[tabName], week),
     })
   } catch (err) {
-    console.error('schedules-local error:', err)
+    log.error('api.failed', { message: errorMessage(err), route: 'schedules-local' })
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to read local schedule' },
       { status: 500 }

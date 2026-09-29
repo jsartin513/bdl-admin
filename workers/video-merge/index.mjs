@@ -23,6 +23,21 @@ import { spawn } from 'node:child_process'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 
+function logAdminEvent(level, event, fields) {
+  const payload = {
+    level,
+    app: 'admin',
+    env: process.env.VERCEL_ENV || 'unknown',
+    event,
+    message: fields.message || '',
+    ...fields,
+  }
+  const line = JSON.stringify(payload)
+  if (level === 'info') console.info(line)
+  else if (level === 'warn') console.warn(line)
+  else console.error(line)
+}
+
 const API_BASE = (process.env.VIDEO_TOOLS_API_BASE || '').replace(/\/$/, '')
 const SECRET = process.env.VIDEO_WORKER_SECRET || ''
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || ''
@@ -243,7 +258,7 @@ async function tick() {
     await processJob(job)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error(`[job ${job.set.id}] failed:`, message)
+    logAdminEvent('error', 'job.failed', { message, jobId: String(job.set.id) })
     try {
       await api('/api/video-tools/worker/fail', {
         method: 'POST',
@@ -254,7 +269,10 @@ async function tick() {
         }),
       })
     } catch (failErr) {
-      console.error('Failed to report failure:', failErr)
+      logAdminEvent('error', 'api.failed', {
+        message: failErr instanceof Error ? failErr.message : String(failErr),
+        route: 'video-tools-worker-fail',
+      })
     }
   }
   return true

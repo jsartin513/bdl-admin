@@ -1,4 +1,6 @@
+import { errorMessage } from '@bdl/board-apps'
 import { NextRequest, NextResponse } from 'next/server'
+import { log } from '@/app/lib/app-log'
 import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
     const batches = await listSavedImportBatches()
     return NextResponse.json({ batches })
   } catch (err) {
-    console.error('players import list failed', err)
+    log.error('api.failed', { message: errorMessage(err), route: 'players-import' })
     const message = err instanceof Error ? err.message : 'Failed to list imports'
     return NextResponse.json({ error: message }, { status: 500 })
   }
@@ -158,7 +160,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ dryRun: false, ...result })
   } catch (err) {
-    console.error('players import failed', err)
+    log.error('api.failed', { message: errorMessage(err), route: 'players-import' })
     const message = err instanceof Error ? err.message : 'Import failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
