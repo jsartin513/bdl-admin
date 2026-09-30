@@ -51,6 +51,38 @@ body {
   color-scheme: light dark;
 }
 
+@media print {
+  body:has(.team-schedule-print) .admin-chrome {
+    display: none !important;
+  }
+
+  body:has(.team-schedule-print) {
+    background: #fff !important;
+    color: #111827 !important;
+  }
+
+  .team-schedule-print-toolbar,
+  .team-schedule-source {
+    display: none !important;
+  }
+
+  .team-schedule-print {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .team-schedule-sheet {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .team-schedule-sheet:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}
+
 .dark .team-maker {
     --tm-bg: #111827;
     --tm-fg: #f9fafb;

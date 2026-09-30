@@ -290,7 +290,7 @@ export default function TopNav() {
   return (
     <nav
       aria-label="Main"
-      className="bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
+      className="admin-chrome bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
     >
       <div className="flex flex-wrap space-x-4 items-center">
         <NavDropdown label="Leagues">
