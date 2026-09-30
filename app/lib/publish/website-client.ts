@@ -1,4 +1,5 @@
 import type { PublishPostRecord } from '@/app/lib/publish/types'
+import { slugify } from '@/app/lib/publish/slug'
 
 export type WebsitePublishPayload = {
   adminPostId: string
@@ -26,6 +27,9 @@ export type WebsitePublishPayload = {
 
 export function buildWebsitePublishPayload(post: PublishPostRecord): WebsitePublishPayload {
   const payload: WebsitePublishPayload = { adminPostId: post.id }
+  const plannedNewsSlug =
+    post.websiteNewsSlug ??
+    (post.includeNewsPost ? slugify(post.title.trim()) || undefined : undefined)
 
   if (post.includeOpenGymFlyer && post.mediaType === 'image' && post.mediaUrl) {
     payload.openGymFlyerUrl = post.mediaUrl
@@ -45,7 +49,7 @@ export function buildWebsitePublishPayload(post: PublishPostRecord): WebsitePubl
         : post.mediaType === 'video' && post.mediaUrl
           ? { imageUrl: null, body: `${post.caption.trim()}\n\nVideo: ${post.mediaUrl}`.trim() }
           : {}),
-      ...(post.websiteNewsSlug ? { slug: post.websiteNewsSlug } : {}),
+      ...(plannedNewsSlug ? { slug: plannedNewsSlug } : {}),
     }
   }
 
@@ -54,7 +58,12 @@ export function buildWebsitePublishPayload(post: PublishPostRecord): WebsitePubl
       post.siteAlertEndsAt ??
       new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     const message = (post.caption.trim() || post.title.trim()).slice(0, 400)
-    const linkUrl = post.websiteNewsSlug ? `/news/${post.websiteNewsSlug}` : '/open-gym'
+    const linkUrl =
+      plannedNewsSlug && post.includeNewsPost
+        ? `/news/${plannedNewsSlug}`
+        : post.kind === 'open_gym_flyer'
+          ? '/open-gym'
+          : '/news'
     payload.siteAlert = {
       websiteSiteAlertId: post.websiteSiteAlertId,
       enabled: true,
