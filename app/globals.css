@@ -73,6 +73,8 @@ body {
   }
 
   .team-schedule-sheet {
+    break-inside: avoid;
+    page-break-inside: avoid;
     page-break-after: always;
     break-after: page;
   }
@@ -80,6 +82,18 @@ body {
   .team-schedule-sheet:last-child {
     page-break-after: auto;
     break-after: auto;
+  }
+
+  .team-schedule-weeks {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 0.22in;
+    row-gap: 0.1in;
+  }
+
+  .team-schedule-week {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

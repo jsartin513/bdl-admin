@@ -34,6 +34,11 @@ type Props = {
 export function TeamSchedulePrintView({ name, filename, backHref, schedules, weeks }: Props) {
   return (
     <div>
+      <style>{`
+        @media print {
+          @page { size: letter portrait; margin: 0.4in; }
+        }
+      `}</style>
       <div className="team-schedule-print-toolbar mb-6 flex flex-wrap items-center gap-3">
         <Link href={backHref} className="text-sm font-medium text-blue-700 underline">
           ← Back to schedules
@@ -59,17 +64,23 @@ export function TeamSchedulePrintView({ name, filename, backHref, schedules, wee
               className="team-schedule-sheet rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200 print:rounded-none print:p-0 print:shadow-none print:ring-0"
               aria-label={`Schedule for ${teamSchedule.teamName}`}
             >
-              <header className="border-b border-gray-200 pb-4">
-                <p className="text-sm font-medium uppercase tracking-wide text-gray-500">{name}</p>
-                <h1 className="mt-1 text-2xl font-bold text-gray-900">{teamSchedule.teamName}</h1>
-                <p className="mt-1 text-sm text-gray-600">Season schedule</p>
+              <header className="border-b border-gray-200 pb-4 print:pb-1">
+                <p className="text-sm font-medium uppercase tracking-wide text-gray-500 print:text-[9pt] print:leading-tight print:tracking-normal">
+                  {name}
+                </p>
+                <h1 className="mt-1 text-2xl font-bold text-gray-900 print:mt-0 print:text-[16pt] print:leading-tight">
+                  {teamSchedule.teamName}
+                </h1>
+                <p className="mt-1 text-sm text-gray-600 print:hidden">Season schedule</p>
               </header>
 
-              <div className="mt-6 space-y-5">
+              <div className="team-schedule-weeks mt-6 space-y-5 print:mt-2 print:space-y-0">
                 {teamWeeks.map(({ weekNumber, slots }) => (
-                  <div key={weekNumber}>
-                    <h2 className="text-lg font-semibold text-gray-900">Week {weekNumber}</h2>
-                    <ul className="mt-2 space-y-1 text-sm text-gray-900">
+                  <div key={weekNumber} className="team-schedule-week">
+                    <h2 className="text-lg font-semibold text-gray-900 print:text-[10pt] print:leading-tight">
+                      Week {weekNumber}
+                    </h2>
+                    <ul className="mt-2 space-y-1 text-sm text-gray-900 print:mt-0.5 print:space-y-0 print:text-[8pt] print:leading-tight">
                       {slots.map((slot) => (
                         <li key={`${weekNumber}-${slot.gameNumber}`} className="tabular-nums">
                           {slot.description}
