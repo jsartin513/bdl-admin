@@ -30,7 +30,7 @@ export default function BoardAppsMenu({
   currentApp,
   className = '',
   linkClassName = 'block px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 focus-visible:bg-gray-700 focus-visible:outline-none',
-  menuClassName = 'absolute right-0 mt-1 w-48 rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-gray-600 z-50',
+  menuClassName = 'absolute right-0 mt-1 w-72 rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-gray-600 z-50',
   buttonClassName = 'hover:underline text-blue-100',
 }: BoardAppsMenuProps) {
   const [open, setOpen] = useState(false)
@@ -90,9 +90,15 @@ export default function BoardAppsMenu({
               className={linkClassName}
               onClick={() => setOpen(false)}
             >
-              {app.label}
+              <span className="font-medium">{app.label}</span>
+              <span className="mt-0.5 block text-xs font-normal text-gray-400">{app.description}</span>
             </a>
           ))}
+          <div className="mt-1 border-t border-gray-600 pt-1">
+            <a href="/help" className={linkClassName} onClick={() => setOpen(false)}>
+              Help
+            </a>
+          </div>
         </div>
       ) : null}
     </div>
