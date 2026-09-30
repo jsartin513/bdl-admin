@@ -332,6 +332,12 @@ export default function TopNav() {
           Video Tools
         </Link>
         <Link
+          href={withDevMode('/publish', devMode)}
+          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          Publish
+        </Link>
+        <Link
           href={withDevMode('/non-bdl-events', devMode)}
           className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >

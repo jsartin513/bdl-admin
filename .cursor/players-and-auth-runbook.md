@@ -28,6 +28,11 @@ TWILIO_WA_TEMPLATE_SCHEDULE_CHANGE=HX…
 TWILIO_WA_TEMPLATE_ANNOUNCEMENT=HX…
 # CONTACT_DRY_RUN=1                    # log sends without calling providers
 # TWILIO_SKIP_SIGNATURE_VALIDATE=1     # local webhook testing only
+
+# Cross-post composer → public website (same PUBLISH_API_SECRET on bdl-admin + bdl-website)
+# PUBLISH_API_SECRET=
+# WEBSITE_PUBLISH_URL=https://www.bostondodgeballleague.com/api/internal/publish
+# PUBLIC_WEBSITE_URL=https://www.bostondodgeballleague.com
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
