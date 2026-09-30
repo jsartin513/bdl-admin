@@ -1,28 +1,49 @@
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { NextRequest, NextResponse } from 'next/server'
-import { put } from '@vercel/blob'
 import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
 
+const PUBLISH_PREFIX = 'publish/'
 const MAX_BYTES = 100 * 1024 * 1024
 
-export async function POST(request: NextRequest) {
-  const session = getAdminSessionFromRequest(request)
-  if (!session) return adminUnauthorizedResponse()
+/**
+ * Client-direct Blob upload (same pattern as Video Tools). Avoids the 4.5MB
+ * serverless request body limit for flyers and short clips.
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const body = (await request.json()) as HandleUploadBody
 
-  const form = await request.formData()
-  const file = form.get('file')
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'Missing file' }, { status: 400 })
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname) => {
+        const session = getAdminSessionFromRequest(request)
+        if (!session) throw new Error('Unauthorized')
+        if (!pathname.startsWith(PUBLISH_PREFIX)) {
+          throw new Error('Invalid upload pathname')
+        }
+        return {
+          allowedContentTypes: [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/gif',
+            'video/mp4',
+            'video/quicktime',
+            'application/octet-stream',
+          ],
+          maximumSizeInBytes: MAX_BYTES,
+          addRandomSuffix: false,
+        }
+      },
+    })
+    return NextResponse.json(jsonResponse)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Upload failed'
+    if (message === 'Unauthorized') return adminUnauthorizedResponse()
+    return NextResponse.json({ error: message }, { status: 400 })
   }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: 'File must be 100MB or smaller' }, { status: 400 })
-  }
-
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const pathname = `publish/${Date.now()}-${safeName}`
-  const blob = await put(pathname, file, { access: 'public' })
-  const mediaType = file.type.startsWith('video/') ? 'video' : 'image'
-  return NextResponse.json({ url: blob.url, mediaType })
 }

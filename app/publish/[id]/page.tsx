@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import { upload } from '@vercel/blob/client'
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
@@ -198,17 +199,20 @@ function PublishDetailContent() {
     setUploading(true)
     setError(null)
     try {
-      const form = new FormData()
-      form.set('file', file)
-      const res = await fetch('/api/publish/upload', { method: 'POST', body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Upload failed')
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const pathname = `publish/${Date.now()}-${safeName}`
+      const blob = await upload(pathname, file, {
+        access: 'public',
+        handleUploadUrl: '/api/publish/upload',
+        multipart: file.size > 4.5 * 1024 * 1024,
+      })
+      const mediaType = file.type.startsWith('video/') ? 'video' : 'image'
       setPost((prev) =>
         prev
           ? {
               ...prev,
-              mediaUrl: data.url,
-              mediaType: data.mediaType,
+              mediaUrl: blob.url,
+              mediaType,
             }
           : prev
       )
