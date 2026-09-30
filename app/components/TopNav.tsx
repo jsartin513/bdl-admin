@@ -290,7 +290,7 @@ export default function TopNav() {
   return (
     <nav
       aria-label="Main"
-      className="bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
+      className="admin-chrome bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
     >
       <div className="flex flex-wrap space-x-4 items-center">
         <NavDropdown label="Leagues">
@@ -330,6 +330,12 @@ export default function TopNav() {
           className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           Video Tools
+        </Link>
+        <Link
+          href={withDevMode('/publish', devMode)}
+          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          Publish
         </Link>
         <Link
           href={withDevMode('/non-bdl-events', devMode)}
