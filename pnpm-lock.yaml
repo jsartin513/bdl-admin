@@ -12,8 +12,8 @@ importers:
         specifier: github:jsartin513/bdl-packages#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth
         version: git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))
       '@bdl/board-apps':
-        specifier: github:jsartin513/bdl-packages#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps
-        version: git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps
+        specifier: github:jsartin513/bdl-packages#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps
+        version: git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -220,19 +220,14 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-<<<<<<< Updated upstream
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps':
-    resolution: {commit: 56ef395a53c3622d42a56760d6852ee9df0f739f, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
-=======
   '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth':
     resolution: {commit: 5f923c59421d7b8c5b8a23caeaab46de9d0184c5, path: admin-auth, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
     version: 0.2.0
     peerDependencies:
       next: '>=14'
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#9b7d7e659bb04aa392171016ac7bc31d84562916&path:board-apps':
-    resolution: {commit: 9b7d7e659bb04aa392171016ac7bc31d84562916, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
->>>>>>> Stashed changes
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps':
+    resolution: {commit: 392947dba7e3f517e383f83705c0a535cd7c060f, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
     version: 0.1.0
 
   '@csstools/color-helpers@5.1.0':
@@ -3690,15 +3685,11 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-<<<<<<< Updated upstream
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps': {}
-=======
   '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))':
     dependencies:
       next: 15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#9b7d7e659bb04aa392171016ac7bc31d84562916&path:board-apps': {}
->>>>>>> Stashed changes
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps': {}
 
   '@csstools/color-helpers@5.1.0': {}
 
