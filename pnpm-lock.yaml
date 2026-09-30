@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@bdl/board-apps':
-        specifier: github:jsartin513/bdl-packages#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps
-        version: git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps
+        specifier: github:jsartin513/bdl-packages#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps
+        version: git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -217,8 +217,8 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps':
-    resolution: {commit: 56ef395a53c3622d42a56760d6852ee9df0f739f, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps':
+    resolution: {commit: 392947dba7e3f517e383f83705c0a535cd7c060f, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
     version: 0.1.0
 
   '@csstools/color-helpers@5.1.0':
@@ -3676,7 +3676,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#56ef395a53c3622d42a56760d6852ee9df0f739f&path:board-apps': {}
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#392947dba7e3f517e383f83705c0a535cd7c060f&path:board-apps': {}
 
   '@csstools/color-helpers@5.1.0': {}
 
