@@ -31,7 +31,21 @@ CONTACT_EMAIL_FROM="BDL Events <events@bostondodgeballleague.com>"
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
 
-On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Preview hosts and localhost stay host-only.
+## Board admin SSO
+
+Cross-app login on `*.bostondodgeballleague.com` uses signed cookies from `@bdl/admin-auth`:
+
+| Environment | Cookie name | Domain | Secret |
+|-------------|-------------|--------|--------|
+| Production | `admin_session` | `.bostondodgeballleague.com` | Production `ADMIN_SESSION_SECRET` (same on all prod apps) |
+| Stable preview | `admin_session_preview` | `.bostondodgeballleague.com` | Preview `ADMIN_SESSION_SECRET` (same on all preview apps; **different** from Production) |
+| Local / PR `*.vercel.app` | `admin_session` | host-only | local or preview env as configured |
+
+Preview and production both use the parent domain, but **different cookie names** so logging into preview does not grant production (and preview logout does not clear production sessions). After one Google sign-in on `admin-preview`, open Merch, Open Gym, Concessions, and Site Builder on their stable preview hosts without signing in again.
+
+Package pin: `@bdl/admin-auth` from [`bdl-packages`](https://github.com/jsartin513/bdl-packages) (`admin-auth/AGENTS.md`).
+
+On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, Open Gym, Concessions, and Site Builder share one login.
 
 | Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
 |-------------|------|------------|------------------------|

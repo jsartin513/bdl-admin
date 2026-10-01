@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@bdl/admin-auth':
+        specifier: github:jsartin513/bdl-packages#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth
+        version: git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))
       '@bdl/board-apps':
         specifier: github:jsartin513/bdl-packages#f1a1b611c8705c97991ccc4c6933a0fb9ae854c6&path:board-apps
         version: git+https://github.com/jsartin513/bdl-packages.git#f1a1b611c8705c97991ccc4c6933a0fb9ae854c6&path:board-apps
@@ -216,6 +219,12 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth':
+    resolution: {commit: 5f923c59421d7b8c5b8a23caeaab46de9d0184c5, path: admin-auth, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
+    version: 0.2.0
+    peerDependencies:
+      next: '>=14'
 
   '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#f1a1b611c8705c97991ccc4c6933a0fb9ae854c6&path:board-apps':
     resolution: {commit: f1a1b611c8705c97991ccc4c6933a0fb9ae854c6, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
@@ -3675,6 +3684,10 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))':
+    dependencies:
+      next: 15.2.8(@babel/core@7.29.7)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
   '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#f1a1b611c8705c97991ccc4c6933a0fb9ae854c6&path:board-apps': {}
 
