@@ -133,6 +133,15 @@ export async function updateEvent(
     teamsLocked?: boolean
     /** Finalize: set teamsFinalizedAt (if null) and lock teams. */
     finalizeTeams?: boolean
+    publishedToPlayerApp?: boolean
+    publicDescription?: string | null
+    location?: string | null
+    sessionTimeLabel?: string | null
+    priceCents?: number | null
+    capacity?: number | null
+    registrationOpensAt?: Date | null
+    registrationClosesAt?: Date | null
+    eventEndDate?: string | null
   }
 ): Promise<EventRecord> {
   const db = getDb()
@@ -155,6 +164,15 @@ export async function updateEvent(
     teamNames?: string[]
     teamsLocked?: boolean
     teamsFinalizedAt?: Date
+    publishedToPlayerApp?: boolean
+    publicDescription?: string | null
+    location?: string | null
+    sessionTimeLabel?: string | null
+    priceCents?: number | null
+    capacity?: number | null
+    registrationOpensAt?: Date | null
+    registrationClosesAt?: Date | null
+    eventEndDate?: string | null
     updatedAt: Date
   } = { updatedAt: new Date() }
 
@@ -248,6 +266,51 @@ export async function updateEvent(
       throw new Error('Finalize teams before locking')
     }
     updates.teamsLocked = patch.teamsLocked
+  }
+
+  if (patch.publishedToPlayerApp !== undefined) {
+    updates.publishedToPlayerApp = Boolean(patch.publishedToPlayerApp)
+  }
+  if (patch.publicDescription !== undefined) {
+    updates.publicDescription =
+      patch.publicDescription?.trim() ? patch.publicDescription.trim() : null
+  }
+  if (patch.location !== undefined) {
+    updates.location = patch.location?.trim() ? patch.location.trim() : null
+  }
+  if (patch.sessionTimeLabel !== undefined) {
+    updates.sessionTimeLabel =
+      patch.sessionTimeLabel?.trim() ? patch.sessionTimeLabel.trim() : null
+  }
+  if (patch.priceCents !== undefined) {
+    if (
+      patch.priceCents != null &&
+      (!Number.isInteger(patch.priceCents) || patch.priceCents < 0)
+    ) {
+      throw new Error('priceCents must be a non-negative integer or null')
+    }
+    updates.priceCents = patch.priceCents
+  }
+  if (patch.capacity !== undefined) {
+    if (
+      patch.capacity != null &&
+      (!Number.isInteger(patch.capacity) || patch.capacity < 1)
+    ) {
+      throw new Error('capacity must be a positive integer or null')
+    }
+    updates.capacity = patch.capacity
+  }
+  if (patch.registrationOpensAt !== undefined) {
+    updates.registrationOpensAt = patch.registrationOpensAt
+  }
+  if (patch.registrationClosesAt !== undefined) {
+    updates.registrationClosesAt = patch.registrationClosesAt
+  }
+  if (patch.eventEndDate !== undefined) {
+    updates.eventEndDate =
+      patch.eventEndDate == null || patch.eventEndDate === ''
+        ? null
+        : parseEventDate(patch.eventEndDate)
   }
 
   const [updated] = await db

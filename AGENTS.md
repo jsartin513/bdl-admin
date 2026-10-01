@@ -24,6 +24,7 @@ This repo uses a **preview-first** deploy flow. Production merges go `preview` �
 
 - [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md)
 - [.github/pull_request_template.md](.github/pull_request_template.md)
+- CI / Actions quota: skill **`bdl-pr-checks`** (`~/.cursor/skills/bdl-pr-checks/SKILL.md`)
 
 The startup update script already runs `npm install`. Node 20+ is required
 (`package.json` `engines`); the VM's Node 22 works fine.
@@ -66,10 +67,23 @@ target any Postgres, but that only covers schema, not the running app.
   `/create-league` (they fetch Drive template/schedule files).
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob; enables tournament audio clips
   (`/tournament` steps 2–3) and `/video-tools` uploads.
+- `GITHUB_FEATURE_REQUEST_TOKEN` — optional; in-app **Request a feature** creates
+  GitHub issues. Without it, the form falls back to a prefilled
+  `issues/new` URL.
 
 Without these, the pages still render but their data fetches fail. The fully
 self-contained feature that works with zero secrets is the **`/tournament`
 schedule + audio-cue generator** (reads the bundled `throwdown_5_schedule.csv`).
+
+### Board awareness (maturity + changelog)
+
+- Half-baked UI must be registered in [`app/lib/feature-maturity.ts`](app/lib/feature-maturity.ts)
+  as `devOnly` (hidden unless Dev mode / `?dev=1`) or `incomplete` (visible with
+  an Incomplete badge + page banner). Do not ship unmarked WIP in the main nav.
+- User-facing admin changes should add a dated entry to
+  [`app/changelog/entries.ts`](app/changelog/entries.ts) (shown on `/whats-new`).
+- When linking the player app from admin UI, register that surface as
+  `incomplete` until kickoff is finished.
 
 See also [docs/setup-and-capabilities.md](docs/setup-and-capabilities.md), [docs/integrations-setup.md](docs/integrations-setup.md) (Twilio and other services), [docs/scheduled-comms-design.md](docs/scheduled-comms-design.md) (scheduled sends), and [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
 
