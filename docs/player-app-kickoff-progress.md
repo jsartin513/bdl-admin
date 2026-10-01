@@ -4,35 +4,39 @@ Cross-repo checklist. Detail lives in the linked manuals.
 
 | Manual | Repo | Path |
 |--------|------|------|
-| Player manual steps | `bdl-player` | [`docs/KICKOFF_MANUAL.md`](https://github.com/jsartin513/bdl-player/blob/main/docs/KICKOFF_MANUAL.md) |
+| Player manual steps | `bdl-player` | [`docs/KICKOFF_MANUAL.md`](https://github.com/jsartin513/bdl-player/blob/preview/docs/KICKOFF_MANUAL.md) |
 | Admin integration plan | `bdl-admin` | [`docs/player-app-kickoff.md`](./player-app-kickoff.md) |
 
-## GitHub (2026-09-30)
+## GitHub
 
 | Item | Status | URL |
 |------|--------|-----|
-| `jsartin513/bdl-player` | **Live** (`main` + `preview`) | https://github.com/jsartin513/bdl-player |
-| `bdl-packages` `@bdl/player-public-contract` | **Merged** (`4592757…` on `main`) | https://github.com/jsartin513/bdl-packages/pull/6 |
-| `bdl-admin` player app Stage 0 | **PR open** (sensitive scaffold + public leagues) | https://github.com/jsartin513/bdl-admin/pull/166 |
+| `jsartin513/bdl-player` | **Live** (`preview` integration) | https://github.com/jsartin513/bdl-player |
+| `@bdl/player-public-contract` | **Merged** on `bdl-packages` `main` | https://github.com/jsartin513/bdl-packages/pull/6 |
+| Admin Stage 0 | **Merged** | https://github.com/jsartin513/bdl-admin/pull/166 |
+| Admin Stage 1 sync | **Merged** | https://github.com/jsartin513/bdl-admin/pull/168 |
+| Admin Stage 2 public products | **Merged** | https://github.com/jsartin513/bdl-admin/pull/167 |
+| Player Stage 1 prep | **Merged** to `preview` | https://github.com/jsartin513/bdl-player/pull/2 |
 
 ## Vercel
 
 | Project | Status |
 |---------|--------|
-| `bdl-admin` | Exists (`prj_fM8T2mZYANHuMncSgFOOE4s4Da0s`) — preview: https://admin-preview.bostondodgeballleague.com |
-| `bdl-player` | **Not created** |
+| `bdl-admin` | Preview: https://admin-preview.bostondodgeballleague.com — `PLAYER_APP_BASE_URL` set (non-secret) |
+| `bdl-player` | **Not created** — needs import + DNS |
 
-Player non-secret env (preview examples): see `KICKOFF_MANUAL.md` — `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_LEAGUE_CATALOG_URL` → `https://admin-preview.bostondodgeballleague.com/api/public/leagues` (expect **200** after [#166](https://github.com/jsartin513/bdl-admin/pull/166) merges; **401** on preview today).
+Public catalog: `GET /api/public/leagues` returns **v2** `{ version, leagues, products }` on preview after deploy (migration **0028** required for `products` from DB).
 
-Admin follow-up: `PLAYER_APP_BASE_URL` = `https://play-preview.bostondodgeballleague.com` (preview); not set on `bdl-admin` Vercel yet.
+## Secrets still manual
 
-## Blocked on human / other PRs
+- `PLAYER_SYNC_SECRET` — admin + player (must match) before sync works end-to-end
+- `SENSITIVE_DATABASE_URL` — optional until sensitive Neon cutover
+- Player: `PLAYER_DATABASE_URL`, Google OAuth, Stripe/Resend (later)
 
-- Neon: player DB + admin `SENSITIVE_DATABASE_URL` split
-- Google OAuth Web client (player-only)
-- Create + link Vercel `bdl-player`, DNS for `play-preview` / `play`
-- Merge [bdl-player #1](https://github.com/jsartin513/bdl-player/pull/1) (contract pin to `4592757…`)
-- `BDL_PACKAGES_READ_TOKEN` on `bdl-player` GitHub (and Vercel when linked)
-- Merge admin [#166](https://github.com/jsartin513/bdl-admin/pull/166); apply sensitive SQL + set `SENSITIVE_DATABASE_URL` on preview admin
-- Admin sync pull client (Stage 1; see `player-app-kickoff.md`)
-- Stripe / Resend (later stages)
+## Blocked on human
+
+- Neon player DB + run player migrations
+- Vercel `bdl-player` project, `BDL_PACKAGES_READ_TOKEN` on Vercel when project exists
+- Google OAuth Web client (player)
+- DNS `play-preview` / `play`
+- Publish UI for event product fields (set `published_to_player_app` in DB until UI ships)
