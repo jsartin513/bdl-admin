@@ -2,11 +2,13 @@
 
 Full staged plan: Cursor plan **Player league app** (three databases, REST sync, BYOT/Remix).
 
-## This repo — next admin PRs
+## This repo — admin PRs
 
-1. Sensitive Neon (`SENSITIVE_DATABASE_URL`) and move official skill / notes / `player_changes` off operational `players`.
-2. Public league API `GET /api/public/leagues` (allowlisted fields only).
-3. Pull client: `GET` player ` /api/internal/v1/changes` with `X-BDL-Player-Sync-Secret`.
+**Stage 0 (open):** [PR #166](https://github.com/jsartin513/bdl-admin/pull/166) → `preview`
+
+1. Sensitive Neon scaffold (`SENSITIVE_DATABASE_URL`, dual-write/read in `app/lib/sensitive/`); operational `players` gains `self_reported_skill` + `player_app_account_id`.
+2. Public league API `GET /api/public/leagues` (allowlisted fields only; no auth).
+3. **Next:** Pull client — `GET` player `/api/internal/v1/changes` with `X-BDL-Player-Sync-Secret`.
 
 ## Vercel env (admin)
 
@@ -16,7 +18,7 @@ Non-secret (set per environment):
 |----------|---------|------------|
 | `PLAYER_APP_BASE_URL` | `https://play-preview.bostondodgeballleague.com` | `https://play.bostondodgeballleague.com` |
 
-Player app reads the league catalog from admin’s public API (not yet deployed):
+Player app reads the league catalog from admin’s public API (live on preview after **#166** merges):
 
 | Player var | Points at (when live) |
 |------------|------------------------|
