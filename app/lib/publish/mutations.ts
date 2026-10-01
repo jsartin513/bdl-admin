@@ -175,14 +175,15 @@ export async function updatePublishPost(
   return row ? mapPublishPost(row) : null
 }
 
-export async function approvePublishPost(
+async function publishPostToWebsite(
   id: string,
-  approvedBy: string
+  approvedBy: string,
+  allowedStatuses: Array<'draft' | 'scheduled'>
 ): Promise<PublishPostRecord> {
   const post = await getPublishPost(id)
   if (!post) throw new Error('Post not found')
   if (post.status === 'published') return post
-  if (post.status !== 'draft' && post.status !== 'scheduled') {
+  if (!allowedStatuses.includes(post.status as 'draft' | 'scheduled')) {
     throw new Error('Post cannot be published')
   }
 
@@ -224,4 +225,20 @@ export async function approvePublishPost(
       .where(eq(publishPosts.id, id))
     throw new Error(message)
   }
+}
+
+/** Immediate approve from admin UI — draft posts only. */
+export async function approvePublishPost(
+  id: string,
+  approvedBy: string
+): Promise<PublishPostRecord> {
+  return publishPostToWebsite(id, approvedBy, ['draft'])
+}
+
+/** Used by the scheduled-action dispatcher when `run_at` is due. */
+export async function publishScheduledPost(
+  id: string,
+  approvedBy: string
+): Promise<PublishPostRecord> {
+  return publishPostToWebsite(id, approvedBy, ['scheduled'])
 }

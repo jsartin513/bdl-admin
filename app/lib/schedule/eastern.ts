@@ -1,5 +1,6 @@
 const EASTERN = 'America/New_York'
 const LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+const HAS_TIMEZONE_SUFFIX = /(Z|[+-]\d{2}:\d{2}|[+-]\d{4})$/i
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -48,6 +49,10 @@ export function formatEasternLocal(date: Date): string {
 export function easternLocalToDate(value: string): Date | null {
   const trimmed = value.trim()
   if (!trimmed) return null
+  if (HAS_TIMEZONE_SUFFIX.test(trimmed)) {
+    const parsed = new Date(trimmed)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
   const iso = trimmed.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
   if (iso) {
     const match = LOCAL_RE.exec(trimmed.slice(0, 16))

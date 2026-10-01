@@ -5,6 +5,7 @@ import {
 } from '@/app/lib/admin-auth'
 import { isDatabaseConfigured } from '@/app/lib/db'
 import {
+  isScheduledActionType,
   listScheduledActions,
   parseRunAtFromBody,
   scheduleContactJob,
@@ -33,6 +34,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const runAt = parseRunAtFromBody(body)
+    if (typeof body.actionType === 'string' && !isScheduledActionType(body.actionType)) {
+      return NextResponse.json({ error: 'Invalid actionType' }, { status: 400 })
+    }
     const actionType =
       typeof body.actionType === 'string' ? body.actionType : 'contact_job'
 

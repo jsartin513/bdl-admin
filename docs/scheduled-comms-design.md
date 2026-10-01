@@ -8,11 +8,12 @@ Setup for Twilio, Resend, and publish secrets: [integrations-setup.md](./integra
 
 ## Scope
 
-**In scope (target):**
+**Shipped in admin:**
 
-- Schedule **Contact players** jobs (all channels) for a future `run_at`.
+- Schedule **Contact players** jobs (all channels) for a future `run_at` (`/scheduled`, `POST /api/scheduled`).
 - Schedule **Publish** approve (website news, site alert, flyer) instead of immediate approve.
 - Optional **social kit reminder** (notify admins to post Instagram/YouTube manually)—still no auto-post APIs.
+- Dispatcher route `POST /api/cron/dispatch-scheduled` (secured with `CRON_SECRET`).
 
 **Out of scope:**
 
@@ -27,13 +28,14 @@ Setup for Twilio, Resend, and publish secrets: [integrations-setup.md](./integra
 
 | Surface | When it runs | Scheduling support |
 |---------|--------------|-------------------|
-| Contact players | Immediately when admin confirms send ([`createAndSendContactJob`](../app/lib/contact/jobs.ts)) | None; `contact_jobs` has no `scheduled_at` |
-| Publish **Approve** | Immediate HTTP POST to website ([`approvePublishPost`](../app/lib/publish/mutations.ts)) | None |
-| Site alert bar | Visible when `starts_at` ≤ now ≤ `ends_at` (computed on read) | Website + builder support windows; admin composer sends **`startsAt: null`** ([`website-client.ts`](../app/lib/publish/website-client.ts)) → alert goes **live on approve** |
-| News posts | `published: true` sets `publishedAt` to **now** on publish | No future go-live |
-| Social kit | Shown after approve; manual checkboxes | None |
+| Contact players | **Send now** → [`createAndSendContactJob`](../app/lib/contact/jobs.ts); **Schedule** → `scheduled_actions` + dispatcher | Yes (`contact_job` actions) |
+| Publish **Approve** | **Approve now** → [`approvePublishPost`](../app/lib/publish/mutations.ts) (draft only); **Schedule** → `publish_post` action + [`publishScheduledPost`](../app/lib/publish/mutations.ts) at `run_at` | Yes |
+| Site alert bar | Visible when `starts_at` ≤ now ≤ `ends_at` (computed on read) | Website + builder support windows; admin composer may pass alert windows on publish |
+| News posts | `published: true` sets `publishedAt` on publish | Scheduled publish fires at `run_at` |
+| Social kit | Shown after approve; optional reminder email after scheduled publish | Reminder via `social_reminder` / publish payload flag |
+| Dispatcher | External cron or Vercel Cron (Pro) hits `/api/cron/dispatch-scheduled` every ~5 min | [`vercel.json`](../vercel.json) omits crons on Hobby (daily limit); use an external scheduler or add crons on Pro |
 
-There is **no Vercel Cron** in [`vercel.json`](../vercel.json) today.
+**Cron on Hobby:** Vercel Hobby allows at most **once-per-day** built-in cron jobs, so sub-daily schedules are not in `vercel.json`. Point any HTTP cron (GitHub Actions, cron-job.org, Vercel Pro, etc.) at `/api/cron/dispatch-scheduled` with `Authorization: Bearer $CRON_SECRET`.
 
 ```mermaid
 flowchart LR
@@ -89,8 +91,8 @@ Migration under `drizzle/` following existing patterns.
 
 ### Dispatcher
 
-1. Add **Vercel Cron** in `vercel.json` (e.g. every 5 minutes) calling `/api/cron/dispatch-scheduled`.
-2. Secure with `CRON_SECRET` (header check) or Vercel’s cron authorization.
+1. Trigger `/api/cron/dispatch-scheduled` on a ~5 minute cadence (Vercel Cron on **Pro**, or an external HTTP scheduler on **Hobby**).
+2. Secure with `CRON_SECRET` (`Authorization: Bearer …` header check).
 3. In one transaction (or per-row): `SELECT … FOR UPDATE SKIP LOCKED` for rows where `status = 'scheduled'` and `run_at <= now()`.
 4. Set `running`, invoke handler by `action_type`, then `completed` or `failed`.
 5. Retry policy: optional manual “Retry” in admin UI for `failed`; avoid infinite auto-retry without backoff.

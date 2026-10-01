@@ -1,11 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "bash scripts/with-bdl-git-auth.sh",
-  "crons": [
-    {
-      "path": "/api/cron/dispatch-scheduled",
-      "schedule": "*/5 * * * *"
-    }
-  ]
+  "installCommand": "bash scripts/with-bdl-git-auth.sh"
 }

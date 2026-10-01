@@ -1,10 +1,10 @@
-import { and, desc, eq, lte } from 'drizzle-orm'
+import { and, desc, eq, isNull, lte } from 'drizzle-orm'
 import { publishPosts, scheduledActions } from '@/app/db/schema'
 import { getDb } from '@/app/lib/db'
 import { parseContactJobRequest } from '@/app/lib/contact/parse'
 import type { ParsedContactJobRequest } from '@/app/lib/contact/parse'
 import { createAndSendContactJob } from '@/app/lib/contact/jobs'
-import { approvePublishPost } from '@/app/lib/publish/mutations'
+import { publishScheduledPost } from '@/app/lib/publish/mutations'
 import { parseScheduledRunAt } from '@/app/lib/schedule/eastern'
 import { sendSocialKitReminderEmail } from '@/app/lib/schedule/social-reminder'
 import type {
@@ -101,19 +101,25 @@ export async function schedulePublishPost(opts: {
   sendSocialReminder?: boolean
 }): Promise<{ action: ScheduledActionRecord; postId: string }> {
   const db = getDb()
-  const [post] = await db
-    .select()
-    .from(publishPosts)
-    .where(eq(publishPosts.id, opts.publishPostId))
-    .limit(1)
-  if (!post) throw new Error('Post not found')
-  if (post.status !== 'draft') {
-    throw new Error('Only draft posts can be scheduled')
-  }
 
   const payload: PublishPostScheduledPayload = {
     publishPostId: opts.publishPostId,
     sendSocialReminder: opts.sendSocialReminder ?? true,
+  }
+
+  const [claimed] = await db
+    .update(publishPosts)
+    .set({ status: 'scheduled', updatedAt: new Date() })
+    .where(
+      and(
+        eq(publishPosts.id, opts.publishPostId),
+        eq(publishPosts.status, 'draft'),
+        isNull(publishPosts.scheduledActionId)
+      )
+    )
+    .returning()
+  if (!claimed) {
+    throw new Error('Only draft posts without an active schedule can be scheduled')
   }
 
   const [action] = await db
@@ -128,14 +134,38 @@ export async function schedulePublishPost(opts: {
     })
     .returning()
 
-  await db
+  const [linked] = await db
     .update(publishPosts)
     .set({
-      status: 'scheduled',
       scheduledActionId: action.id,
       updatedAt: new Date(),
     })
-    .where(eq(publishPosts.id, opts.publishPostId))
+    .where(
+      and(
+        eq(publishPosts.id, opts.publishPostId),
+        eq(publishPosts.status, 'scheduled'),
+        isNull(publishPosts.scheduledActionId)
+      )
+    )
+    .returning()
+
+  if (!linked) {
+    await db
+      .update(scheduledActions)
+      .set({
+        status: 'cancelled',
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(scheduledActions.id, action.id))
+    await db
+      .update(publishPosts)
+      .set({ status: 'draft', updatedAt: new Date() })
+      .where(
+        and(eq(publishPosts.id, opts.publishPostId), eq(publishPosts.status, 'scheduled'))
+      )
+    throw new Error('Failed to schedule post')
+  }
 
   return { action: mapRow(action), postId: opts.publishPostId }
 }
@@ -145,11 +175,6 @@ export async function cancelScheduledAction(
   actorEmail: string
 ): Promise<ScheduledActionRecord> {
   const db = getDb()
-  const [row] = await db.select().from(scheduledActions).where(eq(scheduledActions.id, id)).limit(1)
-  if (!row) throw new Error('Scheduled action not found')
-  if (row.status !== 'scheduled') {
-    throw new Error('Only scheduled actions can be cancelled')
-  }
 
   const [updated] = await db
     .update(scheduledActions)
@@ -158,11 +183,21 @@ export async function cancelScheduledAction(
       updatedAt: new Date(),
       completedAt: new Date(),
     })
-    .where(eq(scheduledActions.id, id))
+    .where(and(eq(scheduledActions.id, id), eq(scheduledActions.status, 'scheduled')))
     .returning()
 
-  if (row.actionType === 'publish_post') {
-    const payload = row.payload as PublishPostScheduledPayload
+  if (!updated) {
+    const [row] = await db
+      .select()
+      .from(scheduledActions)
+      .where(eq(scheduledActions.id, id))
+      .limit(1)
+    if (!row) throw new Error('Scheduled action not found')
+    throw new Error('Only scheduled actions can be cancelled')
+  }
+
+  if (updated.actionType === 'publish_post') {
+    const payload = updated.payload as PublishPostScheduledPayload
     if (payload.publishPostId) {
       await db
         .update(publishPosts)
@@ -211,7 +246,7 @@ async function runPublishPostPayload(
   payload: PublishPostScheduledPayload,
   actorEmail: string
 ) {
-  const post = await approvePublishPost(payload.publishPostId, actorEmail)
+  const post = await publishScheduledPost(payload.publishPostId, actorEmail)
   if (payload.sendSocialReminder) {
     await sendSocialKitReminderEmail({
       toEmail: actorEmail,
@@ -243,6 +278,18 @@ export async function executeScheduledAction(action: ScheduledActionRecord): Pro
   throw new Error(`Unknown action type: ${action.actionType}`)
 }
 
+const RUNNING_LEASE_MS = 15 * 60 * 1000
+
+/** Reclaim actions stuck in `running` after a worker timeout or crash. */
+async function reclaimStaleRunningScheduledActions(now: Date) {
+  const db = getDb()
+  const staleBefore = new Date(now.getTime() - RUNNING_LEASE_MS)
+  await db
+    .update(scheduledActions)
+    .set({ status: 'scheduled', updatedAt: new Date() })
+    .where(and(eq(scheduledActions.status, 'running'), lte(scheduledActions.updatedAt, staleBefore)))
+}
+
 /** Claim and run due scheduled actions (best-effort per row). */
 export async function dispatchDueScheduledActions(opts?: {
   limit?: number
@@ -250,6 +297,8 @@ export async function dispatchDueScheduledActions(opts?: {
   const db = getDb()
   const limit = opts?.limit ?? 10
   const now = new Date()
+
+  await reclaimStaleRunningScheduledActions(now)
 
   const due = await db
     .select()
