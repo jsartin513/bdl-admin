@@ -7,6 +7,7 @@ import {
   inArray,
   or,
   sql,
+  type SQL,
 } from 'drizzle-orm'
 import { outboundMessages } from '@/app/db/schema'
 import { getDb } from '@/app/lib/db'
@@ -51,7 +52,7 @@ export async function listOutboundMessages(
 ): Promise<OutboundMessageRecord[]> {
   const db = getDb()
   const limit = filters.limit ?? 50
-  const conditions: ReturnType<typeof eq>[] = []
+  const conditions: SQL[] = []
 
   if (filters.channel) {
     conditions.push(eq(outboundMessages.channel, filters.channel))
