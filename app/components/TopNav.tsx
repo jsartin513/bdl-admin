@@ -338,6 +338,12 @@ export default function TopNav() {
           Publish
         </Link>
         <Link
+          href={withDevMode('/scheduled', devMode)}
+          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          Scheduled
+        </Link>
+        <Link
           href={withDevMode('/non-bdl-events', devMode)}
           className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >

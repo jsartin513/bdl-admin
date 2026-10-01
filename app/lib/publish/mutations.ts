@@ -21,7 +21,9 @@ export type PublishPostWrite = {
   includeOpenGymFlyer: boolean
   includeSiteAlert: boolean
   siteAlertKind: 'news' | 'cancellation' | null
+  siteAlertStartsAt: Date | null
   siteAlertEndsAt: Date | null
+  newsPublishAt: Date | null
   includeNewsPost: boolean
 }
 
@@ -85,7 +87,9 @@ export async function createPublishPost(
       includeOpenGymFlyer: input.includeOpenGymFlyer ?? defaults.includeOpenGymFlyer,
       includeSiteAlert: input.includeSiteAlert ?? defaults.includeSiteAlert,
       siteAlertKind: input.siteAlertKind ?? defaults.siteAlertKind,
+      siteAlertStartsAt: input.siteAlertStartsAt ?? null,
       siteAlertEndsAt: input.siteAlertEndsAt ?? null,
+      newsPublishAt: input.newsPublishAt ?? null,
       includeNewsPost: input.includeNewsPost ?? defaults.includeNewsPost,
       status: 'draft',
       updatedAt: new Date(),
@@ -104,6 +108,10 @@ export async function updatePublishPost(
   const existing = await getPublishPost(id)
   if (!existing) return null
 
+  if (existing.status === 'scheduled') {
+    throw new Error('Cancel the scheduled publish before editing')
+  }
+
   if (existing.status === 'published') {
     const onlySocial =
       input.postedToInstagram !== undefined || input.postedToYoutube !== undefined
@@ -117,7 +125,9 @@ export async function updatePublishPost(
         'includeOpenGymFlyer',
         'includeSiteAlert',
         'siteAlertKind',
+        'siteAlertStartsAt',
         'siteAlertEndsAt',
+        'newsPublishAt',
         'includeNewsPost',
       ] as const
     ).some((key) => input[key] !== undefined)
@@ -142,9 +152,13 @@ export async function updatePublishPost(
         ? { includeSiteAlert: input.includeSiteAlert }
         : {}),
       ...(input.siteAlertKind !== undefined ? { siteAlertKind: input.siteAlertKind } : {}),
+      ...(input.siteAlertStartsAt !== undefined
+        ? { siteAlertStartsAt: input.siteAlertStartsAt }
+        : {}),
       ...(input.siteAlertEndsAt !== undefined
         ? { siteAlertEndsAt: input.siteAlertEndsAt }
         : {}),
+      ...(input.newsPublishAt !== undefined ? { newsPublishAt: input.newsPublishAt } : {}),
       ...(input.includeNewsPost !== undefined
         ? { includeNewsPost: input.includeNewsPost }
         : {}),
@@ -168,6 +182,9 @@ export async function approvePublishPost(
   const post = await getPublishPost(id)
   if (!post) throw new Error('Post not found')
   if (post.status === 'published') return post
+  if (post.status !== 'draft' && post.status !== 'scheduled') {
+    throw new Error('Post cannot be published')
+  }
 
   const payload = buildWebsitePublishPayload(post)
   if (
@@ -191,6 +208,7 @@ export async function approvePublishPost(
         publishError: null,
         approvedBy,
         approvedAt: new Date(),
+        scheduledActionId: null,
         updatedAt: new Date(),
       })
       .where(eq(publishPosts.id, id))

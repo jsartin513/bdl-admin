@@ -106,6 +106,22 @@ export function parsePublishPostWrite(body: unknown):
     out.siteAlertEndsAt = parsed
   }
 
+  if (record.siteAlertStartsAt !== undefined) {
+    const parsed = parseOptionalIsoDate(record.siteAlertStartsAt)
+    if (parsed === undefined) {
+      return { ok: false, error: 'siteAlertStartsAt must be a valid date' }
+    }
+    out.siteAlertStartsAt = parsed
+  }
+
+  if (record.newsPublishAt !== undefined) {
+    const parsed = parseOptionalIsoDate(record.newsPublishAt)
+    if (parsed === undefined) {
+      return { ok: false, error: 'newsPublishAt must be a valid date' }
+    }
+    out.newsPublishAt = parsed
+  }
+
   return { ok: true, value: out }
 }
 

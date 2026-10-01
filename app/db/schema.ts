@@ -575,9 +575,12 @@ export const publishPosts = pgTable(
     includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
     includeSiteAlert: boolean('include_site_alert').notNull().default(false),
     siteAlertKind: text('site_alert_kind'),
+    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
     siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
+    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
     includeNewsPost: boolean('include_news_post').notNull().default(false),
     status: text('status').notNull().default('draft'),
+    scheduledActionId: uuid('scheduled_action_id'),
     websiteNewsPostId: uuid('website_news_post_id'),
     websiteSiteAlertId: uuid('website_site_alert_id'),
     websiteNewsSlug: text('website_news_slug'),
@@ -592,5 +595,27 @@ export const publishPosts = pgTable(
   (table) => [
     index('publish_posts_status_idx').on(table.status),
     index('publish_posts_created_at_idx').on(table.createdAt),
+  ]
+)
+
+export const scheduledActions = pgTable(
+  'scheduled_actions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    createdByAdminEmail: text('created_by_admin_email').notNull(),
+    runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+    timezone: text('timezone').notNull().default('America/New_York'),
+    actionType: text('action_type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    status: text('status').notNull().default('scheduled'),
+    idempotencyKey: text('idempotency_key'),
+    errorMessage: text('error_message'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('scheduled_actions_status_run_at_idx').on(table.status, table.runAt),
+    uniqueIndex('scheduled_actions_idempotency_key_uidx').on(table.idempotencyKey),
   ]
 )

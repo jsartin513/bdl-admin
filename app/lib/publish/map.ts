@@ -22,9 +22,12 @@ export function mapPublishPost(
       row.siteAlertKind === 'news' || row.siteAlertKind === 'cancellation'
         ? row.siteAlertKind
         : null,
+    siteAlertStartsAt: row.siteAlertStartsAt?.toISOString() ?? null,
     siteAlertEndsAt: row.siteAlertEndsAt?.toISOString() ?? null,
+    newsPublishAt: row.newsPublishAt?.toISOString() ?? null,
     includeNewsPost: row.includeNewsPost,
     status: row.status as PublishStatus,
+    scheduledActionId: row.scheduledActionId,
     websiteNewsPostId: row.websiteNewsPostId,
     websiteSiteAlertId: row.websiteSiteAlertId,
     websiteNewsSlug: row.websiteNewsSlug,

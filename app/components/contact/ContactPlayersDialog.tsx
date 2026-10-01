@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import { Dialog } from '@/app/components/ui/Dialog'
 import { LiveMessage } from '@/app/components/ui/LiveMessage'
 import { estimateSmsSegments } from '@/app/lib/contact/phone'
+import { formatEasternLocal } from '@/app/lib/schedule/eastern'
 import type { ContactChannel, WhatsAppTemplateKey } from '@/app/lib/contact/types'
 
 export type ContactAudienceProp =
@@ -78,6 +79,10 @@ export function ContactPlayersDialog(props: {
   const [sendResult, setSendResult] = useState<JobResponse | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [step, setStep] = useState<'compose' | 'preview' | 'done'>('compose')
+  const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now')
+  const [runAtLocal, setRunAtLocal] = useState(() =>
+    formatEasternLocal(new Date(Date.now() + 60 * 60 * 1000))
+  )
 
   const audienceLabel = props.audience.label ?? 'Selected players'
   const smsSegments = useMemo(
@@ -97,6 +102,7 @@ export function ContactPlayersDialog(props: {
     setSendResult(null)
     setSendError(null)
     setStep('compose')
+    setSendMode('now')
   }, [props.open, props.defaultChannel])
 
   function audiencePayload() {
@@ -160,6 +166,9 @@ export function ContactPlayersDialog(props: {
         ...audiencePayload(),
         idempotencyKey,
       }
+      if (sendMode === 'schedule') {
+        payload.runAt = runAtLocal
+      }
       if (channel === 'email') {
         payload.subject = subject
         payload.bodyText = bodyText
@@ -177,8 +186,20 @@ export function ContactPlayersDialog(props: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = (await res.json()) as JobResponse & { error?: string }
+      const data = (await res.json()) as JobResponse & {
+        error?: string
+        scheduled?: boolean
+        action?: { id: string; runAt: string }
+      }
       if (!res.ok) throw new Error(data.error || 'Send failed')
+      if (data.scheduled && data.action) {
+        setSendResult({
+          job: { id: data.action.id, status: 'scheduled', channel },
+          counts: {},
+        })
+        setStep('done')
+        return
+      }
       setSendResult(data)
       setStep('done')
     } catch (err) {
@@ -339,6 +360,36 @@ export function ContactPlayersDialog(props: {
               </div>
             ) : null}
 
+            <fieldset className="space-y-2 rounded border border-gray-100 p-3">
+              <legend className="text-sm font-medium">When to send</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="send-mode"
+                  checked={sendMode === 'now'}
+                  onChange={() => setSendMode('now')}
+                />
+                Send now
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="send-mode"
+                  checked={sendMode === 'schedule'}
+                  onChange={() => setSendMode('schedule')}
+                />
+                Schedule (Eastern)
+              </label>
+              {sendMode === 'schedule' ? (
+                <input
+                  type="datetime-local"
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  value={runAtLocal}
+                  onChange={(e) => setRunAtLocal(e.target.value)}
+                />
+              ) : null}
+            </fieldset>
+
             {previewError ? (
               <LiveMessage variant="alert" className="text-sm text-red-600">
                 {previewError}
@@ -441,8 +492,12 @@ export function ContactPlayersDialog(props: {
                     onClick={() => void runSend()}
                   >
                     {sending
-                      ? 'Sending…'
-                      : `Send ${CHANNEL_LABELS[channel]} (${preview?.reachable ?? 0})`}
+                      ? sendMode === 'schedule'
+                        ? 'Scheduling…'
+                        : 'Sending…'
+                      : sendMode === 'schedule'
+                        ? `Schedule ${CHANNEL_LABELS[channel]} (${preview?.reachable ?? 0})`
+                        : `Send ${CHANNEL_LABELS[channel]} (${preview?.reachable ?? 0})`}
                   </button>
                 </>
               )}
@@ -453,10 +508,9 @@ export function ContactPlayersDialog(props: {
         {step === 'done' && sendResult ? (
           <div className="space-y-3">
             <LiveMessage variant="status" className="text-sm text-green-700">
-              Job {sendResult.job.status}. Sent:{' '}
-              {sendResult.counts.sent ?? 0}, failed:{' '}
-              {sendResult.counts.failed ?? 0}, skipped:{' '}
-              {sendResult.counts.skipped ?? 0}.
+              {sendResult.job.status === 'scheduled'
+                ? `Scheduled (job ${sendResult.job.id}). See Scheduled in the top nav.`
+                : `Job ${sendResult.job.status}. Sent: ${sendResult.counts.sent ?? 0}, failed: ${sendResult.counts.failed ?? 0}, skipped: ${sendResult.counts.skipped ?? 0}.`}
             </LiveMessage>
             {sendResult.job.errorMessage ? (
               <LiveMessage variant="alert" className="text-sm text-red-600">

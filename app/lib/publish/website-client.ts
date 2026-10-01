@@ -10,6 +10,7 @@ export type WebsitePublishPayload = {
     summary: string
     body?: string | null
     published: boolean
+    publishedAt?: string | null
     imageUrl?: string | null
     slug?: string
   }
@@ -38,12 +39,16 @@ export function buildWebsitePublishPayload(post: PublishPostRecord): WebsitePubl
   if (post.includeNewsPost) {
     const summary =
       post.caption.trim().slice(0, 280) || post.title.trim().slice(0, 280)
+    const newsGoLive = post.newsPublishAt ? new Date(post.newsPublishAt) : null
+    const publishAt =
+      newsGoLive && !Number.isNaN(newsGoLive.getTime()) ? newsGoLive : new Date()
     payload.news = {
       websiteNewsPostId: post.websiteNewsPostId,
       title: post.title.trim(),
       summary,
       body: post.caption.trim() || summary,
       published: true,
+      publishedAt: publishAt.toISOString(),
       ...(post.mediaType === 'image' && post.mediaUrl
         ? { imageUrl: post.mediaUrl }
         : post.mediaType === 'video' && post.mediaUrl
@@ -71,7 +76,7 @@ export function buildWebsitePublishPayload(post: PublishPostRecord): WebsitePubl
       message,
       linkUrl,
       linkLabel: 'Details',
-      startsAt: null,
+      startsAt: post.siteAlertStartsAt,
       endsAt,
     }
   }
