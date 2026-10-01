@@ -12,7 +12,7 @@ Cross-repo checklist. Detail lives in the linked manuals.
 | Item | Status | URL |
 |------|--------|-----|
 | `jsartin513/bdl-player` | **Live** (`main` + `preview`) | https://github.com/jsartin513/bdl-player |
-| `bdl-packages` `@bdl/player-public-contract` | **PR open** (pinned pre-merge in player app) | https://github.com/jsartin513/bdl-packages/pull/6 |
+| `bdl-packages` `@bdl/player-public-contract` | **Merged** (`4592757…` on `main`) | https://github.com/jsartin513/bdl-packages/pull/6 |
 | `bdl-admin` player app Stage 0 | **PR open** (sensitive scaffold + public leagues) | https://github.com/jsartin513/bdl-admin/pull/166 |
 
 ## Vercel
@@ -31,7 +31,7 @@ Admin follow-up: `PLAYER_APP_BASE_URL` = `https://play-preview.bostondodgeballle
 - Neon: player DB + admin `SENSITIVE_DATABASE_URL` split
 - Google OAuth Web client (player-only)
 - Create + link Vercel `bdl-player`, DNS for `play-preview` / `play`
-- Merge bdl-packages #6; bump contract SHA in player app to post-merge `main`
+- Merge [bdl-player #1](https://github.com/jsartin513/bdl-player/pull/1) (contract pin to `4592757…`)
 - `BDL_PACKAGES_READ_TOKEN` on `bdl-player` GitHub (and Vercel when linked)
 - Merge admin [#166](https://github.com/jsartin513/bdl-admin/pull/166); apply sensitive SQL + set `SENSITIVE_DATABASE_URL` on preview admin
 - Admin sync pull client (Stage 1; see `player-app-kickoff.md`)
