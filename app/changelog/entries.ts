@@ -18,7 +18,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     date: '2026-10-01',
     title: 'Captain live draft (preview)',
     summary:
-      'Draft-format events can run a live snake draft: captains pick on the player app while the board runs the commissioner panel on the event page.',
+      'Draft-format events can run a live snake draft: captains pick on the player app; the commissioner console is under Dev mode at /events/[id]/live-draft.',
     href: '/events',
   },
   {

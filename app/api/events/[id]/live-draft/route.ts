@@ -4,6 +4,10 @@ import {
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
 import {
+  adminDevModeRequiredResponse,
+  isAdminDevModeRequest,
+} from '@/app/lib/admin-dev-mode'
+import {
   ensureLiveDraft,
   getLiveDraftCommissionerView,
   setLiveDraftStatus,
@@ -17,6 +21,7 @@ type RouteContext = { params: Promise<{ id: string }> }
 export async function GET(request: NextRequest, context: RouteContext) {
   const session = getAdminSessionFromRequest(request)
   if (!session) return adminUnauthorizedResponse()
+  if (!isAdminDevModeRequest(request)) return adminDevModeRequiredResponse()
 
   const { id: eventId } = await context.params
   try {
@@ -31,6 +36,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const session = getAdminSessionFromRequest(request)
   if (!session) return adminUnauthorizedResponse()
+  if (!isAdminDevModeRequest(request)) return adminDevModeRequiredResponse()
 
   const { id: eventId } = await context.params
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
@@ -109,6 +115,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   const session = getAdminSessionFromRequest(request)
   if (!session) return adminUnauthorizedResponse()
+  if (!isAdminDevModeRequest(request)) return adminDevModeRequiredResponse()
 
   const { id: eventId } = await context.params
   try {

@@ -54,8 +54,17 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/events',
     maturity: 'ready',
     group: 'main',
-    note: 'Captain live draft (draft-format events) is new — verify on preview before draft night.',
     pathPrefixes: ['/events'],
+  },
+  {
+    id: 'captain-live-draft',
+    label: 'Captain live draft',
+    href: '/events',
+    maturity: 'devOnly',
+    group: 'developer',
+    note:
+      'Commissioner console for live captain drafts. Open a draft-format event with Dev mode on, then use Live draft (commissioner).',
+    pathPrefixes: [],
   },
   {
     id: 'video-tools',
@@ -172,7 +181,13 @@ export function visibleInNav(entry: FeatureEntry, devMode: boolean): boolean {
   return true
 }
 
+/** Admin commissioner UI for captain live draft (`/events/[id]/live-draft`). */
+export function isCaptainLiveDraftAdminPath(pathname: string): boolean {
+  return /^\/events\/[^/]+\/live-draft\/?$/.test(pathname)
+}
+
 export function isDevOnlyRoute(pathname: string): boolean {
+  if (isCaptainLiveDraftAdminPath(pathname)) return true
   return featureForPath(pathname)?.maturity === 'devOnly'
 }
 

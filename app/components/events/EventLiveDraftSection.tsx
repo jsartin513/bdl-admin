@@ -7,6 +7,7 @@ import type { LiveDraftOrderType } from '@/app/lib/events/live-draft-sequence'
 import { Button } from '@/app/components/ui/Button'
 import { LiveMessage } from '@/app/components/ui/LiveMessage'
 import { FOCUS_RING } from '@/app/components/ui/focusRing'
+import { withDevMode } from '@/app/lib/devMode'
 
 type CommissionerRegistration = {
   id: string
@@ -24,8 +25,12 @@ type CommissionerView = {
   registrations: CommissionerRegistration[]
 }
 
-export function EventLiveDraftSection(props: { eventId: string; eventFormat: string | null }) {
-  const { eventId, eventFormat } = props
+export function EventLiveDraftSection(props: {
+  eventId: string
+  eventFormat: string | null
+  devMode: boolean
+}) {
+  const { eventId, eventFormat, devMode } = props
   const [view, setView] = useState<CommissionerView | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +39,7 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
   const load = useCallback(async () => {
     setError(null)
     try {
-      const res = await fetch(`/api/events/${eventId}/live-draft`)
+      const res = await fetch(withDevMode(`/api/events/${eventId}/live-draft`, devMode))
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(body.error ?? 'Failed to load live draft')
@@ -46,14 +51,14 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
     } finally {
       setLoading(false)
     }
-  }, [eventId])
+  }, [eventId, devMode])
 
   useEffect(() => {
-    if (eventFormat !== 'draft') return
+    if (eventFormat !== 'draft' || !devMode) return
     void load()
     const id = window.setInterval(() => void load(), 2500)
     return () => window.clearInterval(id)
-  }, [eventFormat, load])
+  }, [eventFormat, devMode, load])
 
   const personalityByRegId = useMemo(() => {
     const map = new Map<string, CommissionerRegistration>()
@@ -67,13 +72,15 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
   const snapshot = view?.snapshot
 
   async function ensureDraft() {
-    const res = await fetch(`/api/events/${eventId}/live-draft`, { method: 'POST' })
+    const res = await fetch(withDevMode(`/api/events/${eventId}/live-draft`, devMode), {
+      method: 'POST',
+    })
     if (!res.ok) throw new Error('Failed to initialize live draft')
     await load()
   }
 
   async function patchSetup(body: Record<string, unknown>) {
-    const res = await fetch(`/api/events/${eventId}/live-draft`, {
+    const res = await fetch(withDevMode(`/api/events/${eventId}/live-draft`, devMode), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -86,7 +93,7 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
   }
 
   async function postPick(body: Record<string, unknown>) {
-    const res = await fetch(`/api/events/${eventId}/live-draft/picks`, {
+    const res = await fetch(withDevMode(`/api/events/${eventId}/live-draft/picks`, devMode), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
