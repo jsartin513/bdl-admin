@@ -148,9 +148,9 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
                 Pool photos: {view.photoCoverage.withPhoto}/{view.photoCoverage.total}
               </span>
             ) : null}
-            {onClock ? (
+            {onClock && snapshot.turn ? (
               <span className="rounded bg-amber-100 px-2 py-1 font-medium text-amber-900">
-                On the clock: {snapshot.turn?.teamName} (pick #{snapshot.turn?.pickIndex + 1})
+                On the clock: {snapshot.turn.teamName} (pick #{snapshot.turn.pickIndex + 1})
               </span>
             ) : null}
           </div>
