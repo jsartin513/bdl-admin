@@ -35,7 +35,7 @@ Setup for Twilio, Resend, and publish secrets: [integrations-setup.md](./integra
 | Social kit | Shown after approve; optional reminder email after scheduled publish | Reminder via `social_reminder` / publish payload flag |
 | Dispatcher | External cron or Vercel Cron (Pro) hits `/api/cron/dispatch-scheduled` every ~5 min | [`vercel.json`](../vercel.json) omits crons on Hobby (daily limit); use an external scheduler or add crons on Pro |
 
-**Cron on Hobby:** Vercel Hobby allows at most **once-per-day** built-in cron jobs, so sub-daily schedules are not in `vercel.json`. Point any HTTP cron (GitHub Actions, cron-job.org, Vercel Pro, etc.) at `/api/cron/dispatch-scheduled` with `Authorization: Bearer $CRON_SECRET`.
+**Cron on Hobby:** Vercel Hobby allows at most **once-per-day** built-in cron jobs, so sub-daily schedules are not in `vercel.json`. **Plan:** enable **Vercel Cron** on Pro (see [go-live-checklist.md](./go-live-checklist.md)). Until then, temporary HTTP pings (manual `curl`, cron-job.org, etc.)—not scheduled GitHub Actions (Actions minutes). All callers use `Authorization: Bearer $CRON_SECRET`.
 
 ```mermaid
 flowchart LR
