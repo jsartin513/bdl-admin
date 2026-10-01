@@ -211,6 +211,21 @@ export async function startLiveDraft(eventId: string): Promise<LiveDraftRecord> 
     throw new Error('Assign captains to teams before starting the live draft')
   }
 
+  for (const group of teamOrder) {
+    const hasCaptain = registrations.some(
+      (r) => r.isCaptain && r.draftGroup === group
+    )
+    if (!hasCaptain) {
+      throw new Error(`Team ${group} has no captain assigned`)
+    }
+  }
+
+  if (draft.orderType === 'custom' && (draft.customSlots?.length ?? 0) < poolCount) {
+    throw new Error(
+      'Custom pick order needs one draft group per pool player before starting'
+    )
+  }
+
   const pickSequence = generatePickSequence(
     draft.orderType,
     teamOrder,
@@ -499,17 +514,21 @@ export async function makeLiveDraftPick(
 
   await db.transaction(async (tx) => {
     const [locked] = await tx
-      .select({ currentPickIndex: eventLiveDrafts.currentPickIndex, status: eventLiveDrafts.status })
+      .select({
+        currentPickIndex: eventLiveDrafts.currentPickIndex,
+        status: eventLiveDrafts.status,
+      })
       .from(eventLiveDrafts)
-      .where(
-        and(
-          eq(eventLiveDrafts.id, draft.id),
-          eq(eventLiveDrafts.currentPickIndex, pickIndex),
-          eq(eventLiveDrafts.status, 'live')
-        )
-      )
+      .where(eq(eventLiveDrafts.id, draft.id))
+      .for('update')
       .limit(1)
-    if (!locked) throw new Error('Pick slot was taken or draft state changed')
+    if (
+      !locked ||
+      locked.currentPickIndex !== pickIndex ||
+      locked.status !== 'live'
+    ) {
+      throw new Error('Pick slot was taken or draft state changed')
+    }
 
     await tx.insert(eventLiveDraftPicks).values({
       liveDraftId: draft.id,
@@ -561,17 +580,21 @@ export async function skipLiveDraftPick(
   const db = getDb()
   await db.transaction(async (tx) => {
     const [locked] = await tx
-      .select({ currentPickIndex: eventLiveDrafts.currentPickIndex })
+      .select({
+        currentPickIndex: eventLiveDrafts.currentPickIndex,
+        status: eventLiveDrafts.status,
+      })
       .from(eventLiveDrafts)
-      .where(
-        and(
-          eq(eventLiveDrafts.id, draft.id),
-          eq(eventLiveDrafts.currentPickIndex, pickIndex),
-          eq(eventLiveDrafts.status, 'live')
-        )
-      )
+      .where(eq(eventLiveDrafts.id, draft.id))
+      .for('update')
       .limit(1)
-    if (!locked) throw new Error('Pick slot was taken or draft state changed')
+    if (
+      !locked ||
+      locked.currentPickIndex !== pickIndex ||
+      locked.status !== 'live'
+    ) {
+      throw new Error('Pick slot was taken or draft state changed')
+    }
 
     await tx.insert(eventLiveDraftPicks).values({
       liveDraftId: draft.id,
@@ -605,17 +628,32 @@ export async function undoLiveDraftPick(eventId: string): Promise<LiveDraftRecor
   if (!draft) throw new Error('Live draft not configured')
 
   const db = getDb()
-  const [lastPick] = await db
-    .select()
-    .from(eventLiveDraftPicks)
-    .where(eq(eventLiveDraftPicks.liveDraftId, draft.id))
-    .orderBy(sql`${eventLiveDraftPicks.pickIndex} desc`)
-    .limit(1)
-
-  if (!lastPick) throw new Error('No picks to undo')
-
   const now = new Date()
   await db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({ currentPickIndex: eventLiveDrafts.currentPickIndex })
+      .from(eventLiveDrafts)
+      .where(eq(eventLiveDrafts.id, draft.id))
+      .for('update')
+      .limit(1)
+    if (!locked || locked.currentPickIndex < 1) {
+      throw new Error('No picks to undo')
+    }
+
+    const lastPickIndex = locked.currentPickIndex - 1
+    const [lastPick] = await tx
+      .select()
+      .from(eventLiveDraftPicks)
+      .where(
+        and(
+          eq(eventLiveDraftPicks.liveDraftId, draft.id),
+          eq(eventLiveDraftPicks.pickIndex, lastPickIndex)
+        )
+      )
+      .limit(1)
+
+    if (!lastPick) throw new Error('No picks to undo')
+
     if (lastPick.registrationId) {
       await tx
         .update(eventRegistrations)
@@ -626,7 +664,7 @@ export async function undoLiveDraftPick(eventId: string): Promise<LiveDraftRecor
     await tx
       .update(eventLiveDrafts)
       .set({
-        currentPickIndex: lastPick.pickIndex,
+        currentPickIndex: lastPickIndex,
         status: 'live',
         completedAt: null,
         updatedAt: now,

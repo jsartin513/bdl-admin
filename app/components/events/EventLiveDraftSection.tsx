@@ -170,7 +170,6 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
                 >
                   <option value="snake">Snake</option>
                   <option value="linear">Linear</option>
-                  <option value="custom">Custom slots</option>
                 </select>
               </label>
               <label className="text-sm">
@@ -233,7 +232,7 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
                 Pause
               </Button>
             ) : null}
-            {draft.status === 'live' || draft.status === 'paused' ? (
+            {draft.status === 'live' ? (
               <>
                 <Button
                   variant="outline"
@@ -247,13 +246,15 @@ export function EventLiveDraftSection(props: { eventId: string; eventFormat: str
                 >
                   Undo last pick
                 </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => void patchSetup({ action: 'complete' }).catch((e) => setError(String(e)))}
-                >
-                  Mark complete
-                </Button>
               </>
+            ) : null}
+            {draft.status === 'live' || draft.status === 'paused' ? (
+              <Button
+                variant="secondary"
+                onClick={() => void patchSetup({ action: 'complete' }).catch((e) => setError(String(e)))}
+              >
+                Mark complete
+              </Button>
             ) : null}
           </div>
 

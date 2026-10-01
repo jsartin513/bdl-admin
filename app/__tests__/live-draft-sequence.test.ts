@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { generatePickSequence } from '@/app/lib/events/live-draft-sequence'
+import {
+  defaultTeamOrderFromRegistrations,
+  generatePickSequence,
+} from '@/app/lib/events/live-draft-sequence'
 
 describe('generatePickSequence', () => {
   const teams = [1, 2, 3, 4]
@@ -22,5 +25,15 @@ describe('generatePickSequence', () => {
 
   it('rejects custom when too short', () => {
     expect(() => generatePickSequence('custom', teams, 3, [1])).toThrow(/custom_slots/)
+  })
+
+  it('default team order uses captain teams only', () => {
+    expect(
+      defaultTeamOrderFromRegistrations([
+        { draftGroup: 1, isCaptain: true },
+        { draftGroup: 2, isCaptain: false },
+        { draftGroup: 3, isCaptain: true },
+      ])
+    ).toEqual([1, 3])
   })
 })

@@ -38,7 +38,7 @@ export function defaultTeamOrderFromRegistrations(
 ): number[] {
   const groups = new Set<number>()
   for (const r of registrations) {
-    if (r.draftGroup != null) groups.add(r.draftGroup)
+    if (r.isCaptain && r.draftGroup != null) groups.add(r.draftGroup)
   }
   return [...groups].sort((a, b) => a - b)
 }
