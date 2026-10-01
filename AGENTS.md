@@ -24,6 +24,7 @@ This repo uses a **preview-first** deploy flow. Production merges go `preview` â
 
 - [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md)
 - [.github/pull_request_template.md](.github/pull_request_template.md)
+- CI / Actions quota: skill **`bdl-pr-checks`** (`~/.cursor/skills/bdl-pr-checks/SKILL.md`)
 
 The startup update script already runs `npm install`. Node 20+ is required
 (`package.json` `engines`); the VM's Node 22 works fine.
