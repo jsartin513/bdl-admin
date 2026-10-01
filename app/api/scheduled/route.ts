@@ -40,6 +40,13 @@ export async function POST(request: NextRequest) {
     const actionType =
       typeof body.actionType === 'string' ? body.actionType : 'contact_job'
 
+    if (actionType === 'social_reminder') {
+      return NextResponse.json(
+        { error: 'social_reminder cannot be scheduled via this endpoint' },
+        { status: 400 }
+      )
+    }
+
     if (actionType === 'publish_post') {
       const publishPostId =
         typeof body.publishPostId === 'string' ? body.publishPostId.trim() : ''

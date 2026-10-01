@@ -248,11 +248,15 @@ async function runPublishPostPayload(
 ) {
   const post = await publishScheduledPost(payload.publishPostId, actorEmail)
   if (payload.sendSocialReminder) {
-    await sendSocialKitReminderEmail({
-      toEmail: actorEmail,
-      publishPostId: post.id,
-      title: post.title,
-    })
+    try {
+      await sendSocialKitReminderEmail({
+        toEmail: actorEmail,
+        publishPostId: post.id,
+        title: post.title,
+      })
+    } catch (err) {
+      console.error('[schedule] social kit reminder failed after publish', err)
+    }
   }
 }
 

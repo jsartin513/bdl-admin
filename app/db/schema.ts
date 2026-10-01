@@ -585,42 +585,6 @@ export const contactJobRecipients = pgTable(
   ]
 )
 
-/** Cross-post composer drafts and published website + social tracking. */
-export const publishPosts = pgTable(
-  'publish_posts',
-  {
-    id: uuid('id').defaultRandom().primaryKey(),
-    kind: text('kind').notNull(),
-    title: text('title').notNull(),
-    caption: text('caption').notNull().default(''),
-    mediaUrl: text('media_url'),
-    mediaType: text('media_type'),
-    includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
-    includeSiteAlert: boolean('include_site_alert').notNull().default(false),
-    siteAlertKind: text('site_alert_kind'),
-    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
-    siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
-    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
-    includeNewsPost: boolean('include_news_post').notNull().default(false),
-    status: text('status').notNull().default('draft'),
-    scheduledActionId: uuid('scheduled_action_id'),
-    websiteNewsPostId: uuid('website_news_post_id'),
-    websiteSiteAlertId: uuid('website_site_alert_id'),
-    websiteNewsSlug: text('website_news_slug'),
-    postedToInstagram: boolean('posted_to_instagram').notNull().default(false),
-    postedToYoutube: boolean('posted_to_youtube').notNull().default(false),
-    approvedBy: text('approved_by'),
-    approvedAt: timestamp('approved_at', { withTimezone: true }),
-    publishError: text('publish_error'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index('publish_posts_status_idx').on(table.status),
-    index('publish_posts_created_at_idx').on(table.createdAt),
-  ]
-)
-
 export const scheduledActions = pgTable(
   'scheduled_actions',
   {
@@ -640,5 +604,43 @@ export const scheduledActions = pgTable(
   (table) => [
     index('scheduled_actions_status_run_at_idx').on(table.status, table.runAt),
     uniqueIndex('scheduled_actions_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
+/** Cross-post composer drafts and published website + social tracking. */
+export const publishPosts = pgTable(
+  'publish_posts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    caption: text('caption').notNull().default(''),
+    mediaUrl: text('media_url'),
+    mediaType: text('media_type'),
+    includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
+    includeSiteAlert: boolean('include_site_alert').notNull().default(false),
+    siteAlertKind: text('site_alert_kind'),
+    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
+    siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
+    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
+    includeNewsPost: boolean('include_news_post').notNull().default(false),
+    status: text('status').notNull().default('draft'),
+    scheduledActionId: uuid('scheduled_action_id').references(() => scheduledActions.id, {
+      onDelete: 'set null',
+    }),
+    websiteNewsPostId: uuid('website_news_post_id'),
+    websiteSiteAlertId: uuid('website_site_alert_id'),
+    websiteNewsSlug: text('website_news_slug'),
+    postedToInstagram: boolean('posted_to_instagram').notNull().default(false),
+    postedToYoutube: boolean('posted_to_youtube').notNull().default(false),
+    approvedBy: text('approved_by'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    publishError: text('publish_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('publish_posts_status_idx').on(table.status),
+    index('publish_posts_created_at_idx').on(table.createdAt),
   ]
 )
