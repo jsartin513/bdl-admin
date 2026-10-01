@@ -10,6 +10,10 @@ import BoardAppsMenu from '@/app/components/BoardAppsMenu'
 import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { Tooltip } from '@/app/components/ui'
 import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
+import {
+  navEntriesForGroup,
+  type FeatureEntry,
+} from '@/app/lib/feature-maturity'
 
 function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -55,7 +59,7 @@ function NavDropdown({ label, children }: { label: string; children: React.React
       {open && (
         <div
           id={panelId}
-          className="absolute left-0 mt-1 w-52 rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
+          className="absolute left-0 mt-1 w-56 rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
         >
           {children}
         </div>
@@ -66,6 +70,43 @@ function NavDropdown({ label, children }: { label: string; children: React.React
 
 function menuItemClassName() {
   return 'block px-3 py-2 text-sm text-gray-100 hover:bg-gray-600 focus-visible:bg-gray-600 focus-visible:outline-none'
+}
+
+function IncompleteBadge({ note }: { note?: string }) {
+  return (
+    <Tooltip
+      label="Incomplete feature"
+      content={
+        note ??
+        'This feature is still evolving. Expect rough edges or missing ops setup.'
+      }
+    >
+      <span className="ml-1 rounded border border-amber-400/70 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+        Incomplete
+      </span>
+    </Tooltip>
+  )
+}
+
+function FeatureNavLink({
+  entry,
+  devMode,
+  className,
+}: {
+  entry: FeatureEntry
+  devMode: boolean
+  className: string
+}) {
+  return (
+    <Link href={withDevMode(entry.href, devMode)} className={className}>
+      <span className="inline-flex items-center">
+        {entry.label}
+        {entry.maturity === 'incomplete' ? (
+          <IncompleteBadge note={entry.note} />
+        ) : null}
+      </span>
+    </Link>
+  )
 }
 
 function NotificationsBell({
@@ -127,37 +168,13 @@ function NotificationsBell({
 
   async function markRead(id: string) {
     try {
-      const res = await fetch(`/api/admin/notifications/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mark_read' }),
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      setUnreadCount(Number(data.unreadCount) || 0)
+      await fetch(`/api/admin/notifications/${id}/read`, { method: 'POST' })
       setNotifications((prev) =>
         prev.map((n) =>
-          n.id === id ? { ...n, readAt: data.notification?.readAt ?? new Date() } : n
+          n.id === id ? { ...n, readAt: new Date().toISOString() } : n
         )
       )
-    } catch {
-      // ignore
-    }
-  }
-
-  async function markAllRead() {
-    try {
-      const res = await fetch('/api/admin/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mark_all_read' }),
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      setUnreadCount(Number(data.unreadCount) || 0)
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date() }))
-      )
+      setUnreadCount((c) => Math.max(0, c - 1))
     } catch {
       // ignore
     }
@@ -174,7 +191,7 @@ function NotificationsBell({
           setOpen((v) => !v)
           if (!open) void load()
         }}
-        className="relative rounded px-2 py-1 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="relative hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={panelId}
@@ -184,49 +201,39 @@ function NotificationsBell({
             : 'Notifications'
         }
       >
-        <span aria-hidden="true">Alerts</span>
-        {unreadCount > 0 && (
-          <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-gray-900">
+        Notifications
+        {unreadCount > 0 ? (
+          <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
-        )}
+        ) : null}
       </button>
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
+          className="absolute right-0 mt-1 w-80 max-h-96 overflow-y-auto rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
         >
-          <div className="flex items-center justify-between gap-2 border-b border-gray-600 px-3 py-2">
-            <span className="text-sm font-medium text-gray-100">Notifications</span>
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={() => void markAllRead()}
-                className="text-xs text-blue-200 hover:underline"
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
           {notifications.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-gray-300">No notifications yet.</p>
+            <p className="px-3 py-4 text-sm text-gray-300">No notifications</p>
           ) : (
-            <ul className="max-h-80 overflow-y-auto">
+            <ul>
               {notifications.map((n) => {
+                const unread = !n.readAt
                 const href = n.href
                   ? withDevMode(n.href, devMode)
                   : null
-                const unread = !n.readAt
                 const content = (
                   <>
-                    <div
-                      className={`text-sm ${unread ? 'font-semibold text-white' : 'text-gray-100'}`}
+                    <span
+                      className={`block text-sm ${unread ? 'font-semibold text-white' : 'text-gray-200'}`}
                     >
                       {n.title}
-                    </div>
-                    <div className="mt-0.5 text-xs text-gray-300 line-clamp-2">
-                      {n.body}
-                    </div>
+                    </span>
+                    {n.body ? (
+                      <span className="mt-0.5 block text-xs text-gray-400">
+                        {n.body}
+                      </span>
+                    ) : null}
                   </>
                 )
                 return (
@@ -287,94 +294,67 @@ export default function TopNav() {
     router.replace('/login')
   }
 
+  const leagueLinks = navEntriesForGroup('leagues', devMode)
+  const mainLinks = navEntriesForGroup('main', devMode)
+  const developerLinks = navEntriesForGroup('developer', devMode)
+
+  const topLinkClass =
+    'hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white'
+
   return (
     <nav
       aria-label="Main"
       className="admin-chrome bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
     >
       <div className="flex flex-wrap space-x-4 items-center">
-        <NavDropdown label="Leagues">
-          <Link
-            href={withDevMode('/schedules', devMode)}
-            className={menuItemClassName()}
-          >
-            View Schedule
-          </Link>
-          <Link
-            href={withDevMode('/create-league', devMode)}
-            className={menuItemClassName()}
-          >
-            Create New Schedule
-          </Link>
-        </NavDropdown>
-        <Link
-          href={withDevMode('/open-gym', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Open Gym
-        </Link>
-        <Link
-          href={withDevMode('/players', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Player Management
-        </Link>
-        <Link
-          href={withDevMode('/events', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Events
-        </Link>
-        <Link
-          href={withDevMode('/video-tools', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Video Tools
-        </Link>
-        <Link
-          href={withDevMode('/publish', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Publish
-        </Link>
-        <Link
-          href={withDevMode('/scheduled', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Scheduled
-        </Link>
-        <Link
-          href={withDevMode('/non-bdl-events', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Non-BDL Events
-        </Link>
-        {devMode && (
-          <NavDropdown label="Developer">
-            <Link
-              href={withDevMode('/tournament', devMode)}
-              className={menuItemClassName()}
-            >
-              Tournament Audio
-            </Link>
-            <Link
-              href={withDevMode('/tournament/team-schedules', devMode)}
-              className={menuItemClassName()}
-            >
-              Team Schedules
-            </Link>
-            <Link
-              href={withDevMode('/tournament/scoresheets', devMode)}
-              className={menuItemClassName()}
-            >
-              Scoresheets
-            </Link>
+        {leagueLinks.length > 0 ? (
+          <NavDropdown label="Leagues">
+            {leagueLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
           </NavDropdown>
-        )}
+        ) : null}
+        {mainLinks.map((entry) => (
+          <FeatureNavLink
+            key={entry.id}
+            entry={entry}
+            devMode={devMode}
+            className={topLinkClass}
+          />
+        ))}
+        {developerLinks.length > 0 ? (
+          <NavDropdown label="Developer">
+            {developerLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
+          </NavDropdown>
+        ) : null}
       </div>
       <div className="flex items-center gap-4 text-sm">
         <ThemeToggle />
         <NotificationsBell enabled={Boolean(email)} devMode={devMode} />
+        <Link
+          href={withDevMode('/whats-new', devMode)}
+          className={`${topLinkClass} text-blue-100`}
+        >
+          What&apos;s New
+        </Link>
+        <Link
+          href={withDevMode('/request-feature', devMode)}
+          className={`${topLinkClass} text-blue-100`}
+        >
+          Request a feature
+        </Link>
         <BoardAppsMenu currentApp="admin" />
         {email ? (
           <>
@@ -386,7 +366,7 @@ export default function TopNav() {
                 Dev mode
                 <Tooltip
                   label="About Dev mode"
-                  content="Shows developer-only tools such as tournament audio and scoresheet generators."
+                  content="Shows developer-only tools (tournament audio, scoresheets, game timer) and keeps incomplete board tools labeled in the nav."
                 />
               </span>
               <input

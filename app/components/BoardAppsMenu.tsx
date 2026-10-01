@@ -95,6 +95,16 @@ export default function BoardAppsMenu({
             </a>
           ))}
           <div className="mt-1 border-t border-gray-600 pt-1">
+            <a href="/whats-new" className={linkClassName} onClick={() => setOpen(false)}>
+              What&apos;s New
+            </a>
+            <a
+              href="/request-feature"
+              className={linkClassName}
+              onClick={() => setOpen(false)}
+            >
+              Request a feature
+            </a>
             <a href="/help" className={linkClassName} onClick={() => setOpen(false)}>
               Help
             </a>
