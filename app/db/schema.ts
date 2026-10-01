@@ -47,6 +47,10 @@ export const players = pgTable(
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
     strongPersonalityNotes: text('strong_personality_notes'),
+    /** Player self-reported skill (player app); operational only until sensitive split. */
+    selfReportedSkill: integer('self_reported_skill'),
+    /** Linked player-app account id (operational). */
+    playerAppAccountId: uuid('player_app_account_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
