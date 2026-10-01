@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { GET } from '@/app/api/public/leagues/route'
 import { HOME_LEAGUE_CODES } from '@/app/lib/players/home-league'
 import {
+  assertPublicLeagueCatalogPayload,
+  type PublicLeagueCatalogResponse,
+} from '@/app/lib/player-public/catalog'
+import {
+  PUBLIC_LEAGUE_PRODUCT_FIELD_KEYS,
+  PUBLIC_LEAGUE_PRODUCT_FORBIDDEN_KEYS,
+  assertPublicLeagueProductPayload,
+  listPublicLeagueProducts,
+  mapEventRowToPublicLeagueProduct,
+} from '@/app/lib/player-public/league-products'
+import {
   PUBLIC_LEAGUE_FIELD_KEYS,
   PUBLIC_LEAGUE_FORBIDDEN_KEYS,
   assertPublicLeaguePayload,
@@ -32,16 +43,55 @@ describe('public leagues contract', () => {
     assertPublicLeaguePayload(leagues)
   })
 
+  it('maps event rows to allowlisted public products', () => {
+    const product = mapEventRowToPublicLeagueProduct({
+      id: '00000000-0000-4000-8000-000000000001',
+      name: 'Spring BYOT',
+      eventDate: '2026-04-01',
+      eventEndDate: '2026-06-15',
+      sessionTimeLabel: 'Wednesdays 7–9 PM',
+      location: 'Cambridge Rindge',
+      eventFormat: 'byot',
+      priceCents: 8500,
+      capacity: 48,
+      registrationOpensAt: new Date('2026-03-01T12:00:00.000Z'),
+      registrationClosesAt: new Date('2026-03-28T23:59:59.000Z'),
+      publicDescription: 'Eight-week foam league.',
+    })
+    expect(Object.keys(product).sort()).toEqual([...PUBLIC_LEAGUE_PRODUCT_FIELD_KEYS].sort())
+    expect(product.startDate).toBe('2026-04-01')
+    expect(product.format).toBe('byot')
+    assertPublicLeagueProductPayload([product])
+  })
+
+  it('listPublicLeagueProducts returns an array without DB', async () => {
+    const products = await listPublicLeagueProducts()
+    expect(Array.isArray(products)).toBe(true)
+  })
+
   it('GET /api/public/leagues returns JSON without forbidden keys', async () => {
     const res = await GET()
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = (await res.json()) as PublicLeagueCatalogResponse
+    expect(body.version).toBe(2)
+    expect(Array.isArray(body.products)).toBe(true)
+
     const keys = collectJsonKeys(body)
-    for (const forbidden of PUBLIC_LEAGUE_FORBIDDEN_KEYS) {
-      expect(keys.has(forbidden)).toBe(false)
+    const forbidden = new Set<string>([
+      ...PUBLIC_LEAGUE_FORBIDDEN_KEYS,
+      ...PUBLIC_LEAGUE_PRODUCT_FORBIDDEN_KEYS,
+    ])
+    for (const key of forbidden) {
+      expect(keys.has(key)).toBe(false)
     }
-    const leagues = (body as { leagues: unknown[] }).leagues
-    expect(leagues.length).toBeGreaterThan(0)
-    assertPublicLeaguePayload(leagues)
+
+    expect(body.leagues.length).toBe(HOME_LEAGUE_CODES.length)
+    for (const league of body.leagues) {
+      expect(Object.keys(league).sort()).toEqual([...PUBLIC_LEAGUE_FIELD_KEYS].sort())
+    }
+    for (const product of body.products) {
+      expect(Object.keys(product).sort()).toEqual([...PUBLIC_LEAGUE_PRODUCT_FIELD_KEYS].sort())
+    }
+    assertPublicLeagueCatalogPayload(body)
   })
 })
