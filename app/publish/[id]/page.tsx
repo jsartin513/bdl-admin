@@ -8,6 +8,7 @@ import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
 import { buildSocialKit } from '@/app/lib/publish/social-kit'
 import type { PublishKind, PublishPostRecord, SocialKit } from '@/app/lib/publish/types'
+import { formatEasternLocal, easternLocalToDate } from '@/app/lib/schedule/eastern'
 
 const KIND_LABELS: Record<PublishKind, string> = {
   open_gym_flyer: 'Open Gym flyer',
@@ -120,7 +121,11 @@ function PublishDetailContent() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [publishRunAt, setPublishRunAt] = useState(() =>
+    formatEasternLocal(new Date(Date.now() + 60 * 60 * 1000))
+  )
 
   const load = useCallback(async () => {
     if (!postId) return
@@ -160,7 +165,9 @@ function PublishDetailContent() {
           includeOpenGymFlyer: post.includeOpenGymFlyer,
           includeSiteAlert: post.includeSiteAlert,
           siteAlertKind: post.siteAlertKind,
+          siteAlertStartsAt: post.siteAlertStartsAt,
           siteAlertEndsAt: post.siteAlertEndsAt,
+          newsPublishAt: post.newsPublishAt,
           includeNewsPost: post.includeNewsPost,
         }),
       })
@@ -192,6 +199,34 @@ function PublishDetailContent() {
       void load()
     } finally {
       setApproving(false)
+    }
+  }
+
+  async function schedulePublish() {
+    if (!post) return
+    setScheduling(true)
+    setError(null)
+    try {
+      const saved = await saveDraft()
+      if (!saved) return
+      const res = await fetch(`/api/publish/${post.id}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          runAt: publishRunAt,
+          siteAlertStartsAt: post.siteAlertStartsAt,
+          siteAlertEndsAt: post.siteAlertEndsAt,
+          newsPublishAt: post.newsPublishAt,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to schedule')
+      setPost(data.post)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to schedule')
+      void load()
+    } finally {
+      setScheduling(false)
     }
   }
 
@@ -243,6 +278,7 @@ function PublishDetailContent() {
   }
 
   const isDraft = post.status === 'draft'
+  const isScheduled = post.status === 'scheduled'
 
   return (
     <div className="mx-auto max-w-3xl p-6">
@@ -328,21 +364,82 @@ function PublishDetailContent() {
             Header banner
           </label>
           {post.includeSiteAlert ? (
-            <label className="mt-2 block">
-              Banner kind
-              <select
-                className="ml-2 rounded border border-gray-300 px-2 py-1"
-                value={post.siteAlertKind ?? 'news'}
-                onChange={(e) =>
+            <>
+              <label className="mt-2 block">
+                Banner kind
+                <select
+                  className="ml-2 rounded border border-gray-300 px-2 py-1"
+                  value={post.siteAlertKind ?? 'news'}
+                  onChange={(e) =>
+                    setPost({
+                      ...post,
+                      siteAlertKind: e.target.value as 'news' | 'cancellation',
+                    })
+                  }
+                >
+                  <option value="news">News</option>
+                  <option value="cancellation">Cancellation</option>
+                </select>
+              </label>
+              <label className="mt-2 block text-sm">
+                Banner starts (Eastern, optional)
+                <input
+                  type="datetime-local"
+                  className="mt-1 block w-full rounded border border-gray-300 px-2 py-1"
+                  value={
+                    post.siteAlertStartsAt
+                      ? formatEasternLocal(new Date(post.siteAlertStartsAt))
+                      : ''
+                  }
+                  onChange={(e) => {
+                    const d = e.target.value ? easternLocalToDate(e.target.value) : null
+                    setPost({
+                      ...post,
+                      siteAlertStartsAt: d ? d.toISOString() : null,
+                    })
+                  }}
+                />
+              </label>
+              <label className="mt-2 block text-sm">
+                Banner ends (Eastern)
+                <input
+                  type="datetime-local"
+                  className="mt-1 block w-full rounded border border-gray-300 px-2 py-1"
+                  value={
+                    post.siteAlertEndsAt
+                      ? formatEasternLocal(new Date(post.siteAlertEndsAt))
+                      : ''
+                  }
+                  onChange={(e) => {
+                    const d = e.target.value ? easternLocalToDate(e.target.value) : null
+                    setPost({
+                      ...post,
+                      siteAlertEndsAt: d ? d.toISOString() : null,
+                    })
+                  }}
+                />
+              </label>
+            </>
+          ) : null}
+          {post.includeNewsPost ? (
+            <label className="mt-2 block text-sm">
+              News go-live (Eastern, optional)
+              <input
+                type="datetime-local"
+                className="mt-1 block w-full rounded border border-gray-300 px-2 py-1"
+                value={
+                  post.newsPublishAt
+                    ? formatEasternLocal(new Date(post.newsPublishAt))
+                    : ''
+                }
+                onChange={(e) => {
+                  const d = e.target.value ? easternLocalToDate(e.target.value) : null
                   setPost({
                     ...post,
-                    siteAlertKind: e.target.value as 'news' | 'cancellation',
+                    newsPublishAt: d ? d.toISOString() : null,
                   })
-                }
-              >
-                <option value="news">News</option>
-                <option value="cancellation">Cancellation</option>
-              </select>
+                }}
+              />
             </label>
           ) : null}
           <label className="mt-2 flex items-center gap-2">
@@ -356,24 +453,56 @@ function PublishDetailContent() {
         </fieldset>
 
         {isDraft ? (
-          <div className="flex flex-wrap gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => void saveDraft()}
-              disabled={saving}
-              className="rounded border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save draft'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void approve()}
-              disabled={approving}
-              className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
-            >
-              {approving ? 'Publishing…' : 'Approve & publish to website'}
-            </button>
+          <div className="flex flex-col gap-3 pt-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void saveDraft()}
+                disabled={saving}
+                className="rounded border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save draft'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void approve()}
+                disabled={approving}
+                className="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
+              >
+                {approving ? 'Publishing…' : 'Approve & publish now'}
+              </button>
+            </div>
+            <fieldset className="rounded border border-gray-200 p-3 text-sm">
+              <legend className="px-1 font-medium">Schedule publish</legend>
+              <label className="block">
+                Run at (Eastern)
+                <input
+                  type="datetime-local"
+                  className="mt-1 block w-full rounded border border-gray-300 px-2 py-1"
+                  value={publishRunAt}
+                  onChange={(e) => setPublishRunAt(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void schedulePublish()}
+                disabled={scheduling}
+                className="mt-3 rounded border border-teal-700 px-4 py-2 text-sm text-teal-800 hover:bg-teal-50 disabled:opacity-50"
+              >
+                {scheduling ? 'Scheduling…' : 'Schedule website publish'}
+              </button>
+            </fieldset>
           </div>
+        ) : null}
+
+        {isScheduled ? (
+          <p className="mt-4 text-sm text-amber-800">
+            This post is scheduled for website publish. Cancel from{' '}
+            <Link href={withDevMode('/scheduled', devMode)} className="underline">
+              Scheduled
+            </Link>
+            .
+          </p>
         ) : null}
       </div>
 

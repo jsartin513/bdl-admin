@@ -21,7 +21,9 @@ export type PublishPostWrite = {
   includeOpenGymFlyer: boolean
   includeSiteAlert: boolean
   siteAlertKind: 'news' | 'cancellation' | null
+  siteAlertStartsAt: Date | null
   siteAlertEndsAt: Date | null
+  newsPublishAt: Date | null
   includeNewsPost: boolean
 }
 
@@ -85,7 +87,9 @@ export async function createPublishPost(
       includeOpenGymFlyer: input.includeOpenGymFlyer ?? defaults.includeOpenGymFlyer,
       includeSiteAlert: input.includeSiteAlert ?? defaults.includeSiteAlert,
       siteAlertKind: input.siteAlertKind ?? defaults.siteAlertKind,
+      siteAlertStartsAt: input.siteAlertStartsAt ?? null,
       siteAlertEndsAt: input.siteAlertEndsAt ?? null,
+      newsPublishAt: input.newsPublishAt ?? null,
       includeNewsPost: input.includeNewsPost ?? defaults.includeNewsPost,
       status: 'draft',
       updatedAt: new Date(),
@@ -104,6 +108,10 @@ export async function updatePublishPost(
   const existing = await getPublishPost(id)
   if (!existing) return null
 
+  if (existing.status === 'scheduled') {
+    throw new Error('Cancel the scheduled publish before editing')
+  }
+
   if (existing.status === 'published') {
     const onlySocial =
       input.postedToInstagram !== undefined || input.postedToYoutube !== undefined
@@ -117,7 +125,9 @@ export async function updatePublishPost(
         'includeOpenGymFlyer',
         'includeSiteAlert',
         'siteAlertKind',
+        'siteAlertStartsAt',
         'siteAlertEndsAt',
+        'newsPublishAt',
         'includeNewsPost',
       ] as const
     ).some((key) => input[key] !== undefined)
@@ -142,9 +152,13 @@ export async function updatePublishPost(
         ? { includeSiteAlert: input.includeSiteAlert }
         : {}),
       ...(input.siteAlertKind !== undefined ? { siteAlertKind: input.siteAlertKind } : {}),
+      ...(input.siteAlertStartsAt !== undefined
+        ? { siteAlertStartsAt: input.siteAlertStartsAt }
+        : {}),
       ...(input.siteAlertEndsAt !== undefined
         ? { siteAlertEndsAt: input.siteAlertEndsAt }
         : {}),
+      ...(input.newsPublishAt !== undefined ? { newsPublishAt: input.newsPublishAt } : {}),
       ...(input.includeNewsPost !== undefined
         ? { includeNewsPost: input.includeNewsPost }
         : {}),
@@ -161,13 +175,17 @@ export async function updatePublishPost(
   return row ? mapPublishPost(row) : null
 }
 
-export async function approvePublishPost(
+async function publishPostToWebsite(
   id: string,
-  approvedBy: string
+  approvedBy: string,
+  allowedStatuses: Array<'draft' | 'scheduled'>
 ): Promise<PublishPostRecord> {
   const post = await getPublishPost(id)
   if (!post) throw new Error('Post not found')
   if (post.status === 'published') return post
+  if (!allowedStatuses.includes(post.status as 'draft' | 'scheduled')) {
+    throw new Error('Post cannot be published')
+  }
 
   const payload = buildWebsitePublishPayload(post)
   if (
@@ -191,6 +209,7 @@ export async function approvePublishPost(
         publishError: null,
         approvedBy,
         approvedAt: new Date(),
+        scheduledActionId: null,
         updatedAt: new Date(),
       })
       .where(eq(publishPosts.id, id))
@@ -206,4 +225,20 @@ export async function approvePublishPost(
       .where(eq(publishPosts.id, id))
     throw new Error(message)
   }
+}
+
+/** Immediate approve from admin UI — draft posts only. */
+export async function approvePublishPost(
+  id: string,
+  approvedBy: string
+): Promise<PublishPostRecord> {
+  return publishPostToWebsite(id, approvedBy, ['draft'])
+}
+
+/** Used by the scheduled-action dispatcher when `run_at` is due. */
+export async function publishScheduledPost(
+  id: string,
+  approvedBy: string
+): Promise<PublishPostRecord> {
+  return publishPostToWebsite(id, approvedBy, ['scheduled'])
 }
