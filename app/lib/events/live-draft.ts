@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import {
   assertCaptainDraftPayload,
