@@ -100,6 +100,7 @@ Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… 
 - Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
 - Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
 - Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0021_contact_players`).
+- **Outbox** (`/outbox`, top nav): unified log in `outbound_messages` for contact email/SMS/WhatsApp plus operational email (video merge notify, watched login alerts). **Failed** for email means Resend rejected the API call; SMS/WhatsApp can move to failed/delivered via Twilio callbacks. Email accepted by Resend stays `sent` until a future Resend webhook.
 - Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging` (step-by-step: [docs/integrations-setup.md](../docs/integrations-setup.md)).
 
 ## Players

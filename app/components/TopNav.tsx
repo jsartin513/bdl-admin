@@ -320,6 +320,12 @@ export default function TopNav() {
           Player Management
         </Link>
         <Link
+          href={withDevMode('/outbox', devMode)}
+          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          Outbox
+        </Link>
+        <Link
           href={withDevMode('/events', devMode)}
           className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >

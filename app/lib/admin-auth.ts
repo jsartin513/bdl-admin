@@ -282,6 +282,15 @@ export async function alertWatchedAdminLoginAttempt(
     console.error(
       '[admin-auth] WATCHED_LOGIN_ATTEMPT email skipped (RESEND_API_KEY or from address not configured)'
     )
+    const { recordOutboundMessage } = await import('@/app/lib/outbound/log')
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'login_alert',
+      status: 'skipped',
+      toAddress: to,
+      subject,
+      skipReason: 'email not configured',
+    })
     return
   }
 
@@ -301,9 +310,51 @@ export async function alertWatchedAdminLoginAttempt(
         res.status,
         body.slice(0, 300)
       )
+      const { recordOutboundMessage } = await import('@/app/lib/outbound/log')
+      await recordOutboundMessage({
+        channel: 'email',
+        kind: 'login_alert',
+        status: 'failed',
+        toAddress: to,
+        subject,
+        provider: 'resend',
+        errorMessage: `Resend returned ${res.status}`,
+      })
+      return
     }
+
+    let providerMessageId: string | null = null
+    try {
+      const data = (await res.json()) as { id?: string }
+      providerMessageId = data.id?.trim() || null
+    } catch {
+      // ignore
+    }
+
+    const { recordOutboundMessage } = await import('@/app/lib/outbound/log')
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'login_alert',
+      status: 'sent',
+      toAddress: to,
+      subject,
+      provider: 'resend',
+      providerMessageId,
+      sentAt: new Date(),
+    })
   } catch (err) {
     console.error('[admin-auth] WATCHED_LOGIN_ATTEMPT email error', err)
+    const message = err instanceof Error ? err.message : 'send failed'
+    const { recordOutboundMessage } = await import('@/app/lib/outbound/log')
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'login_alert',
+      status: 'failed',
+      toAddress: to,
+      subject,
+      provider: 'resend',
+      errorMessage: message,
+    })
   }
 }
 
