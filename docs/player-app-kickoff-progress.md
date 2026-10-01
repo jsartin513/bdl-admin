@@ -22,14 +22,14 @@ Cross-repo checklist. Detail lives in the linked manuals.
 
 | Project | Status |
 |---------|--------|
-| `bdl-admin` | Preview: https://admin-preview.bostondodgeballleague.com — `PLAYER_APP_BASE_URL` set (non-secret) |
-| `bdl-player` | **Not created** — needs import + DNS |
+| `bdl-admin` | Preview: https://admin-preview.bostondodgeballleague.com — `PLAYER_APP_BASE_URL` set; **`PLAYER_SYNC_SECRET` on Preview** (copy same value to player when project exists) |
+| `bdl-player` | **Not created** — needs import + DNS; set matching **`PLAYER_SYNC_SECRET`** on Preview |
 
 Public catalog: `GET /api/public/leagues` returns **v2** `{ version, leagues, products }` on preview after deploy (migration **0028** required for `products` from DB).
 
 ## Secrets still manual
 
-- `PLAYER_SYNC_SECRET` — admin + player (must match) before sync works end-to-end
+- `PLAYER_SYNC_SECRET` — **Preview set on `bdl-admin`**; still set on **`bdl-player`** (same value) before end-to-end sync. Runbook: [`player-sync-runbook.md`](./player-sync-runbook.md).
 - `SENSITIVE_DATABASE_URL` — optional until sensitive Neon cutover
 - Player: `PLAYER_DATABASE_URL`, Google OAuth, Stripe/Resend (later)
 

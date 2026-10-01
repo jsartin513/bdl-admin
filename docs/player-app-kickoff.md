@@ -28,11 +28,17 @@ Player app reads the league catalog from admin’s public API (live on preview a
 
 Progress tracker: [`player-app-kickoff-progress.md`](./player-app-kickoff-progress.md).
 
-Secrets (**TODO** — do not commit):
+Secrets (do not commit):
 
-- `PLAYER_SYNC_SECRET` — must match player app
+- **`PLAYER_SYNC_SECRET`** — shared with `bdl-player`; authenticates admin → player change feed.
+  1. Generate: `openssl rand -base64 32`
+  2. Vercel → **`bdl-admin`** and **`bdl-player`** → same value, **Sensitive**, per environment (Preview first).
+  3. Redeploy both apps after setting.
+  4. Player validates `GET /api/internal/v1/changes` via header **`X-BDL-Player-Sync-Secret`**; admin sends that header when pulling (see [`player-sync-runbook.md`](./player-sync-runbook.md)).
 - `SENSITIVE_DATABASE_URL` — after Neon split
 
 Player app manual steps: see `bdl-player/docs/KICKOFF_MANUAL.md`.
+
+Operational tests: [`player-sync-runbook.md`](./player-sync-runbook.md).
 
 Migration plan (operational vs sensitive): [player-app-migrations.md](./player-app-migrations.md).
