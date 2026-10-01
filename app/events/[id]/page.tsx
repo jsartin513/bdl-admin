@@ -1311,6 +1311,18 @@ function EventTrackerPageContent() {
         }}
       />
 
+      {event.eventFormat === 'draft' && devMode ? (
+        <p className="mt-4 text-sm text-violet-900">
+          <Link
+            href={withDevMode(`/events/${eventId}/live-draft`, true)}
+            className="font-medium underline"
+          >
+            Captain live draft (commissioner)
+          </Link>
+          <span className="text-violet-800/80"> — Dev mode only</span>
+        </p>
+      ) : null}
+
       <EventTeamsSection
         hasByotLocked={hasByotLocked}
         teamsLocked={event.teamsLocked}

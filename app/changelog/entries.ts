@@ -16,6 +16,13 @@ export type ChangelogEntry = {
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
     date: '2026-10-01',
+    title: 'Captain live draft (preview)',
+    summary:
+      'Draft-format events can run a live snake draft: captains pick on the player app; the commissioner console is under Dev mode at /events/[id]/live-draft.',
+    href: '/events',
+  },
+  {
+    date: '2026-10-01',
     title: 'Board awareness: What’s New, Dev mode labels, feature requests',
     summary:
       'Incomplete tools are labeled in the nav, developer-only tools stay behind Dev mode, and board members can request features from within admin (GitHub issues).',
