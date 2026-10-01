@@ -3,6 +3,7 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
+import { parseEventUpdatePatch } from '@/app/lib/events/event-update-patch'
 import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import {
@@ -10,10 +11,6 @@ import {
   eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
-  isValidBallType,
-  isValidEventFormat,
-  isValidEventGender,
-  isValidEventType,
 } from '@/app/lib/events/types'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -49,87 +46,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params
-    const body = (await request.json()) as {
-      name?: string
-      eventDate?: string
-      eventType?: string | null
-      eventFormat?: string | null
-      ballType?: string | null
-      gender?: string | null
-      notes?: string | null
-      pairingEnabled?: boolean
-      teamNames?: string[]
-      teamsLocked?: boolean
-      finalizeTeams?: boolean
-    }
+    const body = await request.json()
+    const patch = parseEventUpdatePatch(body)
 
-    if (
-      body.eventType != null &&
-      body.eventType !== '' &&
-      !isValidEventType(body.eventType)
-    ) {
-      return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
-    }
-    if (
-      body.eventFormat != null &&
-      body.eventFormat !== '' &&
-      !isValidEventFormat(body.eventFormat)
-    ) {
-      return NextResponse.json({ error: 'Invalid eventFormat' }, { status: 400 })
-    }
-    if (
-      body.ballType != null &&
-      body.ballType !== '' &&
-      !isValidBallType(body.ballType)
-    ) {
-      return NextResponse.json({ error: 'Invalid ballType' }, { status: 400 })
-    }
-    if (
-      body.gender != null &&
-      body.gender !== '' &&
-      !isValidEventGender(body.gender)
-    ) {
-      return NextResponse.json({ error: 'Invalid gender' }, { status: 400 })
-    }
-
-    if (
-      body.pairingEnabled !== undefined &&
-      typeof body.pairingEnabled !== 'boolean'
-    ) {
-      return NextResponse.json(
-        { error: 'pairingEnabled must be a boolean' },
-        { status: 400 }
-      )
-    }
-
-    if (body.teamNames !== undefined && !Array.isArray(body.teamNames)) {
-      return NextResponse.json(
-        { error: 'teamNames must be an array of strings' },
-        { status: 400 }
-      )
-    }
-
-    if (
-      body.teamsLocked !== undefined &&
-      typeof body.teamsLocked !== 'boolean'
-    ) {
-      return NextResponse.json(
-        { error: 'teamsLocked must be a boolean' },
-        { status: 400 }
-      )
-    }
-
-    if (
-      body.finalizeTeams !== undefined &&
-      typeof body.finalizeTeams !== 'boolean'
-    ) {
-      return NextResponse.json(
-        { error: 'finalizeTeams must be a boolean' },
-        { status: 400 }
-      )
-    }
-
-    const event = await updateEvent(id, body)
+    const event = await updateEvent(id, patch)
     return NextResponse.json({
       event: {
         ...event,

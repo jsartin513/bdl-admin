@@ -50,6 +50,15 @@ export type EventRecord = {
   teamNames: string[]
   teamsLocked: boolean
   teamsFinalizedAt: Date | null
+  publishedToPlayerApp: boolean
+  publicDescription: string | null
+  location: string | null
+  eventEndDate: string | null
+  sessionTimeLabel: string | null
+  priceCents: number | null
+  capacity: number | null
+  registrationOpensAt: Date | null
+  registrationClosesAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
