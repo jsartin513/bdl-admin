@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import TopNav from "./components/TopNav";
+import IncompleteBanner from "./components/IncompleteBanner";
+import DevOnlyGate from "./components/DevOnlyGate";
 import { ThemeProvider } from "./components/ThemeProvider";
 
 const geistSans = Geist({
@@ -40,7 +42,14 @@ export default function RootLayout({
           <Suspense fallback={<nav className="admin-chrome bg-gray-800 p-4 h-[52px]" aria-label="Loading navigation" />}>
             <TopNav />
           </Suspense>
-          <main id="main-content">{children}</main>
+          <Suspense fallback={null}>
+            <IncompleteBanner />
+          </Suspense>
+          <main id="main-content">
+            <Suspense fallback={null}>
+              <DevOnlyGate>{children}</DevOnlyGate>
+            </Suspense>
+          </main>
         </ThemeProvider>
       </body>
     </html>

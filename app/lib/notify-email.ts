@@ -4,6 +4,8 @@
  * Uses Resend's HTTP API (no SDK dependency).
  */
 
+import { recordOutboundMessage } from '@/app/lib/outbound/log'
+
 export type NotifyEmailInput = {
   to: string
   subject: string
@@ -24,9 +26,24 @@ export async function sendNotifyEmail(
   const to = input.to.trim().toLowerCase()
 
   if (!apiKey || !from) {
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'video_notify',
+      status: 'skipped',
+      toAddress: to || null,
+      subject: input.subject,
+      skipReason: 'email not configured',
+    })
     return { sent: false, skipped: 'email not configured' }
   }
   if (!to) {
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'video_notify',
+      status: 'skipped',
+      subject: input.subject,
+      skipReason: 'missing recipient',
+    })
     return { sent: false, skipped: 'missing recipient' }
   }
 
@@ -52,16 +69,54 @@ export async function sendNotifyEmail(
         res.status,
         body.slice(0, 500)
       )
+      const error = `Resend returned ${res.status}`
+      await recordOutboundMessage({
+        channel: 'email',
+        kind: 'video_notify',
+        status: 'failed',
+        toAddress: to,
+        subject: input.subject,
+        provider: 'resend',
+        errorMessage: error,
+      })
       return {
         sent: false,
-        error: `Resend returned ${res.status}`,
+        error,
       }
     }
+
+    let providerMessageId: string | null = null
+    try {
+      const data = (await res.json()) as { id?: string }
+      providerMessageId = data.id?.trim() || null
+    } catch {
+      // ignore parse errors
+    }
+
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'video_notify',
+      status: 'sent',
+      toAddress: to,
+      subject: input.subject,
+      provider: 'resend',
+      providerMessageId,
+      sentAt: new Date(),
+    })
 
     return { sent: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'send failed'
     console.error('[notify-email]', message)
+    await recordOutboundMessage({
+      channel: 'email',
+      kind: 'video_notify',
+      status: 'failed',
+      toAddress: to,
+      subject: input.subject,
+      provider: 'resend',
+      errorMessage: message,
+    })
     return { sent: false, error: message }
   }
 }

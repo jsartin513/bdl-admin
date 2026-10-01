@@ -21,3 +21,8 @@ Apply sensitive SQL manually (or via a future `db:migrate:sensitive` script) aga
 3. **Operational** migration (future `0027+`): drop `skill_level`, `skill_level_fib`, `skill_areas`, `has_strong_personality`, `strong_personality_notes` from `players`; drop operational `player_changes` after cutover.
 
 Do not drop operational columns until backfill and dual-write verification are complete in preview.
+
+## Event products (player catalog)
+
+- **Operational** `drizzle/0028_event_player_public_product.sql`: adds `published_to_player_app` and player-facing product fields on `events` for `GET /api/public/leagues` → `products[]`.
+- Preview smoke data (after 0028 on Neon): [PREVIEW_PUBLISH_TEST_PRODUCT.md](./PREVIEW_PUBLISH_TEST_PRODUCT.md).

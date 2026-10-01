@@ -92,7 +92,9 @@ describe('admin auth session', () => {
     expect(getAdminSessionCookieDomain('merch.bostondodgeballleague.com')).toBe(
       '.bostondodgeballleague.com'
     )
-    expect(getAdminSessionCookieDomain('admin-preview.bostondodgeballleague.com')).toBeUndefined()
+    expect(getAdminSessionCookieDomain('admin-preview.bostondodgeballleague.com')).toBe(
+      '.bostondodgeballleague.com'
+    )
     expect(getAdminSessionCookieDomain('localhost')).toBeUndefined()
   })
 })

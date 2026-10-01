@@ -244,6 +244,71 @@ export const eventDraftSnapshots = pgTable(
   (table) => [index('event_draft_snapshots_event_id_idx').on(table.eventId)]
 )
 
+export const eventLiveDrafts = pgTable(
+  'event_live_drafts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    /** setup | live | paused | complete */
+    status: text('status').notNull().default('setup'),
+    /** snake | linear | custom */
+    orderType: text('order_type').notNull().default('snake'),
+    teamOrder: jsonb('team_order').$type<number[]>().notNull().default([]),
+    customSlots: jsonb('custom_slots').$type<number[] | null>(),
+    pickSequence: jsonb('pick_sequence').$type<number[]>().notNull().default([]),
+    currentPickIndex: integer('current_pick_index').notNull().default(0),
+    rules: jsonb('rules')
+      .$type<{
+        minWomenNb: number
+        includeOtherInWomenNb: boolean
+        minIntermediate: number
+        intermediateMin: number
+        intermediateMax: number
+      }>()
+      .notNull()
+      .default({
+        minWomenNb: 3,
+        includeOtherInWomenNb: false,
+        minIntermediate: 2,
+        intermediateMin: 30,
+        intermediateMax: 50,
+      }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('event_live_drafts_event_id_uidx').on(table.eventId)]
+)
+
+export const eventLiveDraftPicks = pgTable(
+  'event_live_draft_picks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    liveDraftId: uuid('live_draft_id')
+      .notNull()
+      .references(() => eventLiveDrafts.id, { onDelete: 'cascade' }),
+    pickIndex: integer('pick_index').notNull(),
+    draftGroup: integer('draft_group').notNull(),
+    registrationId: uuid('registration_id').references(() => eventRegistrations.id, {
+      onDelete: 'set null',
+    }),
+    /** captain | board | skip */
+    pickedBy: text('picked_by').notNull(),
+    actor: text('actor').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('event_live_draft_picks_live_draft_pick_index_uidx').on(
+      table.liveDraftId,
+      table.pickIndex
+    ),
+    index('event_live_draft_picks_live_draft_id_idx').on(table.liveDraftId),
+  ]
+)
+
 /** External / travel events (not BDL-hosted). */
 export const nonBdlEvents = pgTable(
   'non_bdl_events',
@@ -582,6 +647,40 @@ export const contactJobRecipients = pgTable(
     index('contact_job_recipients_player_id_idx').on(table.playerId),
     index('contact_job_recipients_provider_message_id_idx').on(table.providerMessageId),
     uniqueIndex('contact_job_recipients_job_player_uidx').on(table.jobId, table.playerId),
+  ]
+)
+
+/**
+ * Unified outbound comms log (email, SMS, WhatsApp, operational email).
+ * status: skipped | sent | delivered | failed | opted_out
+ */
+export const outboundMessages = pgTable(
+  'outbound_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    channel: text('channel').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    toAddress: text('to_address'),
+    subject: text('subject'),
+    provider: text('provider'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    skipReason: text('skip_reason'),
+    contactJobId: uuid('contact_job_id').references(() => contactJobs.id, {
+      onDelete: 'set null',
+    }),
+    playerId: uuid('player_id').references(() => players.id, { onDelete: 'set null' }),
+    createdByAdminEmail: text('created_by_admin_email'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('outbound_messages_created_at_idx').on(table.createdAt),
+    index('outbound_messages_status_idx').on(table.status),
+    index('outbound_messages_channel_idx').on(table.channel),
+    index('outbound_messages_provider_message_id_idx').on(table.providerMessageId),
   ]
 )
 
