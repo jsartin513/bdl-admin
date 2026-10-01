@@ -92,6 +92,11 @@ PUBLIC_WEBSITE_URL=https://bdl-site-preview.bostondodgeballleague.com
 # ADMIN_DEV_EMAIL=dev@localhost
 # CONTACT_MAX_RECIPIENTS=50
 # NOTIFY_FROM_EMAIL=                   # separate from contact; other notify helpers
+
+# --- In-app feature requests → GitHub Issues (optional) ---
+# Fine-grained PAT with Issues: Write on jsartin513/bdl-admin only.
+# Without it, /request-feature opens a prefilled issues/new URL.
+# GITHUB_FEATURE_REQUEST_TOKEN=
 ```
 
 On **Vercel**, set variables per environment (**Preview** vs **Production**). Preview admin should point `WEBSITE_PUBLISH_URL` / `PUBLIC_WEBSITE_URL` at the **site preview** host; production at the live site. See [Deploy flow](#deploy-flow-preview-first).
@@ -126,6 +131,8 @@ These work in local dev (and often in CI) with **no** `.env.local`:
 | **`/video-tools`** | `BLOB_READ_WRITE_TOKEN`; merge needs **`VIDEO_WORKER_SECRET`** + Fly worker | Create UI; jobs **stay queued** without worker | See [`.cursor/video-tools-runbook.md`](../.cursor/video-tools-runbook.md) |
 | **`/publish` (cross-post)** | `DATABASE_URL`, `PUBLISH_API_SECRET`, `WEBSITE_PUBLISH_URL`, website DB + secret | List/create **503** without DB | Approve fails without publish URL/secret; website must accept Bearer token |
 | **Instagram / YouTube kit** | After successful website publish | N/A | Manual copy/download only (no auto-post APIs) |
+| **`/whats-new`** | None | Yes | Curated changelog from `app/changelog/entries.ts` |
+| **`/request-feature`** | Optional `GITHUB_FEATURE_REQUEST_TOKEN` | Yes (fallback to prefilled GitHub URL) | Without token, opens `issues/new` instead of creating the issue via API |
 
 ### Twilio (typical board state)
 

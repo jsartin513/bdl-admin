@@ -31,6 +31,20 @@ export default function BoardAppsHelpPage() {
       <p className="mt-2 text-sm text-muted-foreground">
         BDL tools for league operations, commerce, and the public website. Open another app or stay here.
       </p>
+      <p className="mt-3 text-sm text-muted-foreground">
+        In League Admin:{' '}
+        <a href="/whats-new" className="text-blue-600 underline dark:text-blue-400">
+          What&apos;s New
+        </a>
+        {' · '}
+        <a
+          href="/request-feature"
+          className="text-blue-600 underline dark:text-blue-400"
+        >
+          Request a feature
+        </a>
+        . Incomplete tools are labeled in the nav; enable Dev mode for developer-only tools.
+      </p>
       <ul className="mt-8 space-y-4">
         {catalog.map((app) => {
           const isCurrent = app.id === CURRENT_APP
