@@ -4,7 +4,8 @@ import { dispatchDueScheduledActions } from '@/app/lib/schedule/mutations'
 import { authorizeCron } from '@/app/lib/schedule/cron-auth'
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+/** Hobby plan caps serverless functions at 60s (see Vercel limits). */
+export const maxDuration = 60
 
 export async function GET(request: NextRequest) {
   const auth = authorizeCron(request)
