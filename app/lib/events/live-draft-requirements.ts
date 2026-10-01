@@ -1,5 +1,4 @@
 import type { CaptainDraftRules, CaptainDraftTeamRequirement } from '@/app/lib/captain-draft/contract'
-import { genderGroup } from '@/app/lib/players/gender'
 import { isValidSkillLevel } from '@/app/lib/players/skill'
 
 export type RequirementPlayer = {
@@ -12,8 +11,7 @@ export function countsForWomenNb(
   includeOther: boolean
 ): number {
   return players.filter((p) => {
-    const g = genderGroup(p.gender)
-    if (g === 'w_nb_o') return true
+    if (p.gender === 'female' || p.gender === 'nonbinary') return true
     if (includeOther && p.gender === 'other') return true
     return false
   }).length

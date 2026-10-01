@@ -54,6 +54,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/events',
     maturity: 'ready',
     group: 'main',
+    note: 'Captain live draft (draft-format events) is new — verify on preview before draft night.',
     pathPrefixes: ['/events'],
   },
   {
