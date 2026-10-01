@@ -49,6 +49,14 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     pathPrefixes: ['/players'],
   },
   {
+    id: 'outbox',
+    label: 'Outbox',
+    href: '/outbox',
+    maturity: 'ready',
+    group: 'main',
+    pathPrefixes: ['/outbox'],
+  },
+  {
     id: 'events',
     label: 'Events',
     href: '/events',

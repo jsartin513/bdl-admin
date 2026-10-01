@@ -650,6 +650,40 @@ export const contactJobRecipients = pgTable(
   ]
 )
 
+/**
+ * Unified outbound comms log (email, SMS, WhatsApp, operational email).
+ * status: skipped | sent | delivered | failed | opted_out
+ */
+export const outboundMessages = pgTable(
+  'outbound_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    channel: text('channel').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    toAddress: text('to_address'),
+    subject: text('subject'),
+    provider: text('provider'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    skipReason: text('skip_reason'),
+    contactJobId: uuid('contact_job_id').references(() => contactJobs.id, {
+      onDelete: 'set null',
+    }),
+    playerId: uuid('player_id').references(() => players.id, { onDelete: 'set null' }),
+    createdByAdminEmail: text('created_by_admin_email'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('outbound_messages_created_at_idx').on(table.createdAt),
+    index('outbound_messages_status_idx').on(table.status),
+    index('outbound_messages_channel_idx').on(table.channel),
+    index('outbound_messages_provider_message_id_idx').on(table.providerMessageId),
+  ]
+)
+
 export const scheduledActions = pgTable(
   'scheduled_actions',
   {
