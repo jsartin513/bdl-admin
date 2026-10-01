@@ -17,6 +17,8 @@ function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith('/api/video-tools/worker/')) return true
   // Twilio delivery status + inbound STOP (signature-validated in route).
   if (pathname === '/api/webhooks/twilio/messaging') return true
+  if (pathname === '/api/cron/dispatch-scheduled') return true
+  if (pathname.startsWith('/api/public/')) return true
   return false
 }
 

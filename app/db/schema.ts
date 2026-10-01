@@ -47,6 +47,10 @@ export const players = pgTable(
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
     strongPersonalityNotes: text('strong_personality_notes'),
+    /** Player self-reported skill (player app); operational only until sensitive split. */
+    selfReportedSkill: integer('self_reported_skill'),
+    /** Linked player-app account id (operational). */
+    playerAppAccountId: uuid('player_app_account_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -128,10 +132,29 @@ export const events = pgTable(
     teamsLocked: boolean('teams_locked').notNull().default(false),
     /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
     teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
+    /** When true, event is exposed as a sellable product on the player app public catalog. */
+    publishedToPlayerApp: boolean('published_to_player_app').notNull().default(false),
+    /** Player-facing description (not board notes). */
+    publicDescription: text('public_description'),
+    /** Venue or address shown on registration. */
+    location: text('location'),
+    /** Optional end date for multi-session leagues (inclusive). */
+    eventEndDate: date('event_end_date'),
+    /** Human-readable schedule line, e.g. "Tuesdays 6:30–9:00 PM". */
+    sessionTimeLabel: text('session_time_label'),
+    /** Registration price in USD cents; null = TBD / contact. */
+    priceCents: integer('price_cents'),
+    /** Max registrants; null = unlimited / TBD. */
+    capacity: integer('capacity'),
+    registrationOpensAt: timestamp('registration_opens_at', { withTimezone: true }),
+    registrationClosesAt: timestamp('registration_closes_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('events_event_date_idx').on(table.eventDate)]
+  (table) => [
+    index('events_event_date_idx').on(table.eventDate),
+    index('events_published_to_player_app_idx').on(table.publishedToPlayerApp),
+  ]
 )
 
 export const importBatches = pgTable('import_batches', {
@@ -562,6 +585,28 @@ export const contactJobRecipients = pgTable(
   ]
 )
 
+export const scheduledActions = pgTable(
+  'scheduled_actions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    createdByAdminEmail: text('created_by_admin_email').notNull(),
+    runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+    timezone: text('timezone').notNull().default('America/New_York'),
+    actionType: text('action_type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    status: text('status').notNull().default('scheduled'),
+    idempotencyKey: text('idempotency_key'),
+    errorMessage: text('error_message'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('scheduled_actions_status_run_at_idx').on(table.status, table.runAt),
+    uniqueIndex('scheduled_actions_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
 /** Cross-post composer drafts and published website + social tracking. */
 export const publishPosts = pgTable(
   'publish_posts',
@@ -575,9 +620,14 @@ export const publishPosts = pgTable(
     includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
     includeSiteAlert: boolean('include_site_alert').notNull().default(false),
     siteAlertKind: text('site_alert_kind'),
+    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
     siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
+    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
     includeNewsPost: boolean('include_news_post').notNull().default(false),
     status: text('status').notNull().default('draft'),
+    scheduledActionId: uuid('scheduled_action_id').references(() => scheduledActions.id, {
+      onDelete: 'set null',
+    }),
     websiteNewsPostId: uuid('website_news_post_id'),
     websiteSiteAlertId: uuid('website_site_alert_id'),
     websiteNewsSlug: text('website_news_slug'),

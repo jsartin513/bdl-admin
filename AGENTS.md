@@ -71,6 +71,6 @@ Without these, the pages still render but their data fetches fail. The fully
 self-contained feature that works with zero secrets is the **`/tournament`
 schedule + audio-cue generator** (reads the bundled `throwdown_5_schedule.csv`).
 
-See also [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
+See also [docs/setup-and-capabilities.md](docs/setup-and-capabilities.md), [docs/integrations-setup.md](docs/integrations-setup.md) (Twilio and other services), [docs/scheduled-comms-design.md](docs/scheduled-comms-design.md) (scheduled sends), and [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
 
 Timed-block / 2-court gym-night formats (5–8 teams, week byes, clock math): [`.cursor/timed-block-nights.md`](.cursor/timed-block-nights.md). Board paste: [`timed-block-league-nights.md`](timed-block-league-nights.md).
