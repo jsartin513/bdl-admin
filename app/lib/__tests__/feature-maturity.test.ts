@@ -58,6 +58,7 @@ describe('feature-maturity', () => {
     expect(incompleteFeatureForPath('/players')).toBeUndefined()
     expect(isDevOnlyRoute('/timer')).toBe(true)
     expect(isDevOnlyRoute('/events')).toBe(false)
+    expect(isDevOnlyRoute('/events/abc-123/live-draft')).toBe(true)
   })
 
   it('filters developer nav by Dev mode', () => {
@@ -70,6 +71,7 @@ describe('feature-maturity', () => {
         'tournament-scoresheets',
         'timer',
         'timer-standalone',
+        'captain-live-draft',
       ])
     )
   })
