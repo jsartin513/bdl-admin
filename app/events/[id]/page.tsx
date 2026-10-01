@@ -18,6 +18,7 @@ import {
   EventPlayerCatalogSection,
   type EventPlayerCatalogFields,
 } from '@/app/components/events/EventPlayerCatalogSection'
+import { EventLiveDraftSection } from '@/app/components/events/EventLiveDraftSection'
 import { EventTeamsSection } from '@/app/components/events/EventTeamsSection'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
@@ -1310,6 +1311,8 @@ function EventTrackerPageContent() {
           else setFormError(null)
         }}
       />
+
+      <EventLiveDraftSection eventId={eventId} eventFormat={event.eventFormat} />
 
       <EventTeamsSection
         hasByotLocked={hasByotLocked}

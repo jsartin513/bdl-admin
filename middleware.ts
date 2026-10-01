@@ -20,6 +20,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/api/cron/dispatch-scheduled') return true
   if (pathname === '/api/cron/player-sync') return true
   if (pathname.startsWith('/api/public/')) return true
+  if (pathname.startsWith('/api/internal/v1/')) return true
   return false
 }
 
