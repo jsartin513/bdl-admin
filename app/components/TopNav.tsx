@@ -97,15 +97,17 @@ function FeatureNavLink({
   devMode: boolean
   className: string
 }) {
+  // Keep IncompleteBadge outside the <Link> so Tooltip's button is not nested
+  // inside an anchor (invalid interactive nesting).
   return (
-    <Link href={withDevMode(entry.href, devMode)} className={className}>
-      <span className="inline-flex items-center">
+    <span className="inline-flex items-center gap-1">
+      <Link href={withDevMode(entry.href, devMode)} className={className}>
         {entry.label}
-        {entry.maturity === 'incomplete' ? (
-          <IncompleteBadge note={entry.note} />
-        ) : null}
-      </span>
-    </Link>
+      </Link>
+      {entry.maturity === 'incomplete' ? (
+        <IncompleteBadge note={entry.note} />
+      ) : null}
+    </span>
   )
 }
 
@@ -168,13 +170,39 @@ function NotificationsBell({
 
   async function markRead(id: string) {
     try {
-      await fetch(`/api/admin/notifications/${id}/read`, { method: 'POST' })
+      const res = await fetch(`/api/admin/notifications/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_read' }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setUnreadCount(Number(data.unreadCount) || 0)
       setNotifications((prev) =>
         prev.map((n) =>
-          n.id === id ? { ...n, readAt: new Date().toISOString() } : n
+          n.id === id
+            ? { ...n, readAt: data.notification?.readAt ?? new Date() }
+            : n
         )
       )
-      setUnreadCount((c) => Math.max(0, c - 1))
+    } catch {
+      // ignore
+    }
+  }
+
+  async function markAllRead() {
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_all_read' }),
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setUnreadCount(Number(data.unreadCount) || 0)
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date() }))
+      )
     } catch {
       // ignore
     }
@@ -191,7 +219,7 @@ function NotificationsBell({
           setOpen((v) => !v)
           if (!open) void load()
         }}
-        className="relative hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="relative rounded px-2 py-1 hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-expanded={open}
         aria-haspopup="true"
         aria-controls={panelId}
@@ -201,43 +229,60 @@ function NotificationsBell({
             : 'Notifications'
         }
       >
-        Notifications
-        {unreadCount > 0 ? (
-          <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+        <span aria-hidden="true">Alerts</span>
+        {unreadCount > 0 && (
+          <span className="ml-1 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-400 px-1.5 text-xs font-semibold text-gray-900">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
-        ) : null}
+        )}
       </button>
       {open && (
         <div
           id={panelId}
-          className="absolute right-0 mt-1 w-80 max-h-96 overflow-y-auto rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
+          className="absolute right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
         >
+          <div className="flex items-center justify-between gap-2 border-b border-gray-600 px-3 py-2">
+            <span className="text-sm font-medium text-gray-100">
+              Notifications
+            </span>
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void markAllRead()}
+                className="text-xs text-blue-200 hover:underline"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
           {notifications.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-gray-300">No notifications</p>
+            <p className="px-3 py-4 text-sm text-gray-300">
+              No notifications yet.
+            </p>
           ) : (
-            <ul>
+            <ul className="max-h-80 overflow-y-auto">
               {notifications.map((n) => {
-                const unread = !n.readAt
                 const href = n.href
                   ? withDevMode(n.href, devMode)
                   : null
+                const unread = !n.readAt
                 const content = (
                   <>
-                    <span
-                      className={`block text-sm ${unread ? 'font-semibold text-white' : 'text-gray-200'}`}
+                    <div
+                      className={`text-sm ${unread ? 'font-semibold text-white' : 'text-gray-100'}`}
                     >
                       {n.title}
-                    </span>
-                    {n.body ? (
-                      <span className="mt-0.5 block text-xs text-gray-400">
-                        {n.body}
-                      </span>
-                    ) : null}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-300 line-clamp-2">
+                      {n.body}
+                    </div>
                   </>
                 )
                 return (
-                  <li key={n.id} className="border-b border-gray-600 last:border-0">
+                  <li
+                    key={n.id}
+                    className="border-b border-gray-600 last:border-0"
+                  >
                     {href ? (
                       <Link
                         href={href}

@@ -9,15 +9,24 @@ export async function POST(request: NextRequest) {
   const session = getAdminSessionFromRequest(request)
   if (!session) return adminUnauthorizedResponse()
 
-  let body: {
-    title?: string
-    description?: string
-    pagePath?: string | null
-  }
+  let raw: unknown
   try {
-    body = (await request.json()) as typeof body
+    raw = await request.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return NextResponse.json(
+      { error: 'JSON body must be an object' },
+      { status: 400 }
+    )
+  }
+
+  const body = raw as {
+    title?: unknown
+    description?: unknown
+    pagePath?: unknown
   }
 
   const title = typeof body.title === 'string' ? body.title.trim() : ''
