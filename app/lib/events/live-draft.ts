@@ -16,11 +16,7 @@ import {
   players,
 } from '@/app/db/schema'
 import { resolveTeamName } from '@/app/lib/events/dodgeballhub-export'
-import {
-  countsForWomenNb,
-  countsIntermediate,
-  teamRequirementMeter,
-} from '@/app/lib/events/live-draft-requirements'
+import { teamRequirementMeter } from '@/app/lib/events/live-draft-requirements'
 import {
   defaultTeamOrderFromRegistrations,
   generatePickSequence,

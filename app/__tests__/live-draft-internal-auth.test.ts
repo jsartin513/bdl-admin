@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { readInternalPlayerIdentity } from '@/app/lib/events/live-draft-internal-auth'
 
