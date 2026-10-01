@@ -26,7 +26,7 @@ describe('captain draft contract', () => {
 
   it('uses anchor skill labels only', () => {
     expect(captainCuratedSkillLabel(20)).toBe('Beginner')
-    expect(captainCuratedSkillLabel(55)).toBe('Advanced')
+    expect(captainCuratedSkillLabel(60)).toBe('Advanced')
     expect(captainCuratedSkillLabel(null)).toBe('Unset')
   })
 

@@ -149,7 +149,9 @@ export function assertCaptainDraftPayload(value: unknown): void {
       return
     }
     for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
-      if (forbidden.has(key)) {
+      const viewerSelfEmail =
+        key === 'email' && (path === 'viewer' || path.startsWith('viewer.'))
+      if (forbidden.has(key) && !viewerSelfEmail) {
         throw new Error(`Forbidden captain-draft key "${key}" at ${path || 'root'}`)
       }
       walk(child, path ? `${path}.${key}` : key)
