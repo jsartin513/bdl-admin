@@ -47,6 +47,10 @@ export const players = pgTable(
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
     strongPersonalityNotes: text('strong_personality_notes'),
+    /** Player self-reported skill (player app); operational only until sensitive split. */
+    selfReportedSkill: integer('self_reported_skill'),
+    /** Linked player-app account id (operational). */
+    playerAppAccountId: uuid('player_app_account_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -128,10 +132,29 @@ export const events = pgTable(
     teamsLocked: boolean('teams_locked').notNull().default(false),
     /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
     teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
+    /** When true, event is exposed as a sellable product on the player app public catalog. */
+    publishedToPlayerApp: boolean('published_to_player_app').notNull().default(false),
+    /** Player-facing description (not board notes). */
+    publicDescription: text('public_description'),
+    /** Venue or address shown on registration. */
+    location: text('location'),
+    /** Optional end date for multi-session leagues (inclusive). */
+    eventEndDate: date('event_end_date'),
+    /** Human-readable schedule line, e.g. "Tuesdays 6:30–9:00 PM". */
+    sessionTimeLabel: text('session_time_label'),
+    /** Registration price in USD cents; null = TBD / contact. */
+    priceCents: integer('price_cents'),
+    /** Max registrants; null = unlimited / TBD. */
+    capacity: integer('capacity'),
+    registrationOpensAt: timestamp('registration_opens_at', { withTimezone: true }),
+    registrationClosesAt: timestamp('registration_closes_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('events_event_date_idx').on(table.eventDate)]
+  (table) => [
+    index('events_event_date_idx').on(table.eventDate),
+    index('events_published_to_player_app_idx').on(table.publishedToPlayerApp),
+  ]
 )
 
 export const importBatches = pgTable('import_batches', {
