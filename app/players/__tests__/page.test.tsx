@@ -583,6 +583,50 @@ describe('PlayersPage tournament filters and columns', () => {
   })
 })
 
+describe('PlayersPage player app sync', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('calls player-sync and shows a summary message', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          applied: 3,
+          skipped: 1,
+          ambiguous: 0,
+          errors: [],
+          cursor: 'c1',
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+
+    render(<PlayersPage />)
+    await screen.findByText('1 player')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sync from player app' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/player-sync',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+    expect(
+      await screen.findByText(/Player app sync: 3 applied, 1 skipped, 0 ambiguous/)
+    ).toBeInTheDocument()
+  })
+})
+
 describe('PlayersPage accessible dialogs', () => {
   const fetchMock = vi.fn()
 

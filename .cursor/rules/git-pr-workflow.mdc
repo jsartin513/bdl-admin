@@ -15,3 +15,5 @@ alwaysApply: true
 **Cloud Agents dashboard:** In [Cloud Agents → Default settings](https://cursor.com/dashboard/cloud-agents), set **Base branch** to `preview` for this repository (or leave blank if the GitHub default branch is `preview`).
 
 Full details: [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md), [.github/pull_request_template.md](.github/pull_request_template.md), [AGENTS.md](AGENTS.md).
+
+**CI hygiene:** run local checks before push; triage red checks without looping on `preview` — skill **`bdl-pr-checks`** (`~/.cursor/skills/bdl-pr-checks/SKILL.md`).

@@ -4,6 +4,8 @@
 
 This guide explains the streamlined process for creating new league schedules. The workflow uses automated scripts to minimize manual work.
 
+Timed-block / two-wave nights (same opponent for ~20–30 min) are a **hand sheet**, not this generator. See [timed-block-nights.md](timed-block-nights.md).
+
 ## Quick Start Workflow
 
 ### Option 1: Create from Scratch (New League)

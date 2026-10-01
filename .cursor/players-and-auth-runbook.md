@@ -1,5 +1,7 @@
 # Players DB + Google admin auth
 
+See [docs/setup-and-capabilities.md](../docs/setup-and-capabilities.md) for a feature matrix (what works without Twilio, Drive, etc.) and full local setup. **Twilio, Resend, Drive, Blob, and publish setup:** [docs/integrations-setup.md](../docs/integrations-setup.md).
+
 ## Environment variables
 
 Add these to `.env.local` (local) and Vercel project env (Production / Preview):
@@ -15,19 +17,16 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the 
 # Neon Postgres (also auto-provisioned via `vercel integration add neon`)
 DATABASE_URL=postgresql://...
 
-# Contact players (email via Resend; SMS/WhatsApp via Twilio)
+# Contact players (email via Resend; SMS/WhatsApp via Twilio — see docs/integrations-setup.md)
 RESEND_API_KEY=
 CONTACT_EMAIL_FROM="BDL Events <events@bostondodgeballleague.com>"
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_MESSAGING_SERVICE_SID=          # preferred over a raw from-number
-TWILIO_FROM_NUMBER=                    # fallback SMS from (E.164)
-TWILIO_WHATSAPP_FROM=whatsapp:+1...    # WhatsApp sender if not using Messaging Service alone
-TWILIO_WA_TEMPLATE_EVENT_REMINDER=HX…  # Twilio Content SIDs
-TWILIO_WA_TEMPLATE_SCHEDULE_CHANGE=HX…
-TWILIO_WA_TEMPLATE_ANNOUNCEMENT=HX…
+# TWILIO_* — full Twilio + webhook setup: docs/integrations-setup.md
 # CONTACT_DRY_RUN=1                    # log sends without calling providers
-# TWILIO_SKIP_SIGNATURE_VALIDATE=1     # local webhook testing only
+
+# Cross-post composer → public website (same PUBLISH_API_SECRET on bdl-admin + bdl-website)
+# PUBLISH_API_SECRET=
+# WEBSITE_PUBLISH_URL=https://www.bostondodgeballleague.com/api/internal/publish
+# PUBLIC_WEBSITE_URL=https://www.bostondodgeballleague.com
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
@@ -115,7 +114,7 @@ Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… 
 - Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
 - Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
 - Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0021_contact_players`).
-- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging`.
+- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging` (step-by-step: [docs/integrations-setup.md](../docs/integrations-setup.md)).
 
 ## Players
 
