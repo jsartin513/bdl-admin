@@ -1,8 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { Dialog } from '@/app/components/ui/Dialog'
 import { LiveMessage } from '@/app/components/ui/LiveMessage'
+import { useDevMode } from '@/app/hooks/useDevMode'
+import { withDevMode } from '@/app/lib/devMode'
 import { estimateSmsSegments } from '@/app/lib/contact/phone'
 import { formatEasternLocal } from '@/app/lib/schedule/eastern'
 import type { ContactChannel, WhatsAppTemplateKey } from '@/app/lib/contact/types'
@@ -65,6 +68,7 @@ export function ContactPlayersDialog(props: {
   audience: ContactAudienceProp
   defaultChannel?: ContactChannel
 }) {
+  const { devMode } = useDevMode()
   const titleId = useId()
   const [channel, setChannel] = useState<ContactChannel>(props.defaultChannel ?? 'email')
   const [subject, setSubject] = useState('')
@@ -521,7 +525,13 @@ export function ContactPlayersDialog(props: {
               </LiveMessage>
             ) : null}
             <p className="text-xs text-gray-500">Job id: {sendResult.job.id}</p>
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link
+                href={withDevMode('/outbox', devMode)}
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-800 hover:bg-gray-50"
+              >
+                View in Outbox
+              </Link>
               <button
                 type="button"
                 className="rounded bg-blue-600 px-3 py-2 text-sm text-white"

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: 'no database' })
   }
 
-  const result = await dispatchDueScheduledActions({ limit: 15 })
+  const result = await dispatchDueScheduledActions({ limit: 5 })
   return NextResponse.json(result)
 }
 

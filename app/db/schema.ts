@@ -244,6 +244,71 @@ export const eventDraftSnapshots = pgTable(
   (table) => [index('event_draft_snapshots_event_id_idx').on(table.eventId)]
 )
 
+export const eventLiveDrafts = pgTable(
+  'event_live_drafts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    /** setup | live | paused | complete */
+    status: text('status').notNull().default('setup'),
+    /** snake | linear | custom */
+    orderType: text('order_type').notNull().default('snake'),
+    teamOrder: jsonb('team_order').$type<number[]>().notNull().default([]),
+    customSlots: jsonb('custom_slots').$type<number[] | null>(),
+    pickSequence: jsonb('pick_sequence').$type<number[]>().notNull().default([]),
+    currentPickIndex: integer('current_pick_index').notNull().default(0),
+    rules: jsonb('rules')
+      .$type<{
+        minWomenNb: number
+        includeOtherInWomenNb: boolean
+        minIntermediate: number
+        intermediateMin: number
+        intermediateMax: number
+      }>()
+      .notNull()
+      .default({
+        minWomenNb: 3,
+        includeOtherInWomenNb: false,
+        minIntermediate: 2,
+        intermediateMin: 30,
+        intermediateMax: 50,
+      }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('event_live_drafts_event_id_uidx').on(table.eventId)]
+)
+
+export const eventLiveDraftPicks = pgTable(
+  'event_live_draft_picks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    liveDraftId: uuid('live_draft_id')
+      .notNull()
+      .references(() => eventLiveDrafts.id, { onDelete: 'cascade' }),
+    pickIndex: integer('pick_index').notNull(),
+    draftGroup: integer('draft_group').notNull(),
+    registrationId: uuid('registration_id').references(() => eventRegistrations.id, {
+      onDelete: 'set null',
+    }),
+    /** captain | board | skip */
+    pickedBy: text('picked_by').notNull(),
+    actor: text('actor').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('event_live_draft_picks_live_draft_pick_index_uidx').on(
+      table.liveDraftId,
+      table.pickIndex
+    ),
+    index('event_live_draft_picks_live_draft_id_idx').on(table.liveDraftId),
+  ]
+)
+
 /** External / travel events (not BDL-hosted). */
 export const nonBdlEvents = pgTable(
   'non_bdl_events',
@@ -585,39 +650,37 @@ export const contactJobRecipients = pgTable(
   ]
 )
 
-/** Cross-post composer drafts and published website + social tracking. */
-export const publishPosts = pgTable(
-  'publish_posts',
+/**
+ * Unified outbound comms log (email, SMS, WhatsApp, operational email).
+ * status: skipped | sent | delivered | failed | opted_out
+ */
+export const outboundMessages = pgTable(
+  'outbound_messages',
   {
     id: uuid('id').defaultRandom().primaryKey(),
+    channel: text('channel').notNull(),
     kind: text('kind').notNull(),
-    title: text('title').notNull(),
-    caption: text('caption').notNull().default(''),
-    mediaUrl: text('media_url'),
-    mediaType: text('media_type'),
-    includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
-    includeSiteAlert: boolean('include_site_alert').notNull().default(false),
-    siteAlertKind: text('site_alert_kind'),
-    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
-    siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
-    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
-    includeNewsPost: boolean('include_news_post').notNull().default(false),
-    status: text('status').notNull().default('draft'),
-    scheduledActionId: uuid('scheduled_action_id'),
-    websiteNewsPostId: uuid('website_news_post_id'),
-    websiteSiteAlertId: uuid('website_site_alert_id'),
-    websiteNewsSlug: text('website_news_slug'),
-    postedToInstagram: boolean('posted_to_instagram').notNull().default(false),
-    postedToYoutube: boolean('posted_to_youtube').notNull().default(false),
-    approvedBy: text('approved_by'),
-    approvedAt: timestamp('approved_at', { withTimezone: true }),
-    publishError: text('publish_error'),
+    status: text('status').notNull(),
+    toAddress: text('to_address'),
+    subject: text('subject'),
+    provider: text('provider'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    skipReason: text('skip_reason'),
+    contactJobId: uuid('contact_job_id').references(() => contactJobs.id, {
+      onDelete: 'set null',
+    }),
+    playerId: uuid('player_id').references(() => players.id, { onDelete: 'set null' }),
+    createdByAdminEmail: text('created_by_admin_email'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('publish_posts_status_idx').on(table.status),
-    index('publish_posts_created_at_idx').on(table.createdAt),
+    index('outbound_messages_created_at_idx').on(table.createdAt),
+    index('outbound_messages_status_idx').on(table.status),
+    index('outbound_messages_channel_idx').on(table.channel),
+    index('outbound_messages_provider_message_id_idx').on(table.providerMessageId),
   ]
 )
 
@@ -640,5 +703,43 @@ export const scheduledActions = pgTable(
   (table) => [
     index('scheduled_actions_status_run_at_idx').on(table.status, table.runAt),
     uniqueIndex('scheduled_actions_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
+/** Cross-post composer drafts and published website + social tracking. */
+export const publishPosts = pgTable(
+  'publish_posts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    caption: text('caption').notNull().default(''),
+    mediaUrl: text('media_url'),
+    mediaType: text('media_type'),
+    includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
+    includeSiteAlert: boolean('include_site_alert').notNull().default(false),
+    siteAlertKind: text('site_alert_kind'),
+    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
+    siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
+    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
+    includeNewsPost: boolean('include_news_post').notNull().default(false),
+    status: text('status').notNull().default('draft'),
+    scheduledActionId: uuid('scheduled_action_id').references(() => scheduledActions.id, {
+      onDelete: 'set null',
+    }),
+    websiteNewsPostId: uuid('website_news_post_id'),
+    websiteSiteAlertId: uuid('website_site_alert_id'),
+    websiteNewsSlug: text('website_news_slug'),
+    postedToInstagram: boolean('posted_to_instagram').notNull().default(false),
+    postedToYoutube: boolean('posted_to_youtube').notNull().default(false),
+    approvedBy: text('approved_by'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    publishError: text('publish_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('publish_posts_status_idx').on(table.status),
+    index('publish_posts_created_at_idx').on(table.createdAt),
   ]
 )

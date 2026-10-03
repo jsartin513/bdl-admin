@@ -4,11 +4,13 @@ Full staged plan: Cursor plan **Player league app** (three databases, REST sync,
 
 ## This repo — admin PRs
 
-**Stage 0 (open):** [PR #166](https://github.com/jsartin513/bdl-admin/pull/166) → `preview`
+**Shipped on `preview`:** [#166](https://github.com/jsartin513/bdl-admin/pull/166) Stage 0, [#168](https://github.com/jsartin513/bdl-admin/pull/168) sync pull, [#167](https://github.com/jsartin513/bdl-admin/pull/167) public products API (v2).
 
-1. Sensitive Neon scaffold (`SENSITIVE_DATABASE_URL`, dual-write/read in `app/lib/sensitive/`); operational `players` gains `self_reported_skill` + `player_app_account_id`.
-2. Public league API `GET /api/public/leagues` (allowlisted fields only; no auth).
-3. **Next:** Pull client — `GET` player `/api/internal/v1/changes` with `X-BDL-Player-Sync-Secret`.
+1. Sensitive Neon scaffold — dual-write when `SENSITIVE_DATABASE_URL` is set.
+2. `GET /api/public/leagues` — static `leagues` + published `products` (no auth).
+3. `POST /api/admin/player-sync` — pull player changes when `PLAYER_APP_BASE_URL` + `PLAYER_SYNC_SECRET` are set.
+
+**Next:** Cron sync, publish UI for events, player app deploy + OAuth, Stage 3 Stripe.
 
 ## Vercel env (admin)
 
@@ -26,11 +28,17 @@ Player app reads the league catalog from admin’s public API (live on preview a
 
 Progress tracker: [`player-app-kickoff-progress.md`](./player-app-kickoff-progress.md).
 
-Secrets (**TODO** — do not commit):
+Secrets (do not commit):
 
-- `PLAYER_SYNC_SECRET` — must match player app
+- **`PLAYER_SYNC_SECRET`** — shared with `bdl-player`; authenticates admin → player change feed.
+  1. Generate: `openssl rand -base64 32`
+  2. Vercel → **`bdl-admin`** and **`bdl-player`** → same value, **Sensitive**, per environment (Preview first).
+  3. Redeploy both apps after setting.
+  4. Player validates `GET /api/internal/v1/changes` via header **`X-BDL-Player-Sync-Secret`**; admin sends that header when pulling (see [`player-sync-runbook.md`](./player-sync-runbook.md)).
 - `SENSITIVE_DATABASE_URL` — after Neon split
 
 Player app manual steps: see `bdl-player/docs/KICKOFF_MANUAL.md`.
+
+Operational tests: [`player-sync-runbook.md`](./player-sync-runbook.md).
 
 Migration plan (operational vs sensitive): [player-app-migrations.md](./player-app-migrations.md).

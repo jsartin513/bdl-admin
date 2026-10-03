@@ -71,8 +71,9 @@ function ScheduledPageContent() {
       </p>
       <h1 className="mt-4 text-2xl font-semibold text-gray-900">Scheduled communications</h1>
       <p className="mt-1 text-sm text-gray-600">
-        Player contact and website publishes waiting to run (Eastern time). Dispatched every 5
-        minutes on Vercel when <code className="text-xs">CRON_SECRET</code> is set.
+        Player contact and website publishes waiting to run (Eastern time). An external cron (or
+        Vercel Pro cron) should POST <code className="text-xs">/api/cron/dispatch-scheduled</code>{' '}
+        every few minutes with <code className="text-xs">Authorization: Bearer CRON_SECRET</code>.
       </p>
 
       {error ? (
