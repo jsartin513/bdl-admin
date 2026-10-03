@@ -32,7 +32,7 @@ Promote merges landed on `main`, but **both production builds failed** after mig
 
 **Likely cause:** Vercel **build cache** still had an older `@bdl/board-apps` tree while `/help` expects `getBoardAppCatalog` (pin `f1a1b61…` in `package.json` already includes that export).
 
-- [ ] Fix prod deploy: redeploy **Production** with **Clear build cache**, or bump `@bdl/board-apps` git SHA + `pnpm-lock.yaml` in **both** repos and promote again
+- [ ] Fix prod deploy: merge bump PR(s) (`@bdl/board-apps` → `220b36e…` on `preview`), promote `preview` → `main`, or redeploy Production with **Clear build cache** if still stuck
 - [ ] Confirm production deployment **READY** and aliases updated (`admin.bostondodgeballleague.com`, `bdl-site.bostondodgeballleague.com`)
 - [ ] Re-run smokes below on **production** (not only preview)
 

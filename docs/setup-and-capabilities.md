@@ -88,7 +88,7 @@ PUBLISH_API_SECRET=                    # same on admin + website
 WEBSITE_PUBLISH_URL=https://bdl-site-preview.bostondodgeballleague.com/api/internal/publish
 PUBLIC_WEBSITE_URL=https://bdl-site-preview.bostondodgeballleague.com
 
-# CRON_SECRET=                     # Bearer token for POST /api/cron/dispatch-scheduled (external cron or Vercel Pro)
+# CRON_SECRET=                     # Bearer for POST /api/cron/dispatch-scheduled (Vercel Cron when on Pro — see go-live-checklist.md)
 # ADMIN_DEV_EMAIL=dev@localhost
 # CONTACT_MAX_RECIPIENTS=50
 # NOTIFY_FROM_EMAIL=                   # separate from contact; other notify helpers
