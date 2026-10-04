@@ -233,7 +233,6 @@ Details: [`.cursor/git-pr-workflow.md`](../.cursor/git-pr-workflow.md).
 | **Twilio, Resend, Drive, Blob, publish setup** | [integrations-setup.md](./integrations-setup.md) |
 | **Go-live checklist (scheduled comms promote)** | [go-live-checklist.md](./go-live-checklist.md) |
 | **Scheduled contact + publish (design)** | [scheduled-comms-design.md](./scheduled-comms-design.md) |
-| **Go-live checklist (scheduled comms promote)** | [go-live-checklist.md](./go-live-checklist.md) |
 | Players, contact, auth, publish env | [`.cursor/players-and-auth-runbook.md`](../.cursor/players-and-auth-runbook.md) |
 | Google Drive folder / schedules | [`.cursor/drive-folder-runbook.md`](../.cursor/drive-folder-runbook.md) |
 | Video tools + Fly worker | [`.cursor/video-tools-runbook.md`](../.cursor/video-tools-runbook.md) |
