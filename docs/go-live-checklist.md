@@ -16,6 +16,27 @@ Track production rollout for **scheduled communications** (admin + website) and 
 - [x] Preview Neon: website `db:migrate:deploy` (no new SQL in website release)
 - [x] `CRON_SECRET` on admin Vercel Preview + Production
 - [x] Promotion PRs merged to `main` (Oct 2026)
+- [x] **Admin production `db:migrate:deploy`** on promote build [`dpl_CzCG1gHdkTEjZMgoFoBX4DEM5bpB`](https://vercel.com/jessica-sartins-projects/bdl-admin/CzCG1gHdkTEjZMgoFoBX4DEM5bpB) (`main` @ `dfa3abf`) — log shows `[✓] migrations applied successfully!` (incl. scheduled comms SQL) before the Next build step
+- [x] **Website production migrate step** on promote build [`dpl_GycXpAofszvndXyCskgQ5YX4H9o4`](https://vercel.com/jessica-sartins-projects/bdl-website/GycXpAofszvndXyCskgQ5YX4H9o4) (`main` @ `3d52009`) — `db:migrate:deploy` + supplemental completed (no new drizzle for scheduled-news; app code is query-only)
+
+---
+
+## Blocked — production deploy (Oct 2026 promote)
+
+Promote merges landed on `main`, but **both production builds failed** after migrate. **Live traffic** is still on the last **READY** deployments (admin `cec1813…`, website `822171d…`) until a green prod build ships.
+
+| Project | Failed deploy | Error |
+|---------|---------------|--------|
+| **bdl-admin** | `dpl_CzCG1gHdkTEjZMgoFoBX4DEM5bpB` | Prerender `/help`: `getBoardAppCatalog` not exported from `@bdl/board-apps` (runtime: not a function) |
+| **bdl-website** | `dpl_GycXpAofszvndXyCskgQ5YX4H9o4` | Same `/help` + `@bdl/board-apps` failure |
+
+**Likely cause:** Vercel **build cache** still had an older `@bdl/board-apps` tree while `/help` expects `getBoardAppCatalog` (pin `f1a1b61…` in `package.json` already includes that export).
+
+- [ ] Fix prod deploy: merge bump PR(s) (`@bdl/board-apps` → `220b36e…` on `preview`), promote `preview` → `main`, or redeploy Production with **Clear build cache** if still stuck
+- [ ] Confirm production deployment **READY** and aliases updated (`admin.bostondodgeballleague.com`, `bdl-site.bostondodgeballleague.com`)
+- [ ] Re-run smokes below on **production** (not only preview)
+
+**DB note:** Admin `DATABASE_URL` on Vercel is shared across Preview/Production targets, so the successful prod **migrate** step already applied scheduled-comms schema to the operational Neon DB even though the app binary did not promote.
 
 ---
 
@@ -62,7 +83,8 @@ Until the above is done, use a **temporary** external ping (manual `curl`, cron-
 
 ## Standard prod checks
 
-- [ ] Production build log: admin `[db:migrate:deploy]` succeeded
+- [x] Production build log: admin `[db:migrate:deploy]` succeeded (see **Done**; deploy still failed on `/help`)
+- [ ] Production build **READY** (admin + website) after board-apps cache fix
 - [ ] `PUBLISH_API_SECRET` / `WEBSITE_PUBLISH_URL` / website publish secret aligned on prod
 - [ ] Google OAuth: `https://admin.bostondodgeballleague.com/api/admin/google/callback`
 - [ ] Twilio webhook: `https://admin.bostondodgeballleague.com/api/webhooks/twilio/messaging`

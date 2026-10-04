@@ -221,6 +221,7 @@ Details: [`.cursor/git-pr-workflow.md`](../.cursor/git-pr-workflow.md).
 - [ ] `NEXT_PUBLIC_APP_URL` matches deployed host per environment
 - [ ] `PUBLISH_API_SECRET` identical on admin + website in the same environment
 - [ ] `VIDEO_WORKER_SECRET` matches Fly worker if using video merge
+- [ ] `CRON_SECRET` on admin (Preview + Production) when using scheduled comms dispatcher — see [go-live-checklist.md](./go-live-checklist.md)
 - [ ] Redeploy after env changes
 
 ---
@@ -230,6 +231,7 @@ Details: [`.cursor/git-pr-workflow.md`](../.cursor/git-pr-workflow.md).
 | Topic | Doc |
 |-------|-----|
 | **Twilio, Resend, Drive, Blob, publish setup** | [integrations-setup.md](./integrations-setup.md) |
+| **Go-live checklist (scheduled comms promote)** | [go-live-checklist.md](./go-live-checklist.md) |
 | **Scheduled contact + publish (design)** | [scheduled-comms-design.md](./scheduled-comms-design.md) |
 | **Go-live checklist (scheduled comms promote)** | [go-live-checklist.md](./go-live-checklist.md) |
 | Players, contact, auth, publish env | [`.cursor/players-and-auth-runbook.md`](../.cursor/players-and-auth-runbook.md) |
