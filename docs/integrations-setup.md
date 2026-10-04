@@ -18,6 +18,7 @@ Use this as a checklist when onboarding a new board member or after promoting to
 | `BLOB_READ_WRITE_TOKEN` | Usually set | Usually set | Photos, tournament clips, video-tools, publish media |
 | `VIDEO_WORKER_SECRET` + Fly worker | Preview merges **not** claimed by prod worker | Prod worker → prod admin | See video-tools runbook |
 | Cross-post `PUBLISH_*` | Set on admin + website preview | Set on admin + website prod | Same secret per environment pair |
+| `CRON_SECRET` (admin only) | Set | Set | Bearer for `POST /api/cron/dispatch-scheduled`; Vercel Cron when on Pro — [go-live-checklist.md](./go-live-checklist.md) |
 
 **Recommendation:** Configure **real Twilio and Resend sends on Production only**. On Preview, use `CONTACT_DRY_RUN=1` to test the contact UI without billing or accidental player messages.
 
