@@ -341,6 +341,7 @@ export default function TopNav() {
 
   const leagueLinks = navEntriesForGroup('leagues', devMode)
   const mainLinks = navEntriesForGroup('main', devMode)
+  const incompleteLinks = navEntriesForGroup('incomplete', devMode)
   const developerLinks = navEntriesForGroup('developer', devMode)
 
   const topLinkClass =
@@ -372,6 +373,18 @@ export default function TopNav() {
             className={topLinkClass}
           />
         ))}
+        {incompleteLinks.length > 0 ? (
+          <NavDropdown label="Incomplete">
+            {incompleteLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
+          </NavDropdown>
+        ) : null}
         {developerLinks.length > 0 ? (
           <NavDropdown label="Developer">
             {developerLinks.map((entry) => (
@@ -411,7 +424,7 @@ export default function TopNav() {
                 Dev mode
                 <Tooltip
                   label="About Dev mode"
-                  content="Shows developer-only tools (tournament audio, scoresheets, game timer) and keeps incomplete board tools labeled in the nav."
+                  content="Shows developer-only tools (tournament audio, scoresheets, game timer). Incomplete board tools live in the Incomplete menu."
                 />
               </span>
               <input

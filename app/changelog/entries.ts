@@ -15,6 +15,13 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-10-05',
+    title: 'Incomplete tools in one nav menu',
+    summary:
+      'Outbox is marked incomplete, and Publish, Scheduled, Video Tools, Non-BDL Events, and Outbox now live under an Incomplete dropdown instead of the top bar.',
+    href: '/whats-new',
+  },
+  {
     date: '2026-10-01',
     title: 'Captain live draft (preview)',
     summary:
