@@ -6,6 +6,8 @@ import TopNav from "./components/TopNav";
 import IncompleteBanner from "./components/IncompleteBanner";
 import DevOnlyGate from "./components/DevOnlyGate";
 import { ThemeProvider } from "./components/ThemeProvider";
+import PreviewEnvironmentRail from "./components/PreviewEnvironmentRail";
+import { showTestModeBanner } from "./lib/env-banner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,11 +29,20 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isPreview = showTestModeBanner();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen antialiased bg-background text-foreground`}
+        data-deployment={isPreview ? "preview" : "production"}
       >
+        {isPreview ? <PreviewEnvironmentRail /> : null}
+        {isPreview ? (
+          <div className="preview-env-banner bg-amber-400 text-black text-center py-2 px-4 font-semibold text-sm">
+            Test mode — preview admin. Production uses the live deployment only.
+          </div>
+        ) : null}
         <ThemeProvider>
           <a
             href="#main-content"
