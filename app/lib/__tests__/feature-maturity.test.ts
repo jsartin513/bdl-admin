@@ -75,4 +75,19 @@ describe('feature-maturity', () => {
       ])
     )
   })
+
+  it('groups incomplete tools in the incomplete nav bucket', () => {
+    const incomplete = navEntriesForGroup('incomplete', false)
+    expect(incomplete.map((e) => e.id)).toEqual(
+      expect.arrayContaining([
+        'outbox',
+        'video-tools',
+        'publish',
+        'scheduled',
+        'non-bdl-events',
+      ])
+    )
+    expect(incomplete.every((e) => e.maturity === 'incomplete')).toBe(true)
+    expect(incompleteFeatureForPath('/outbox')?.id).toBe('outbox')
+  })
 })

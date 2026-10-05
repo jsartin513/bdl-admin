@@ -1,6 +1,6 @@
 export type FeatureMaturity = 'ready' | 'incomplete' | 'devOnly'
 
-export type FeatureNavGroup = 'leagues' | 'main' | 'developer'
+export type FeatureNavGroup = 'leagues' | 'main' | 'incomplete' | 'developer'
 
 export type FeatureEntry = {
   id: string
@@ -52,8 +52,9 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     id: 'outbox',
     label: 'Outbox',
     href: '/outbox',
-    maturity: 'ready',
-    group: 'main',
+    maturity: 'incomplete',
+    group: 'incomplete',
+    note: 'Outbound send log and retries; delivery depends on Twilio/SendGrid setup and scheduled dispatch.',
     pathPrefixes: ['/outbox'],
   },
   {
@@ -79,7 +80,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     label: 'Video Tools',
     href: '/video-tools',
     maturity: 'incomplete',
-    group: 'main',
+    group: 'incomplete',
     note: 'Uploads work; automatic merge needs the Fly video worker and related secrets.',
     pathPrefixes: ['/video-tools'],
   },
@@ -88,7 +89,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     label: 'Publish',
     href: '/publish',
     maturity: 'incomplete',
-    group: 'main',
+    group: 'incomplete',
     note: 'Cross-post to the public site. Approve needs publish secrets and a paired website env.',
     pathPrefixes: ['/publish'],
   },
@@ -97,7 +98,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     label: 'Scheduled',
     href: '/scheduled',
     maturity: 'incomplete',
-    group: 'main',
+    group: 'incomplete',
     note: 'Scheduled contact and publish need an external cron hitting the dispatch endpoint in production.',
     pathPrefixes: ['/scheduled'],
   },
@@ -106,7 +107,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     label: 'Non-BDL Events',
     href: '/non-bdl-events',
     maturity: 'incomplete',
-    group: 'main',
+    group: 'incomplete',
     note: 'Newer workflow for external events; some story/photo paths are still evolving.',
     pathPrefixes: ['/non-bdl-events'],
   },
