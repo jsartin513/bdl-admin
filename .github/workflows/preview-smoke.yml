@@ -1,11 +1,15 @@
 name: Preview smoke
 
-# After merges land on preview, wait for the Vercel stable preview deploy
-# and confirm /login, /players, and /events respond (auth redirect or 200).
+# Release PR (preview → main): confirm stable preview /login, /players, /events
+# respond after Vercel deploy. Manual re-run via workflow_dispatch.
 on:
-  push:
-    branches: [preview]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}-preview-smoke
+  cancel-in-progress: true
 
 jobs:
   smoke:
