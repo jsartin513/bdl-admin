@@ -3573,11 +3573,11 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path=admin-auth(next@15.5.27(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))':
+  '@bdl/admin-auth@git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.5.27(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))':
     dependencies:
       next: 15.5.27(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#220b36e6a930f027959680b5c57ab8e74c688b2f&path=board-apps': {}
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#220b36e6a930f027959680b5c57ab8e74c688b2f&path:board-apps': {}
 
   '@csstools/color-helpers@5.1.0': {}
 
