@@ -15,6 +15,13 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-10-12',
+    title: 'Clearer admin navigation',
+    summary:
+      'In-progress tools sit under an In progress menu by default, with hover/focus hints on every nav link. Turn on Dev mode to show those tools on the top bar again (with Incomplete badges).',
+    href: '/whats-new',
+  },
+  {
     date: '2026-10-05',
     title: 'Preview environment chrome',
     summary:
