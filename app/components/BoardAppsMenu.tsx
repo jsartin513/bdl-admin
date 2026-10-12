@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
 import { getBoardAppLinks, type BoardAppId } from '@bdl/board-apps'
+import { NavHintButton, NavHintLink } from '@/app/components/NavHintLink'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300'
@@ -69,9 +70,9 @@ export default function BoardAppsMenu({
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        ref={buttonRef}
-        type="button"
+      <NavHintButton
+        buttonRef={buttonRef}
+        description="Jump to another board app (player site, website admin, and more)."
         onClick={() => setOpen((value) => !value)}
         className={`${buttonClassName} ${FOCUS_RING}`}
         aria-expanded={open}
@@ -80,34 +81,48 @@ export default function BoardAppsMenu({
         aria-label="Switch application menu"
       >
         Switch Application
-      </button>
+      </NavHintButton>
       {open ? (
         <div id={panelId} className={menuClassName}>
           {links.map((app) => (
-            <a
+            <NavHintLink
               key={app.id}
               href={app.href}
               className={linkClassName}
+              description={app.description}
               onClick={() => setOpen(false)}
             >
               <span className="font-medium">{app.label}</span>
-              <span className="mt-0.5 block text-xs font-normal text-gray-400">{app.description}</span>
-            </a>
+              <span className="mt-0.5 block text-xs font-normal text-gray-400">
+                {app.description}
+              </span>
+            </NavHintLink>
           ))}
           <div className="mt-1 border-t border-gray-600 pt-1">
-            <a href="/whats-new" className={linkClassName} onClick={() => setOpen(false)}>
+            <NavHintLink
+              href="/whats-new"
+              className={linkClassName}
+              description="Release notes for recent admin changes."
+              onClick={() => setOpen(false)}
+            >
               What&apos;s New
-            </a>
-            <a
+            </NavHintLink>
+            <NavHintLink
               href="/request-feature"
               className={linkClassName}
+              description="Suggest an improvement; opens a GitHub issue or prefilled form."
               onClick={() => setOpen(false)}
             >
               Request a feature
-            </a>
-            <a href="/help" className={linkClassName} onClick={() => setOpen(false)}>
+            </NavHintLink>
+            <NavHintLink
+              href="/help"
+              className={linkClassName}
+              description="How-to guides and troubleshooting for admin tools."
+              onClick={() => setOpen(false)}
+            >
               Help
-            </a>
+            </NavHintLink>
           </div>
         </div>
       ) : null}

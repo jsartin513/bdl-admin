@@ -9,10 +9,18 @@ export type FeatureEntry = {
   maturity: FeatureMaturity
   /** Nav placement. Defaults to main for ready/incomplete; developer for devOnly. */
   group?: FeatureNavGroup
+  /** One-sentence nav hint (hover / keyboard focus). */
+  description: string
   /** Shown on Incomplete badges/banners or Dev mode tooltips. */
   note?: string
   /** Path prefixes that belong to this feature (for banners / soft gates). */
   pathPrefixes?: string[]
+}
+
+export function resolveFeatureNavGroup(entry: FeatureEntry): FeatureNavGroup {
+  return (
+    entry.group ?? (entry.maturity === 'devOnly' ? 'developer' : 'main')
+  )
 }
 
 export const FEATURE_REGISTRY: FeatureEntry[] = [
@@ -22,6 +30,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/schedules',
     maturity: 'ready',
     group: 'leagues',
+    description: 'Open existing league schedule spreadsheets from cloud storage.',
     pathPrefixes: ['/schedules'],
   },
   {
@@ -30,6 +39,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/create-league',
     maturity: 'ready',
     group: 'leagues',
+    description: 'Generate a new season schedule workbook from league settings.',
     pathPrefixes: ['/create-league'],
   },
   {
@@ -38,6 +48,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/open-gym',
     maturity: 'ready',
     group: 'main',
+    description: 'Plan open gym nights and track who signed up.',
     pathPrefixes: ['/open-gym'],
   },
   {
@@ -46,6 +57,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/players',
     maturity: 'ready',
     group: 'main',
+    description: 'Search the roster, edit profiles, and message players.',
     pathPrefixes: ['/players'],
   },
   {
@@ -54,6 +66,8 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/outbox',
     maturity: 'incomplete',
     group: 'incomplete',
+    description:
+      'Review sent and failed outbound email and text messages (delivery log).',
     note: 'Outbound send log and retries; delivery depends on Twilio/SendGrid setup and scheduled dispatch.',
     pathPrefixes: ['/outbox'],
   },
@@ -63,6 +77,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/events',
     maturity: 'ready',
     group: 'main',
+    description: 'Create events, run drafts, and manage registrations.',
     pathPrefixes: ['/events'],
   },
   {
@@ -71,6 +86,8 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/events',
     maturity: 'devOnly',
     group: 'developer',
+    description:
+      'Commissioner console for live captain drafts (open from a draft event).',
     note:
       'Commissioner console for live captain drafts. Open a draft-format event with Dev mode on, then use Live draft (commissioner).',
     pathPrefixes: [],
@@ -81,6 +98,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/video-tools',
     maturity: 'incomplete',
     group: 'incomplete',
+    description: 'Upload court camera clips and prepare merged highlight reels.',
     note: 'Uploads work; automatic merge needs the Fly video worker and related secrets.',
     pathPrefixes: ['/video-tools'],
   },
@@ -90,6 +108,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/publish',
     maturity: 'incomplete',
     group: 'incomplete',
+    description: 'Draft and approve website posts and social share kits.',
     note: 'Cross-post to the public site. Approve needs publish secrets and a paired website env.',
     pathPrefixes: ['/publish'],
   },
@@ -99,6 +118,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/scheduled',
     maturity: 'incomplete',
     group: 'incomplete',
+    description: 'Queue contact and publish jobs to send automatically later.',
     note: 'Scheduled contact and publish need an external cron hitting the dispatch endpoint in production.',
     pathPrefixes: ['/scheduled'],
   },
@@ -108,6 +128,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/non-bdl-events',
     maturity: 'incomplete',
     group: 'incomplete',
+    description: 'Plan external tournaments and website stories outside main league play.',
     note: 'Newer workflow for external events; some story/photo paths are still evolving.',
     pathPrefixes: ['/non-bdl-events'],
   },
@@ -117,6 +138,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/tournament',
     maturity: 'devOnly',
     group: 'developer',
+    description: 'Build tournament PA audio cue tracks from a CSV schedule.',
     note: 'Developer tool for building tournament audio cue tracks.',
     pathPrefixes: ['/tournament'],
   },
@@ -126,6 +148,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/tournament/team-schedules',
     maturity: 'devOnly',
     group: 'developer',
+    description: 'Print per-team tournament schedule sheets for captains.',
     note: 'Developer tool for tournament team schedule printouts.',
     pathPrefixes: ['/tournament/team-schedules'],
   },
@@ -135,6 +158,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/tournament/scoresheets',
     maturity: 'devOnly',
     group: 'developer',
+    description: 'Generate printable tournament scoresheet stacks.',
     note: 'Developer tool for tournament scoresheet stacks.',
     pathPrefixes: ['/tournament/scoresheets'],
   },
@@ -144,6 +168,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/timer',
     maturity: 'devOnly',
     group: 'developer',
+    description: 'Run a game clock inside the admin navigation shell.',
     note: 'Standalone game clock UI. Prefer timer-standalone for kiosk use.',
     pathPrefixes: ['/timer'],
   },
@@ -153,6 +178,7 @@ export const FEATURE_REGISTRY: FeatureEntry[] = [
     href: '/timer-standalone',
     maturity: 'devOnly',
     group: 'developer',
+    description: 'Full-screen game clock for gym kiosks without admin chrome.',
     note: 'Full-screen timer without admin chrome.',
     pathPrefixes: ['/timer-standalone'],
   },
@@ -212,10 +238,27 @@ export function navEntriesForGroup(
   devMode: boolean
 ): FeatureEntry[] {
   return FEATURE_REGISTRY.filter((entry) => {
-    const resolvedGroup =
-      entry.group ?? (entry.maturity === 'devOnly' ? 'developer' : 'main')
-    return resolvedGroup === group && visibleInNav(entry, devMode)
+    return (
+      resolveFeatureNavGroup(entry) === group && visibleInNav(entry, devMode)
+    )
   })
+}
+
+/** Top-level bar links (registry order). Incomplete tools promote here when Dev mode is on. */
+export function topLevelNavEntries(devMode: boolean): FeatureEntry[] {
+  return FEATURE_REGISTRY.filter((entry) => {
+    if (!visibleInNav(entry, devMode)) return false
+    const group = resolveFeatureNavGroup(entry)
+    if (group === 'leagues' || group === 'developer') return false
+    if (group === 'incomplete') return devMode
+    return group === 'main'
+  })
+}
+
+/** Incomplete / WIP tools grouped under one menu when Dev mode is off. */
+export function inProgressNavEntries(devMode: boolean): FeatureEntry[] {
+  if (devMode) return []
+  return navEntriesForGroup('incomplete', devMode)
 }
 
 export function pathMatchesFeature(

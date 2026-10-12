@@ -7,15 +7,33 @@ import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
 import BoardAppsMenu from '@/app/components/BoardAppsMenu'
+import { NavHintButton, NavHintLink } from '@/app/components/NavHintLink'
 import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { Tooltip } from '@/app/components/ui'
 import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
 import {
+  inProgressNavEntries,
   navEntriesForGroup,
+  topLevelNavEntries,
   type FeatureEntry,
 } from '@/app/lib/feature-maturity'
 
-function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
+const LEAGUES_MENU_DESCRIPTION =
+  'View or generate season schedule spreadsheets for the league.'
+const IN_PROGRESS_MENU_DESCRIPTION =
+  'Work-in-progress board tools that need extra setup or polish.'
+const DEVELOPER_MENU_DESCRIPTION =
+  'Internal utilities shown only while Dev mode is enabled.'
+
+function NavDropdown({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description: string
+  children: React.ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const panelId = useId()
@@ -44,9 +62,9 @@ function NavDropdown({ label, children }: { label: string; children: React.React
 
   return (
     <div ref={ref} className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
+      <NavHintButton
+        buttonRef={buttonRef}
+        description={description}
         onClick={() => setOpen((v) => !v)}
         className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-expanded={open}
@@ -55,7 +73,7 @@ function NavDropdown({ label, children }: { label: string; children: React.React
         aria-label={`${label} menu`}
       >
         {label} ▾
-      </button>
+      </NavHintButton>
       {open && (
         <div
           id={panelId}
@@ -101,9 +119,13 @@ function FeatureNavLink({
   // inside an anchor (invalid interactive nesting).
   return (
     <span className="inline-flex items-center gap-1">
-      <Link href={withDevMode(entry.href, devMode)} className={className}>
+      <NavHintLink
+        href={withDevMode(entry.href, devMode)}
+        className={className}
+        description={entry.description}
+      >
         {entry.label}
-      </Link>
+      </NavHintLink>
       {entry.maturity === 'incomplete' ? (
         <IncompleteBadge note={entry.note} />
       ) : null}
@@ -340,8 +362,8 @@ export default function TopNav() {
   }
 
   const leagueLinks = navEntriesForGroup('leagues', devMode)
-  const mainLinks = navEntriesForGroup('main', devMode)
-  const incompleteLinks = navEntriesForGroup('incomplete', devMode)
+  const topLevelLinks = topLevelNavEntries(devMode)
+  const inProgressLinks = inProgressNavEntries(devMode)
   const developerLinks = navEntriesForGroup('developer', devMode)
 
   const topLinkClass =
@@ -354,7 +376,7 @@ export default function TopNav() {
     >
       <div className="flex flex-wrap space-x-4 items-center">
         {leagueLinks.length > 0 ? (
-          <NavDropdown label="Leagues">
+          <NavDropdown label="Leagues" description={LEAGUES_MENU_DESCRIPTION}>
             {leagueLinks.map((entry) => (
               <FeatureNavLink
                 key={entry.id}
@@ -365,7 +387,7 @@ export default function TopNav() {
             ))}
           </NavDropdown>
         ) : null}
-        {mainLinks.map((entry) => (
+        {topLevelLinks.map((entry) => (
           <FeatureNavLink
             key={entry.id}
             entry={entry}
@@ -373,9 +395,12 @@ export default function TopNav() {
             className={topLinkClass}
           />
         ))}
-        {incompleteLinks.length > 0 ? (
-          <NavDropdown label="Incomplete">
-            {incompleteLinks.map((entry) => (
+        {inProgressLinks.length > 0 ? (
+          <NavDropdown
+            label="In progress"
+            description={IN_PROGRESS_MENU_DESCRIPTION}
+          >
+            {inProgressLinks.map((entry) => (
               <FeatureNavLink
                 key={entry.id}
                 entry={entry}
@@ -386,7 +411,10 @@ export default function TopNav() {
           </NavDropdown>
         ) : null}
         {developerLinks.length > 0 ? (
-          <NavDropdown label="Developer">
+          <NavDropdown
+            label="Developer"
+            description={DEVELOPER_MENU_DESCRIPTION}
+          >
             {developerLinks.map((entry) => (
               <FeatureNavLink
                 key={entry.id}
@@ -401,18 +429,20 @@ export default function TopNav() {
       <div className="flex items-center gap-4 text-sm">
         <ThemeToggle />
         <NotificationsBell enabled={Boolean(email)} devMode={devMode} />
-        <Link
+        <NavHintLink
           href={withDevMode('/whats-new', devMode)}
           className={`${topLinkClass} text-blue-100`}
+          description="Release notes for recent admin changes."
         >
           What&apos;s New
-        </Link>
-        <Link
+        </NavHintLink>
+        <NavHintLink
           href={withDevMode('/request-feature', devMode)}
           className={`${topLinkClass} text-blue-100`}
+          description="Suggest an improvement; opens a GitHub issue or prefilled form."
         >
           Request a feature
-        </Link>
+        </NavHintLink>
         <BoardAppsMenu currentApp="admin" />
         {email ? (
           <>
@@ -424,7 +454,7 @@ export default function TopNav() {
                 Dev mode
                 <Tooltip
                   label="About Dev mode"
-                  content="Shows developer-only tools (tournament audio, scoresheets, game timer). Incomplete board tools live in the Incomplete menu."
+                  content="Shows developer-only tools and promotes in-progress board tools back to the top bar with Incomplete badges."
                 />
               </span>
               <input
