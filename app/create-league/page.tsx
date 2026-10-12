@@ -3,15 +3,11 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
+import { LEAGUE_TEMPLATES, type LeagueTemplate } from '@/app/lib/leagueTemplates'
 import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
 
 const FOCUS_RING =
   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
-
-interface DriveFile {
-  id: string
-  name: string
-}
 
 type Step = 1 | 2 | 3
 
@@ -22,7 +18,7 @@ const STEP_LABELS: Record<Step, string> = {
 }
 
 const STEP_TOOLTIPS: Record<Step, string> = {
-  1: 'Pick a Google Drive template and name your league. Team count comes from the template filename.',
+  1: 'Pick a league template and name your league. Team count comes from the template you select.',
   2: 'Enter every team name in League Standings order — this order matters for the “avoid first round” option.',
   3: 'Optional scheduling tweaks and a summary before you generate the Excel workbook.',
 }
@@ -59,10 +55,8 @@ function scheduleSummary(n: number) {
   return { gamesPerWeek, gamesPerTeamPerWeek, refsPerTeamPerWeek, dedicatedRef: false }
 }
 
-function teamsStateFromTemplateName(templateName: string): Pick<FormData, 'numTeams' | 'teams'> {
-  const n = parseTeamCountFromTemplateName(templateName)
-  if (n === null) return { numTeams: 0, teams: [] }
-  return { numTeams: n, teams: Array(n).fill('') }
+function teamsStateFromTemplate(template: LeagueTemplate): Pick<FormData, 'numTeams' | 'teams'> {
+  return { numTeams: template.numTeams, teams: Array(template.numTeams).fill('') }
 }
 
 function CreateLeagueForm() {
@@ -71,34 +65,18 @@ function CreateLeagueForm() {
 
   const [step, setStep] = useState<Step>(1)
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM)
-  const [templates, setTemplates] = useState<DriveFile[]>([])
-  const [loadingTemplates, setLoadingTemplates] = useState(true)
-  const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const templates = LEAGUE_TEMPLATES
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [downloadName, setDownloadName] = useState('')
 
   useEffect(() => {
-    setLoadingTemplates(true)
-    fetch('/api/drive-folder')
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load templates (${res.status})`)
-        return res.json()
-      })
-      .then((data: DriveFile[]) => {
-        setTemplates(data)
-      })
-      .catch((err) => setTemplatesError(err.message))
-      .finally(() => setLoadingTemplates(false))
-  }, [])
-
-  useEffect(() => {
     if (templates.length === 0) return
     const t = prefTemplateId ? templates.find((x) => x.id === prefTemplateId) : null
     const sel = t ?? templates[0]
     if (!sel) return
-    const { numTeams, teams } = teamsStateFromTemplateName(sel.name)
+    const { numTeams, teams } = teamsStateFromTemplate(sel)
     setFormData((f) => ({
       ...f,
       templateId: sel.id,
@@ -225,22 +203,19 @@ function CreateLeagueForm() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               League Template *
             </label>
-            {loadingTemplates ? (
-              <p className="text-gray-500">Loading templates…</p>
-            ) : templatesError ? (
-              <p className="text-red-600">{templatesError}</p>
-            ) : templates.length === 0 ? (
-              <p className="text-gray-500">No templates found in Drive folder.</p>
+            {templates.length === 0 ? (
+              <p className="text-gray-500">No league templates configured.</p>
             ) : (
               <select
                 value={formData.templateId}
                 onChange={(e) => {
                   const t = templates.find((x) => x.id === e.target.value)
-                  const { numTeams, teams } = teamsStateFromTemplateName(t?.name ?? '')
+                  if (!t) return
+                  const { numTeams, teams } = teamsStateFromTemplate(t)
                   setFormData((f) => ({
                     ...f,
                     templateId: e.target.value,
-                    templateName: t?.name ?? '',
+                    templateName: t.name,
                     numTeams,
                     teams,
                   }))
@@ -255,27 +230,15 @@ function CreateLeagueForm() {
               </select>
             )}
             <FieldHelp>
-              Templates come from the shared Google Drive folder. Team count is taken from the file
-              name. The downloaded workbook is that Google Sheet exported to Excel with your team
-              names filled in (same schedule layout as the template).
+              Most templates are Google Sheets exported to Excel with your team names filled in.
+              The four-team option is generated entirely in this app (same layout as other BYOT
+              workbooks).
             </FieldHelp>
-            {formData.templateName &&
-              (() => {
-                const n = parseTeamCountFromTemplateName(formData.templateName)
-                if (n === null) {
-                  return (
-                    <p className="mt-2 text-xs text-amber-700">
-                      Could not read team count from this file name — use a name that includes the number of
-                      teams.
-                    </p>
-                  )
-                }
-                return (
-                  <p className="mt-2 text-xs text-gray-600">
-                    This template is for <strong>{n} teams</strong>.
-                  </p>
-                )
-              })()}
+            {formData.numTeams > 0 ? (
+              <p className="mt-2 text-xs text-gray-600">
+                This template is for <strong>{formData.numTeams} teams</strong>.
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -301,7 +264,7 @@ function CreateLeagueForm() {
           <button
             type="button"
             onClick={goToStep2}
-            disabled={loadingTemplates}
+            disabled={templates.length === 0}
             className={`px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 ${FOCUS_RING}`}
           >
             Next: Enter Team Names →

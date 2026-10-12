@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
 import { exportGoogleSpreadsheetAsXlsx } from '@/app/lib/driveExportSpreadsheet'
+import { getLeagueTemplateById } from '@/app/lib/leagueTemplates'
 import {
   applyTeamRenamesToWorkbook,
   buildTeamRenamePairs,
@@ -26,11 +27,8 @@ interface CreateLeagueRequest {
 /** 502 only for Drive HTTP failures; 500 for missing config or local/mutation errors. */
 function httpStatusForTemplateBranchError(e: unknown): number {
   if (e instanceof Error) {
-    if (
-      e.message.includes('GOOGLE_DRIVE_API_KEY') ||
-      e.message === 'Missing file id'
-    ) {
-      return 500
+    if (e.message === 'Missing file id' || e.message === 'Unknown league template id') {
+      return 400
     }
     if (e.message.startsWith('Drive export failed')) {
       return 502
@@ -891,14 +889,55 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const templateConfig = body.templateId?.trim()
+      ? getLeagueTemplateById(body.templateId.trim())
+      : undefined
+
+    if (body.templateId?.trim() && !templateConfig) {
+      return NextResponse.json(
+        { error: 'Unknown league template. Pick a template from the Create League list.' },
+        { status: 400 },
+      )
+    }
+
+    if (templateConfig && templateConfig.numTeams !== numTeams) {
+      return NextResponse.json(
+        {
+          error: `Template "${templateConfig.name}" is for ${templateConfig.numTeams} teams, but the request implies ${numTeams}.`,
+        },
+        { status: 400 },
+      )
+    }
+
     if (numTeams === 5 && !body.templateId?.trim()) {
       return NextResponse.json(
         {
           error:
-            '5-team leagues use a fixed schedule template. Select a Five Team template from Google Drive.',
+            '5-team leagues use a fixed schedule template. Select a Five Team template from the list.',
         },
         { status: 400 },
       )
+    }
+
+    if (templateConfig?.builtIn) {
+      if (numTeams !== 4 && numTeams !== 6 && numTeams !== 7) {
+        return NextResponse.json(
+          { error: 'Built-in schedule generation supports 4, 6, or 7 teams only.' },
+          { status: 400 },
+        )
+      }
+      const workbook = createLeagueWorkbook({
+        ...body,
+        numTeams: numTeams as 4 | 6 | 7,
+        templateName: body.templateName ?? templateConfig.name,
+      })
+      const fileBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      return new NextResponse(fileBuffer, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="${body.leagueName.replace(/\s+/g, '_')}.xlsx"`,
+        },
+      })
     }
 
     if (body.templateId?.trim()) {
@@ -944,7 +983,7 @@ export async function POST(request: NextRequest) {
         const message =
           e instanceof Error
             ? e.message
-            : 'Could not load the Google Sheet template. Check Drive sharing and GOOGLE_DRIVE_API_KEY.'
+            : 'Could not load the Google Sheet template. Check that it is shared for link viewing.'
         const status = httpStatusForTemplateBranchError(e)
         return NextResponse.json({ error: message }, { status })
       }
