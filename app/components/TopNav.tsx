@@ -7,7 +7,11 @@ import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
 import BoardAppsMenu from '@/app/components/BoardAppsMenu'
-import { NavHintButton, NavHintLink } from '@/app/components/NavHintLink'
+import {
+  NavHintButton,
+  NavHintLink,
+  type NavHint,
+} from '@/app/components/NavHintLink'
 import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { Tooltip } from '@/app/components/ui'
 import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
@@ -18,20 +22,13 @@ import {
   type FeatureEntry,
 } from '@/app/lib/feature-maturity'
 
-const LEAGUES_MENU_DESCRIPTION =
-  'View or generate season schedule spreadsheets for the league.'
-const IN_PROGRESS_MENU_DESCRIPTION =
-  'Work-in-progress board tools that need extra setup or polish.'
-const DEVELOPER_MENU_DESCRIPTION =
-  'Internal utilities shown only while Dev mode is enabled.'
-
 function NavDropdown({
   label,
-  description,
+  hint,
   children,
 }: {
   label: string
-  description: string
+  hint: NavHint
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -64,7 +61,8 @@ function NavDropdown({
     <div ref={ref} className="relative">
       <NavHintButton
         buttonRef={buttonRef}
-        description={description}
+        title={hint.title}
+        description={hint.description}
         onClick={() => setOpen((v) => !v)}
         className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-expanded={open}
@@ -90,19 +88,17 @@ function menuItemClassName() {
   return 'block px-3 py-2 text-sm text-gray-100 hover:bg-gray-600 focus-visible:bg-gray-600 focus-visible:outline-none'
 }
 
-function IncompleteBadge({ note }: { note?: string }) {
+function IncompleteLabel({ note }: { note?: string }) {
   return (
-    <Tooltip
-      label="Incomplete feature"
-      content={
+    <span
+      className="ml-1 text-xs italic text-gray-300/90"
+      title={
         note ??
         'This feature is still evolving. Expect rough edges or missing ops setup.'
       }
     >
-      <span className="ml-1 rounded border border-amber-400/70 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-        Incomplete
-      </span>
-    </Tooltip>
+      Incomplete
+    </span>
   )
 }
 
@@ -115,19 +111,18 @@ function FeatureNavLink({
   devMode: boolean
   className: string
 }) {
-  // Keep IncompleteBadge outside the <Link> so Tooltip's button is not nested
-  // inside an anchor (invalid interactive nesting).
   return (
     <span className="inline-flex items-center gap-1">
       <NavHintLink
         href={withDevMode(entry.href, devMode)}
         className={className}
+        title={entry.label}
         description={entry.description}
       >
         {entry.label}
       </NavHintLink>
       {entry.maturity === 'incomplete' ? (
-        <IncompleteBadge note={entry.note} />
+        <IncompleteLabel note={entry.note} />
       ) : null}
     </span>
   )
@@ -376,7 +371,14 @@ export default function TopNav() {
     >
       <div className="flex flex-wrap space-x-4 items-center">
         {leagueLinks.length > 0 ? (
-          <NavDropdown label="Leagues" description={LEAGUES_MENU_DESCRIPTION}>
+          <NavDropdown
+            label="Leagues"
+            hint={{
+              title: 'Leagues',
+              description:
+                'View or generate season schedule spreadsheets for the league.',
+            }}
+          >
             {leagueLinks.map((entry) => (
               <FeatureNavLink
                 key={entry.id}
@@ -398,7 +400,11 @@ export default function TopNav() {
         {inProgressLinks.length > 0 ? (
           <NavDropdown
             label="In progress"
-            description={IN_PROGRESS_MENU_DESCRIPTION}
+            hint={{
+              title: 'In progress',
+              description:
+                'Work-in-progress board tools that need extra setup or polish.',
+            }}
           >
             {inProgressLinks.map((entry) => (
               <FeatureNavLink
@@ -413,7 +419,11 @@ export default function TopNav() {
         {developerLinks.length > 0 ? (
           <NavDropdown
             label="Developer"
-            description={DEVELOPER_MENU_DESCRIPTION}
+            hint={{
+              title: 'Developer',
+              description:
+                'Internal utilities shown only while Dev mode is enabled.',
+            }}
           >
             {developerLinks.map((entry) => (
               <FeatureNavLink
@@ -432,6 +442,7 @@ export default function TopNav() {
         <NavHintLink
           href={withDevMode('/whats-new', devMode)}
           className={`${topLinkClass} text-blue-100`}
+          title="What's New"
           description="Release notes for recent admin changes."
         >
           What&apos;s New
@@ -439,6 +450,7 @@ export default function TopNav() {
         <NavHintLink
           href={withDevMode('/request-feature', devMode)}
           className={`${topLinkClass} text-blue-100`}
+          title="Request a feature"
           description="Suggest an improvement; opens a GitHub issue or prefilled form."
         >
           Request a feature

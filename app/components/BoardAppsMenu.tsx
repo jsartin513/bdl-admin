@@ -72,6 +72,7 @@ export default function BoardAppsMenu({
     <div ref={rootRef} className={`relative ${className}`}>
       <NavHintButton
         buttonRef={buttonRef}
+        title="Switch Application"
         description="Jump to another board app (player site, website admin, and more)."
         onClick={() => setOpen((value) => !value)}
         className={`${buttonClassName} ${FOCUS_RING}`}
@@ -89,6 +90,7 @@ export default function BoardAppsMenu({
               key={app.id}
               href={app.href}
               className={linkClassName}
+              title={app.label}
               description={app.description}
               onClick={() => setOpen(false)}
             >
@@ -102,6 +104,7 @@ export default function BoardAppsMenu({
             <NavHintLink
               href="/whats-new"
               className={linkClassName}
+              title="What's New"
               description="Release notes for recent admin changes."
               onClick={() => setOpen(false)}
             >
@@ -110,6 +113,7 @@ export default function BoardAppsMenu({
             <NavHintLink
               href="/request-feature"
               className={linkClassName}
+              title="Request a feature"
               description="Suggest an improvement; opens a GitHub issue or prefilled form."
               onClick={() => setOpen(false)}
             >
@@ -118,6 +122,7 @@ export default function BoardAppsMenu({
             <NavHintLink
               href="/help"
               className={linkClassName}
+              title="Help"
               description="How-to guides and troubleshooting for admin tools."
               onClick={() => setOpen(false)}
             >

@@ -7,11 +7,24 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
+import type { NavHint } from '@/app/lib/nav-hint'
 
-type NavHintLinkProps = {
+export type { NavHint } from '@/app/lib/nav-hint'
+
+export function NavHintTooltipBody({ title, description }: NavHint) {
+  return (
+    <>
+      <span className="block font-semibold text-white">{title}</span>
+      <span className="mt-0.5 block font-normal text-gray-200">
+        {description}
+      </span>
+    </>
+  )
+}
+
+type NavHintLinkProps = NavHint & {
   href: string
   className?: string
-  description: string
   children: ReactNode
   onClick?: () => void
 }
@@ -21,11 +34,12 @@ function isAppRelativeHref(href: string): boolean {
 }
 
 /**
- * Nav link with a one-line description on hover and keyboard focus.
+ * Nav link with title + description on hover and keyboard focus.
  */
 export function NavHintLink({
   href,
   className,
+  title,
   description,
   children,
   onClick,
@@ -59,17 +73,16 @@ export function NavHintLink({
         <span
           id={tipId}
           role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs font-normal text-white shadow-lg"
+          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
         >
-          {description}
+          <NavHintTooltipBody title={title} description={description} />
         </span>
       ) : null}
     </span>
   )
 }
 
-type NavHintButtonProps = {
-  description: string
+type NavHintButtonProps = NavHint & {
   className?: string
   children: ReactNode
   onClick?: () => void
@@ -82,6 +95,7 @@ type NavHintButtonProps = {
 
 /** Dropdown trigger with the same hover/focus hint behavior as NavHintLink. */
 export function NavHintButton({
+  title,
   description,
   className,
   children,
@@ -114,9 +128,9 @@ export function NavHintButton({
         <span
           id={tipId}
           role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs font-normal text-white shadow-lg"
+          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
         >
-          {description}
+          <NavHintTooltipBody title={title} description={description} />
         </span>
       ) : null}
     </span>
