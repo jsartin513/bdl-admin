@@ -3,16 +3,18 @@ name: Tests
 on:
   pull_request:
     branches: [preview, main]
-  push:
-    branches: [preview, main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code

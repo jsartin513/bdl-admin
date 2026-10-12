@@ -4,10 +4,16 @@ name: Main merge gate
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}-main-merge-gate
+  cancel-in-progress: true
 
 jobs:
   from-preview:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Require head branch is preview
         run: |
@@ -19,7 +25,7 @@ jobs:
 
   preview-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
