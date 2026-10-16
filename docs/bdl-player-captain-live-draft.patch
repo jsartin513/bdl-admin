@@ -1,0 +1,643 @@
+From 994b0495371e4a5becd9d27d3c02959b8e5c621b Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Thu, 1 Oct 2026 18:08:36 +0000
+Subject: [PATCH] Add captain live draft BFF and UI on play app
+
+---
+ .env.example                           |   2 +
+ app/__tests__/admin-live-draft.test.ts |  22 +++
+ app/api/drafts/[eventId]/pick/route.ts |  47 ++++++
+ app/api/drafts/[eventId]/route.ts      |  44 ++++++
+ app/api/drafts/route.ts                |  39 +++++
+ app/drafts/[eventId]/page.tsx          | 208 +++++++++++++++++++++++++
+ app/drafts/page.tsx                    |  71 +++++++++
+ app/lib/admin-live-draft.ts            | 110 +++++++++++++
+ app/page.tsx                           |   6 +
+ 9 files changed, 549 insertions(+)
+ create mode 100644 app/__tests__/admin-live-draft.test.ts
+ create mode 100644 app/api/drafts/[eventId]/pick/route.ts
+ create mode 100644 app/api/drafts/[eventId]/route.ts
+ create mode 100644 app/api/drafts/route.ts
+ create mode 100644 app/drafts/[eventId]/page.tsx
+ create mode 100644 app/drafts/page.tsx
+ create mode 100644 app/lib/admin-live-draft.ts
+
+diff --git a/.env.example b/.env.example
+index e5274bf..55bada7 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,6 +1,8 @@
+ # --- Non-secret (safe to set in Vercel for Preview / Production) ---
+ NEXT_PUBLIC_APP_URL=http://localhost:3000
+ NEXT_PUBLIC_LEAGUE_CATALOG_URL=https://admin-preview.bostondodgeballleague.com/api/public/leagues
++# Optional override for captain live draft BFF (defaults from catalog URL host).
++# ADMIN_API_BASE_URL=https://admin-preview.bostondodgeballleague.com
+ NEXT_PUBLIC_VERCEL_ENV=development
+ 
+ # --- Secrets (local: .env.local only; Preview / Production: Vercel dashboard) ---
+diff --git a/app/__tests__/admin-live-draft.test.ts b/app/__tests__/admin-live-draft.test.ts
+new file mode 100644
+index 0000000..380ec6b
+--- /dev/null
++++ b/app/__tests__/admin-live-draft.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it, beforeEach, afterEach } from 'vitest'
++import { readAdminApiBaseUrl } from '@/app/lib/admin-live-draft'
++
++describe('readAdminApiBaseUrl', () => {
++  afterEach(() => {
++    delete process.env.NEXT_PUBLIC_LEAGUE_CATALOG_URL
++    delete process.env.ADMIN_API_BASE_URL
++  })
++
++  it('derives admin host from league catalog URL', () => {
++    process.env.NEXT_PUBLIC_LEAGUE_CATALOG_URL =
++      'https://admin-preview.bostondodgeballleague.com/api/public/leagues'
++    expect(readAdminApiBaseUrl()).toBe('https://admin-preview.bostondodgeballleague.com')
++  })
++
++  it('prefers explicit ADMIN_API_BASE_URL', () => {
++    process.env.NEXT_PUBLIC_LEAGUE_CATALOG_URL =
++      'https://admin-preview.bostondodgeballleague.com/api/public/leagues'
++    process.env.ADMIN_API_BASE_URL = 'https://admin.example.com'
++    expect(readAdminApiBaseUrl()).toBe('https://admin.example.com')
++  })
++})
+diff --git a/app/api/drafts/[eventId]/pick/route.ts b/app/api/drafts/[eventId]/pick/route.ts
+new file mode 100644
+index 0000000..4fe01e4
+--- /dev/null
++++ b/app/api/drafts/[eventId]/pick/route.ts
+@@ -0,0 +1,47 @@
++import { NextRequest, NextResponse } from 'next/server'
++import {
++  adminLiveDraftConfigured,
++  postCaptainDraftPick,
++} from '@/app/lib/admin-live-draft'
++import {
++  playerUnauthorizedResponse,
++  readPlayerSessionFromRequest,
++} from '@/app/lib/player-auth'
++import { ensureAccountForEmail } from '@/app/lib/players/queries'
++import { isDbConfigured } from '@/app/lib/db'
++
++type RouteContext = { params: Promise<{ eventId: string }> }
++
++export async function POST(request: NextRequest, context: RouteContext) {
++  const session = readPlayerSessionFromRequest(request)
++  if (!session) return playerUnauthorizedResponse()
++
++  if (!adminLiveDraftConfigured()) {
++    return NextResponse.json({ error: 'Live draft is not configured' }, { status: 503 })
++  }
++
++  const { eventId } = await context.params
++  const body = (await request.json().catch(() => ({}))) as { registrationId?: string }
++  const registrationId = typeof body.registrationId === 'string' ? body.registrationId : ''
++  if (!registrationId) {
++    return NextResponse.json({ error: 'registrationId is required' }, { status: 400 })
++  }
++
++  let accountId: string | null = null
++  if (isDbConfigured()) {
++    accountId = await ensureAccountForEmail(session.email)
++  }
++
++  try {
++    const snapshot = await postCaptainDraftPick({
++      email: session.email,
++      accountId,
++      eventId,
++      registrationId,
++    })
++    return NextResponse.json(snapshot)
++  } catch (err) {
++    const message = err instanceof Error ? err.message : 'Pick failed'
++    return NextResponse.json({ error: message }, { status: 400 })
++  }
++}
+diff --git a/app/api/drafts/[eventId]/route.ts b/app/api/drafts/[eventId]/route.ts
+new file mode 100644
+index 0000000..5fe2fe7
+--- /dev/null
++++ b/app/api/drafts/[eventId]/route.ts
+@@ -0,0 +1,44 @@
++import { NextRequest, NextResponse } from 'next/server'
++import {
++  adminLiveDraftConfigured,
++  fetchCaptainDraftSnapshot,
++} from '@/app/lib/admin-live-draft'
++import {
++  playerUnauthorizedResponse,
++  readPlayerSessionFromRequest,
++} from '@/app/lib/player-auth'
++import { ensureAccountForEmail } from '@/app/lib/players/queries'
++import { isDbConfigured } from '@/app/lib/db'
++
++type RouteContext = { params: Promise<{ eventId: string }> }
++
++export async function GET(request: NextRequest, context: RouteContext) {
++  const session = readPlayerSessionFromRequest(request)
++  if (!session) return playerUnauthorizedResponse()
++
++  if (!adminLiveDraftConfigured()) {
++    return NextResponse.json(
++      { error: 'Live draft is not configured' },
++      { status: 503 }
++    )
++  }
++
++  const { eventId } = await context.params
++  let accountId: string | null = null
++  if (isDbConfigured()) {
++    accountId = await ensureAccountForEmail(session.email)
++  }
++
++  try {
++    const snapshot = await fetchCaptainDraftSnapshot({
++      email: session.email,
++      accountId,
++      eventId,
++    })
++    return NextResponse.json(snapshot)
++  } catch (err) {
++    const message = err instanceof Error ? err.message : 'Failed to load draft'
++    const status = message.includes('not a captain') ? 403 : 502
++    return NextResponse.json({ error: message }, { status })
++  }
++}
+diff --git a/app/api/drafts/route.ts b/app/api/drafts/route.ts
+new file mode 100644
+index 0000000..398bfc6
+--- /dev/null
++++ b/app/api/drafts/route.ts
+@@ -0,0 +1,39 @@
++import { NextRequest, NextResponse } from 'next/server'
++import {
++  adminLiveDraftConfigured,
++  fetchCaptainDraftList,
++} from '@/app/lib/admin-live-draft'
++import {
++  playerUnauthorizedResponse,
++  readPlayerSessionFromRequest,
++} from '@/app/lib/player-auth'
++import { ensureAccountForEmail } from '@/app/lib/players/queries'
++import { isDbConfigured } from '@/app/lib/db'
++
++export async function GET(request: NextRequest) {
++  const session = readPlayerSessionFromRequest(request)
++  if (!session) return playerUnauthorizedResponse()
++
++  if (!adminLiveDraftConfigured()) {
++    return NextResponse.json(
++      { error: 'Live draft is not configured (PLAYER_SYNC_SECRET and catalog URL)' },
++      { status: 503 }
++    )
++  }
++
++  let accountId: string | null = null
++  if (isDbConfigured()) {
++    accountId = await ensureAccountForEmail(session.email)
++  }
++
++  try {
++    const list = await fetchCaptainDraftList({
++      email: session.email,
++      accountId,
++    })
++    return NextResponse.json(list)
++  } catch (err) {
++    const message = err instanceof Error ? err.message : 'Failed to load drafts'
++    return NextResponse.json({ error: message }, { status: 502 })
++  }
++}
+diff --git a/app/drafts/[eventId]/page.tsx b/app/drafts/[eventId]/page.tsx
+new file mode 100644
+index 0000000..5dc8789
+--- /dev/null
++++ b/app/drafts/[eventId]/page.tsx
+@@ -0,0 +1,208 @@
++'use client'
++
++import Link from 'next/link'
++import { useParams } from 'next/navigation'
++import { useCallback, useEffect, useMemo, useState } from 'react'
++
++type PoolPlayer = {
++  registrationId: string
++  displayName: string
++  genderLabel: string
++  skillLabel: string
++  photoUrl: string | null
++}
++
++type TeamRoster = {
++  draftGroup: number
++  teamName: string
++  requirements: {
++    womenNbCount: number
++    womenNbRequired: number
++    intermediateCount: number
++    intermediateRequired: number
++  }
++  players: Array<PoolPlayer & { pickNumber: number | null }>
++}
++
++type DraftSnapshot = {
++  eventName: string
++  status: string
++  viewer: { draftGroup: number | null; isCaptain: boolean }
++  turn: {
++    pickIndex: number
++    draftGroup: number
++    teamName: string
++    isComplete: boolean
++  } | null
++  pool: PoolPlayer[]
++  teams: TeamRoster[]
++}
++
++export default function DraftRoomPage() {
++  const params = useParams<{ eventId: string }>()
++  const eventId = params.eventId
++  const [snapshot, setSnapshot] = useState<DraftSnapshot | null>(null)
++  const [error, setError] = useState<string | null>(null)
++  const [filter, setFilter] = useState('')
++  const [picking, setPicking] = useState(false)
++
++  const load = useCallback(async () => {
++    const res = await fetch(`/api/drafts/${eventId}`)
++    if (!res.ok) {
++      const body = (await res.json().catch(() => ({}))) as { error?: string }
++      throw new Error(body.error ?? 'Failed to load draft')
++    }
++    setSnapshot((await res.json()) as DraftSnapshot)
++  }, [eventId])
++
++  useEffect(() => {
++    void load().catch((err) => setError(err instanceof Error ? err.message : 'Failed'))
++    const id = window.setInterval(() => {
++      void load().catch(() => {})
++    }, 1500)
++    return () => window.clearInterval(id)
++  }, [load])
++
++  const filteredPool = useMemo(() => {
++    const q = filter.trim().toLowerCase()
++    if (!snapshot?.pool) return []
++    if (!q) return snapshot.pool
++    return snapshot.pool.filter(
++      (p) =>
++        p.displayName.toLowerCase().includes(q) ||
++        p.genderLabel.toLowerCase().includes(q) ||
++        p.skillLabel.toLowerCase().includes(q)
++    )
++  }, [snapshot?.pool, filter])
++
++  const onClock =
++    snapshot?.status === 'live' &&
++    snapshot.turn &&
++    !snapshot.turn.isComplete &&
++    snapshot.viewer.draftGroup === snapshot.turn.draftGroup
++
++  async function pick(registrationId: string) {
++    setPicking(true)
++    setError(null)
++    try {
++      const res = await fetch(`/api/drafts/${eventId}/pick`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ registrationId }),
++      })
++      if (!res.ok) {
++        const body = (await res.json().catch(() => ({}))) as { error?: string }
++        throw new Error(body.error ?? 'Pick failed')
++      }
++      setSnapshot((await res.json()) as DraftSnapshot)
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'Pick failed')
++    } finally {
++      setPicking(false)
++    }
++  }
++
++  const myTeam = snapshot?.teams.find((t) => t.draftGroup === snapshot.viewer.draftGroup)
++
++  return (
++    <main className="mx-auto max-w-5xl px-4 py-8">
++      <div className="mb-4 flex items-center justify-between gap-3">
++        <div>
++          <Link href="/drafts" className="text-sm text-teal-800 hover:underline">
++            ← All drafts
++          </Link>
++          <h1 className="mt-1 text-2xl font-semibold text-gray-900">
++            {snapshot?.eventName ?? 'Draft room'}
++          </h1>
++        </div>
++        {snapshot?.turn && !snapshot.turn.isComplete ? (
++          <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
++            On the clock: <span className="font-semibold">{snapshot.turn.teamName}</span>
++          </div>
++        ) : null}
++      </div>
++
++      {error ? <p className="mb-4 text-sm text-red-700">{error}</p> : null}
++
++      {myTeam ? (
++        <div className="mb-6 rounded-lg border border-teal-100 bg-teal-50/50 p-4 text-sm">
++          <div className="font-medium text-teal-950">Your team: {myTeam.teamName}</div>
++          <div className="mt-1 text-teal-900">
++            W/NB {myTeam.requirements.womenNbCount}/{myTeam.requirements.womenNbRequired} ·
++            Intermediate {myTeam.requirements.intermediateCount}/
++            {myTeam.requirements.intermediateRequired}
++          </div>
++        </div>
++      ) : null}
++
++      <div className="grid gap-6 lg:grid-cols-2">
++        <section className="rounded-lg border bg-white p-4 shadow-sm">
++          <h2 className="font-medium text-gray-900">Available players</h2>
++          <input
++            type="search"
++            placeholder="Search name, gender, skill…"
++            className="mt-2 w-full rounded border px-3 py-2 text-sm"
++            value={filter}
++            onChange={(e) => setFilter(e.target.value)}
++          />
++          <ul className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto">
++            {filteredPool.map((p) => (
++              <li
++                key={p.registrationId}
++                className="flex gap-3 rounded border border-gray-100 p-2"
++              >
++                {p.photoUrl ? (
++                  <img
++                    src={p.photoUrl}
++                    alt=""
++                    className="h-14 w-14 shrink-0 rounded object-cover"
++                  />
++                ) : (
++                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-gray-100 text-xs text-gray-500">
++                    No photo
++                  </div>
++                )}
++                <div className="min-w-0 flex-1">
++                  <div className="font-medium text-gray-900">{p.displayName}</div>
++                  <div className="text-xs text-gray-600">
++                    {p.genderLabel} · {p.skillLabel}
++                  </div>
++                  {onClock ? (
++                    <button
++                      type="button"
++                      disabled={picking}
++                      className="mt-2 rounded bg-teal-700 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
++                      onClick={() => void pick(p.registrationId)}
++                    >
++                      Draft player
++                    </button>
++                  ) : null}
++                </div>
++              </li>
++            ))}
++          </ul>
++        </section>
++
++        <section className="rounded-lg border bg-white p-4 shadow-sm">
++          <h2 className="font-medium text-gray-900">All teams</h2>
++          <ul className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto text-sm">
++            {snapshot?.teams.map((team) => (
++              <li key={team.draftGroup} className="rounded border border-gray-100 p-2">
++                <div className="font-medium">{team.teamName}</div>
++                <div className="text-xs text-gray-500">
++                  W/NB {team.requirements.womenNbCount}/{team.requirements.womenNbRequired} · Int{' '}
++                  {team.requirements.intermediateCount}/{team.requirements.intermediateRequired}
++                </div>
++                <ul className="mt-1 space-y-1 text-xs text-gray-700">
++                  {team.players.map((pl) => (
++                    <li key={pl.registrationId}>{pl.displayName}</li>
++                  ))}
++                </ul>
++              </li>
++            ))}
++          </ul>
++        </section>
++      </div>
++    </main>
++  )
++}
+diff --git a/app/drafts/page.tsx b/app/drafts/page.tsx
+new file mode 100644
+index 0000000..b2c1508
+--- /dev/null
++++ b/app/drafts/page.tsx
+@@ -0,0 +1,71 @@
++'use client'
++
++import Link from 'next/link'
++import { useEffect, useState } from 'react'
++
++type DraftListItem = {
++  eventId: string
++  eventName: string
++  eventDate: string
++  status: string
++}
++
++export default function DraftsPage() {
++  const [events, setEvents] = useState<DraftListItem[]>([])
++  const [error, setError] = useState<string | null>(null)
++  const [loading, setLoading] = useState(true)
++
++  useEffect(() => {
++    void (async () => {
++      try {
++        const res = await fetch('/api/drafts')
++        if (!res.ok) {
++          const body = (await res.json().catch(() => ({}))) as { error?: string }
++          throw new Error(body.error ?? 'Failed to load drafts')
++        }
++        const body = (await res.json()) as { events: DraftListItem[] }
++        setEvents(body.events ?? [])
++      } catch (err) {
++        setError(err instanceof Error ? err.message : 'Failed to load')
++      } finally {
++        setLoading(false)
++      }
++    })()
++  }, [])
++
++  return (
++    <main className="mx-auto max-w-2xl px-4 py-10">
++      <h1 className="text-2xl font-semibold text-gray-900">Captain drafts</h1>
++      <p className="mt-2 text-sm text-gray-600">
++        Live tournament drafts you are invited to captain. Sign in with the Google account that
++        matches your player email on file.
++      </p>
++
++      {loading ? <p className="mt-6 text-sm text-gray-500">Loading…</p> : null}
++      {error ? <p className="mt-6 text-sm text-red-700">{error}</p> : null}
++
++      {!loading && !error && events.length === 0 ? (
++        <p className="mt-6 text-sm text-gray-600">No live drafts for your account yet.</p>
++      ) : null}
++
++      <ul className="mt-6 space-y-3">
++        {events.map((ev) => (
++          <li key={ev.eventId} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
++            <div className="flex items-center justify-between gap-3">
++              <div>
++                <div className="font-medium text-gray-900">{ev.eventName}</div>
++                <div className="text-xs text-gray-500">{ev.eventDate} · {ev.status}</div>
++              </div>
++              <Link
++                href={`/drafts/${ev.eventId}`}
++                className="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
++              >
++                Open
++              </Link>
++            </div>
++          </li>
++        ))}
++      </ul>
++    </main>
++  )
++}
+diff --git a/app/lib/admin-live-draft.ts b/app/lib/admin-live-draft.ts
+new file mode 100644
+index 0000000..8e5dcf7
+--- /dev/null
++++ b/app/lib/admin-live-draft.ts
+@@ -0,0 +1,110 @@
++import 'server-only'
++
++const SYNC_HEADER = 'x-bdl-player-sync-secret'
++
++export type CaptainDraftListResponse = {
++  version: 1
++  events: Array<{
++    eventId: string
++    eventName: string
++    eventDate: string
++    status: string
++  }>
++}
++
++export function readAdminApiBaseUrl(): string | null {
++  const catalog = process.env.NEXT_PUBLIC_LEAGUE_CATALOG_URL?.trim()
++  if (catalog) {
++    const withoutPath = catalog.replace(/\/api\/public\/leagues\/?$/i, '')
++    if (withoutPath) return withoutPath.replace(/\/$/, '')
++  }
++  const explicit = process.env.ADMIN_API_BASE_URL?.trim().replace(/\/$/, '')
++  return explicit || null
++}
++
++function readSyncSecret(): string | null {
++  const secret = process.env.PLAYER_SYNC_SECRET?.trim()
++  return secret || null
++}
++
++export function adminLiveDraftConfigured(): boolean {
++  return Boolean(readAdminApiBaseUrl() && readSyncSecret())
++}
++
++function identityHeaders(input: { email: string; accountId?: string | null }) {
++  const secret = readSyncSecret()
++  if (!secret) throw new Error('PLAYER_SYNC_SECRET is not configured')
++  const headers: Record<string, string> = {
++    [SYNC_HEADER]: secret,
++    'x-bdl-player-email': input.email.trim().toLowerCase(),
++  }
++  if (input.accountId) {
++    headers['x-bdl-player-account-id'] = input.accountId
++  }
++  return headers
++}
++
++export async function fetchCaptainDraftList(input: {
++  email: string
++  accountId?: string | null
++}): Promise<CaptainDraftListResponse> {
++  const base = readAdminApiBaseUrl()
++  if (!base) throw new Error('Admin API base URL is not configured')
++
++  const res = await fetch(`${base}/api/internal/v1/live-drafts`, {
++    headers: identityHeaders(input),
++    cache: 'no-store',
++  })
++  if (!res.ok) {
++    const body = (await res.json().catch(() => ({}))) as { error?: string }
++    throw new Error(body.error ?? `Admin live draft list failed (${res.status})`)
++  }
++  return (await res.json()) as CaptainDraftListResponse
++}
++
++export async function fetchCaptainDraftSnapshot(input: {
++  email: string
++  accountId?: string | null
++  eventId: string
++}) {
++  const base = readAdminApiBaseUrl()
++  if (!base) throw new Error('Admin API base URL is not configured')
++
++  const res = await fetch(`${base}/api/internal/v1/live-drafts/${input.eventId}`, {
++    headers: identityHeaders(input),
++    cache: 'no-store',
++  })
++  if (res.status === 403) {
++    throw new Error('You are not a captain for this event')
++  }
++  if (!res.ok) {
++    const body = (await res.json().catch(() => ({}))) as { error?: string }
++    throw new Error(body.error ?? `Failed to load draft (${res.status})`)
++  }
++  return res.json()
++}
++
++export async function postCaptainDraftPick(input: {
++  email: string
++  accountId?: string | null
++  eventId: string
++  registrationId: string
++}) {
++  const base = readAdminApiBaseUrl()
++  if (!base) throw new Error('Admin API base URL is not configured')
++
++  const res = await fetch(`${base}/api/internal/v1/live-drafts/${input.eventId}/picks`, {
++    method: 'POST',
++    headers: {
++      ...identityHeaders(input),
++      'Content-Type': 'application/json',
++    },
++    body: JSON.stringify({ registrationId: input.registrationId }),
++    cache: 'no-store',
++  })
++  if (!res.ok) {
++    const body = (await res.json().catch(() => ({}))) as { error?: string }
++    throw new Error(body.error ?? `Pick failed (${res.status})`)
++  }
++  return res.json()
++}
+diff --git a/app/page.tsx b/app/page.tsx
+index 19ea23b..4aa0544 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,9 +1,15 @@
++import Link from 'next/link'
+ import { ProfileForm } from '@/app/components/ProfileForm'
+ 
+ export default function HomePage() {
+   return (
+     <main className="mx-auto max-w-lg p-6">
+       <h1 className="text-2xl font-semibold">Your profile</h1>
++      <p className="mt-2 text-sm text-gray-600">
++        <Link href="/drafts" className="font-medium text-teal-800 hover:underline">
++          Captain live drafts
++        </Link>
++      </p>
+       <ProfileForm />
+     </main>
+   )
+-- 
+2.43.0
+
