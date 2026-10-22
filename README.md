@@ -35,6 +35,8 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 The admin app deploys with the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) (Git: `preview` → `main`).
 
+**Ignored build step:** `vercel.json` runs [`scripts/vercel-ignore-build.sh`](scripts/vercel-ignore-build.sh) via `ignoreCommand`. It skips deploys on non-`preview`/`main` branches and when the diff since the previous deploy is only Markdown or under `docs/`. If the Vercel project dashboard has an **Ignored Build Step** command set, that value overrides `ignoreCommand` in `vercel.json`.
+
 **Video Tools** also needs a separate Fly.io worker (`bdl-video-merge`) for ffmpeg merges — that is not part of the Vercel deploy. See [`.cursor/video-tools-runbook.md`](.cursor/video-tools-runbook.md) and [`workers/video-merge/README.md`](workers/video-merge/README.md).
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

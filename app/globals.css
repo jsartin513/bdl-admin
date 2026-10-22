@@ -28,6 +28,48 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+.preview-env-rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  height: 100%;
+  width: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .preview-env-rail {
+    width: 0.625rem;
+  }
+}
+
+.preview-env-rail-label {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .preview-env-rail {
+    width: 1.25rem;
+  }
+
+  .preview-env-rail-label {
+    display: block;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #1c1917;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    user-select: none;
+  }
+}
+
 /* Scoped team-maker tokens (event detail). Does not flip global :root. */
 .team-maker {
   --tm-bg: #ffffff;
@@ -52,6 +94,11 @@ body {
 }
 
 @media print {
+  .preview-env-rail,
+  .preview-env-banner {
+    display: none !important;
+  }
+
   body:has(.team-schedule-print) .admin-chrome {
     display: none !important;
   }

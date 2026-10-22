@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   featureForPath,
   incompleteFeatureForPath,
+  inProgressNavEntries,
   isDevOnlyRoute,
   navEntriesForGroup,
+  topLevelNavEntries,
   visibleInNav,
 } from '@/app/lib/feature-maturity'
 
@@ -14,6 +16,7 @@ describe('feature-maturity', () => {
       label: 'Tournament Audio',
       href: '/tournament',
       maturity: 'devOnly' as const,
+      description: 'test',
     }
     expect(visibleInNav(tournament, false)).toBe(false)
     expect(visibleInNav(tournament, true)).toBe(true)
@@ -27,6 +30,7 @@ describe('feature-maturity', () => {
           label: 'Publish',
           href: '/publish',
           maturity: 'incomplete',
+          description: 'test',
         },
         false
       )
@@ -38,6 +42,7 @@ describe('feature-maturity', () => {
           label: 'Players',
           href: '/players',
           maturity: 'ready',
+          description: 'test',
         },
         false
       )
@@ -72,6 +77,58 @@ describe('feature-maturity', () => {
         'timer',
         'timer-standalone',
         'captain-live-draft',
+      ])
+    )
+  })
+
+  it('groups incomplete tools in the incomplete nav bucket', () => {
+    const incomplete = navEntriesForGroup('incomplete', false)
+    expect(incomplete.map((e) => e.id)).toEqual(
+      expect.arrayContaining([
+        'outbox',
+        'video-tools',
+        'publish',
+        'scheduled',
+        'non-bdl-events',
+      ])
+    )
+    expect(incomplete.every((e) => e.maturity === 'incomplete')).toBe(true)
+    expect(incompleteFeatureForPath('/outbox')?.id).toBe('outbox')
+  })
+
+  it('keeps incomplete tools off the top bar unless Dev mode is on', () => {
+    const offBar = topLevelNavEntries(false).map((e) => e.id)
+    expect(offBar).not.toEqual(expect.arrayContaining(['outbox', 'publish']))
+    expect(offBar).toEqual(
+      expect.arrayContaining(['open-gym', 'players', 'events'])
+    )
+
+    const inMenu = inProgressNavEntries(false).map((e) => e.id)
+    expect(inMenu).toEqual(
+      expect.arrayContaining([
+        'outbox',
+        'video-tools',
+        'publish',
+        'scheduled',
+        'non-bdl-events',
+      ])
+    )
+    expect(inProgressNavEntries(true)).toHaveLength(0)
+  })
+
+  it('restores incomplete tools to the top bar in registry order when Dev mode is on', () => {
+    const ids = topLevelNavEntries(true).map((e) => e.id)
+    const playersIdx = ids.indexOf('players')
+    const outboxIdx = ids.indexOf('outbox')
+    const eventsIdx = ids.indexOf('events')
+    expect(outboxIdx).toBeGreaterThan(playersIdx)
+    expect(eventsIdx).toBeGreaterThan(outboxIdx)
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        'video-tools',
+        'publish',
+        'scheduled',
+        'non-bdl-events',
       ])
     )
   })
