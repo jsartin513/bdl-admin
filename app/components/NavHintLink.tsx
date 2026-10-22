@@ -69,15 +69,14 @@ export function NavHintLink({
           {children}
         </a>
       )}
-      {open ? (
-        <span
-          id={tipId}
-          role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
-        >
-          <NavHintTooltipBody title={title} description={description} />
-        </span>
-      ) : null}
+      <span
+        id={tipId}
+        role="tooltip"
+        hidden={!open}
+        className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
+      >
+        <NavHintTooltipBody title={title} description={description} />
+      </span>
     </span>
   )
 }
@@ -124,15 +123,14 @@ export function NavHintButton({
       >
         {children}
       </button>
-      {open ? (
-        <span
-          id={tipId}
-          role="tooltip"
-          className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
-        >
-          <NavHintTooltipBody title={title} description={description} />
-        </span>
-      ) : null}
+      <span
+        id={tipId}
+        role="tooltip"
+        hidden={!open}
+        className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-1 w-max max-w-xs -translate-x-1/2 rounded-md bg-gray-900 px-2.5 py-1.5 text-left text-xs shadow-lg"
+      >
+        <NavHintTooltipBody title={title} description={description} />
+      </span>
     </span>
   )
 }
