@@ -40,3 +40,18 @@ Public catalog: `GET /api/public/leagues` returns **v2** `{ version, leagues, pr
 - Google OAuth Web client (player)
 - DNS `play-preview` / `play`
 - Publish UI for event product fields (set `published_to_player_app` in DB until UI ships)
+
+## Captain live draft (player app)
+
+If the cloud agent could not push `bdl-player`, apply the patch on `preview`:
+
+```bash
+cd bdl-player && git checkout preview && git pull
+git checkout -b cursor/captain-live-draft-c14a
+git apply /path/to/bdl-player-captain-live-draft.patch
+git add -A && git commit -m "Add captain live draft BFF and UI on play app"
+git push -u origin cursor/captain-live-draft-c14a
+gh pr create --base preview --head cursor/captain-live-draft-c14a --title "Captain live draft: BFF and /drafts UI on play" --body-file ...
+```
+
+Patch file: [bdl-player-captain-live-draft.patch](./bdl-player-captain-live-draft.patch)
