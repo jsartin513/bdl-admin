@@ -19,8 +19,8 @@ importers:
         specifier: github:jsartin513/bdl-packages#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth
         version: git+https://github.com/jsartin513/bdl-packages.git#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth(next@15.5.27(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))
       '@bdl/board-apps':
-        specifier: github:jsartin513/bdl-packages#220b36e6a930f027959680b5c57ab8e74c688b2f&path:board-apps
-        version: git+https://github.com/jsartin513/bdl-packages.git#220b36e6a930f027959680b5c57ab8e74c688b2f&path:board-apps
+        specifier: github:jsartin513/bdl-packages#96ca3114a910832bb6b7bdee05e4e0bea55493ce&path:board-apps
+        version: git+https://github.com/jsartin513/bdl-packages.git#96ca3114a910832bb6b7bdee05e4e0bea55493ce&path:board-apps
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -233,8 +233,8 @@ packages:
     peerDependencies:
       next: '>=14'
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#220b36e6a930f027959680b5c57ab8e74c688b2f&path:board-apps':
-    resolution: {commit: 220b36e6a930f027959680b5c57ab8e74c688b2f, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#96ca3114a910832bb6b7bdee05e4e0bea55493ce&path:board-apps':
+    resolution: {commit: 96ca3114a910832bb6b7bdee05e4e0bea55493ce, path: board-apps, repo: https://github.com/jsartin513/bdl-packages.git, type: git}
     version: 0.1.0
 
   '@csstools/color-helpers@5.1.0':
@@ -3577,7 +3577,7 @@ snapshots:
     dependencies:
       next: 15.5.27(@babel/core@7.29.7)(@types/node@20.19.43)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
-  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#220b36e6a930f027959680b5c57ab8e74c688b2f&path:board-apps': {}
+  '@bdl/board-apps@git+https://github.com/jsartin513/bdl-packages.git#96ca3114a910832bb6b7bdee05e4e0bea55493ce&path:board-apps': {}
 
   '@csstools/color-helpers@5.1.0': {}
 
