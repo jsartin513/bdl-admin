@@ -3,6 +3,8 @@
 import { Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { fetchAdminSession } from '@/app/lib/admin-client-auth'
+import { safeAdminNextPath } from '@/app/lib/admin-next'
+import { LiveMessage } from '@/app/components/ui'
 
 function adminErrorMessage(error: string | null): string | null {
   if (!error) return null
@@ -19,19 +21,17 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const errorMessage = adminErrorMessage(searchParams.get('error'))
-  const next = searchParams.get('next') || '/schedules'
+  const next = safeAdminNextPath(searchParams.get('next'))
 
   useEffect(() => {
     void fetchAdminSession().then((session) => {
-      if (session) router.replace(next.startsWith('/') ? next : '/schedules')
+      if (session) router.replace(next)
     })
   }, [router, next])
 
   useEffect(() => {
-    if (next && next.startsWith('/') && !next.startsWith('//')) {
-      const secure = location.protocol === 'https:' ? '; secure' : ''
-      document.cookie = `admin_oauth_next=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax${secure}`
-    }
+    const secure = location.protocol === 'https:' ? '; secure' : ''
+    document.cookie = `admin_oauth_next=${encodeURIComponent(next)}; path=/; max-age=600; samesite=lax${secure}`
   }, [next])
 
   const loginHref = '/api/admin/google/login'
@@ -53,11 +53,15 @@ function LoginContent() {
             Access schedules, league tools, and the players dashboard.
           </p>
 
-          {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+          {errorMessage ? (
+            <LiveMessage variant="alert" className="text-sm text-red-600">
+              {errorMessage}
+            </LiveMessage>
+          ) : null}
 
           <a
             href={loginHref}
-            className="flex w-full items-center justify-center rounded-md bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+            className="flex w-full items-center justify-center rounded-md bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             Sign in with Google
           </a>

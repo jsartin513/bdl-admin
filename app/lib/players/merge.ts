@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
+import { findPlayerMergeChanges } from '@/app/lib/sensitive/player-data'
 import {
   playerAliases,
-  playerChanges,
   playerEmails,
   playerHomeLeagues,
+  playerPhones,
   players,
 } from '@/app/db/schema'
 import { writePlayerChange } from '@/app/lib/players/audit'
@@ -13,9 +14,14 @@ import {
   snapshotToJson,
 } from '@/app/lib/players/queries'
 import {
+  emptySkillAreas,
+  isValidFibSkillLevel,
   isValidSkillLevel,
+  mergeSkillAreasPatch,
   normalizeStoredJerseyName,
   normalizeStoredNickname,
+  SKILL_AREA_KEYS,
+  type SkillAreas,
 } from '@/app/lib/players/skill'
 import { isValidGender } from '@/app/lib/players/gender'
 import { isValidHomeLeague } from '@/app/lib/players/home-league'
@@ -29,6 +35,8 @@ export type MergeFieldResolution = {
   jerseyNumber?: number | null
   jerseyName?: string | null
   skillLevel?: number | null
+  skillLevelFib?: number | null
+  skillAreas?: SkillAreas | Partial<SkillAreas> | null
   gender?: string | null
 }
 
@@ -66,12 +74,33 @@ export async function mergePlayers(input: {
   let jerseyNumber = survivorBefore.jerseyNumber
   let jerseyNameCustom = survivorBefore.jerseyNameCustom
   let skillLevel = survivorBefore.skillLevel
+  let skillLevelFib = survivorBefore.skillLevelFib
+  let skillAreas: SkillAreas | null = survivorBefore.skillAreas
   let gender = survivorBefore.gender
+  let photoUrl = survivorBefore.photoUrl
+  let photoPathname = survivorBefore.photoPathname
 
   for (const loser of loserSnapshots) {
     if (jerseyNumber == null && loser.jerseyNumber != null) jerseyNumber = loser.jerseyNumber
     if (skillLevel == null && loser.skillLevel != null) skillLevel = loser.skillLevel
+    if (skillLevelFib == null && loser.skillLevelFib != null) {
+      skillLevelFib = loser.skillLevelFib
+    }
+    if (loser.skillAreas) {
+      const merged = emptySkillAreas()
+      const base = skillAreas ?? emptySkillAreas()
+      let any = false
+      for (const key of SKILL_AREA_KEYS) {
+        merged[key] = base[key] ?? loser.skillAreas[key] ?? null
+        if (merged[key] != null) any = true
+      }
+      skillAreas = any ? merged : null
+    }
     if (gender == null && loser.gender != null) gender = loser.gender
+    if (photoUrl == null && loser.photoUrl != null) {
+      photoUrl = loser.photoUrl
+      photoPathname = loser.photoPathname
+    }
     if (nicknameCustom == null && loser.nicknameCustom != null) {
       nicknameCustom = loser.nicknameCustom
     }
@@ -97,6 +126,22 @@ export async function mergePlayers(input: {
       throw new Error('Invalid skill level')
     }
     skillLevel = input.fields.skillLevel
+  }
+  if (input.fields?.skillLevelFib !== undefined) {
+    if (
+      input.fields.skillLevelFib !== null &&
+      !isValidFibSkillLevel(input.fields.skillLevelFib)
+    ) {
+      throw new Error('Invalid Fibonacci skill level')
+    }
+    skillLevelFib = input.fields.skillLevelFib
+  }
+  if (input.fields?.skillAreas !== undefined) {
+    if (input.fields.skillAreas === null) {
+      skillAreas = null
+    } else {
+      skillAreas = mergeSkillAreasPatch(skillAreas, input.fields.skillAreas)
+    }
   }
   if (input.fields?.gender !== undefined) {
     if (input.fields.gender !== null && !isValidGender(input.fields.gender)) {
@@ -126,7 +171,11 @@ export async function mergePlayers(input: {
       jerseyNumber,
       jerseyName: jerseyNameCustom,
       skillLevel,
+      skillLevelFib,
+      skillAreas,
       gender,
+      photoUrl,
+      photoPathname,
       updatedAt: new Date(),
     })
     .where(eq(players.id, survivorId))
@@ -160,6 +209,39 @@ export async function mergePlayers(input: {
       .update(playerEmails)
       .set({ isPrimary: true })
       .where(eq(playerEmails.id, prefer.id))
+  }
+
+  // Move phones (skip duplicates)
+  const existingPhones = new Set(survivorBefore.phones.map((p) => p.phoneE164))
+  for (const loser of loserSnapshots) {
+    for (const phone of loser.phones) {
+      if (existingPhones.has(phone.phoneE164)) {
+        await db.delete(playerPhones).where(eq(playerPhones.id, phone.id))
+        continue
+      }
+      await db
+        .update(playerPhones)
+        .set({ playerId: survivorId, isPrimary: false })
+        .where(eq(playerPhones.id, phone.id))
+      existingPhones.add(phone.phoneE164)
+    }
+  }
+
+  const survivorPhones = await db
+    .select()
+    .from(playerPhones)
+    .where(eq(playerPhones.playerId, survivorId))
+  if (survivorPhones.length > 0 && !survivorPhones.some((p) => p.isPrimary)) {
+    const prefer =
+      survivorPhones.find(
+        (p) =>
+          p.phoneE164 ===
+          survivorBefore.phones.find((x) => x.isPrimary)?.phoneE164
+      ) ?? survivorPhones[0]
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: true })
+      .where(eq(playerPhones.id, prefer.id))
   }
 
   // Move aliases
@@ -263,16 +345,19 @@ export async function mergePlayers(input: {
 }
 
 type SnapshotEmail = { id?: string; email: string; isPrimary?: boolean }
+type SnapshotPhone = { id?: string; phoneE164: string; isPrimary?: boolean }
 type SnapshotAlias = { id?: string; alias: string }
 type SnapshotHomeLeague = { id?: string; homeLeague: string; sortOrder?: number }
 
 function readMergeBefore(before: Record<string, unknown> | null | undefined): {
   emails: SnapshotEmail[]
+  phones: SnapshotPhone[]
   aliases: SnapshotAlias[]
   homeLeagues: SnapshotHomeLeague[]
   firstName: string | null
 } {
   const emailsRaw = before?.emails
+  const phonesRaw = before?.phones
   const aliasesRaw = before?.aliases
   const homeLeaguesRaw = before?.homeLeagues
   const emails: SnapshotEmail[] = []
@@ -283,6 +368,18 @@ function readMergeBefore(before: Record<string, unknown> | null | undefined): {
       if (typeof email !== 'string' || !email.trim()) continue
       emails.push({
         email: normalizeEmail(email),
+        isPrimary: Boolean((item as { isPrimary?: unknown }).isPrimary),
+      })
+    }
+  }
+  const phones: SnapshotPhone[] = []
+  if (Array.isArray(phonesRaw)) {
+    for (const item of phonesRaw) {
+      if (!item || typeof item !== 'object') continue
+      const phoneE164 = (item as { phoneE164?: unknown }).phoneE164
+      if (typeof phoneE164 !== 'string' || !phoneE164.trim()) continue
+      phones.push({
+        phoneE164: phoneE164.trim(),
         isPrimary: Boolean((item as { isPrimary?: unknown }).isPrimary),
       })
     }
@@ -312,7 +409,7 @@ function readMergeBefore(before: Record<string, unknown> | null | undefined): {
   homeLeagues.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
   const firstName =
     typeof before?.firstName === 'string' ? before.firstName.trim() : null
-  return { emails, aliases, homeLeagues, firstName }
+  return { emails, phones, aliases, homeLeagues, firstName }
 }
 
 /**
@@ -332,24 +429,14 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
   if (!survivorBefore) throw new Error('Survivor player not found')
 
   const db = getDb()
-  const [mergeEvent] = await db
-    .select()
-    .from(playerChanges)
-    .where(and(eq(playerChanges.playerId, playerId), eq(playerChanges.changeType, 'merge')))
-    .orderBy(desc(playerChanges.createdAt))
-    .limit(1)
+  const mergeEvents = await findPlayerMergeChanges(playerId)
+  const mergeEvent = mergeEvents[0] ?? null
 
   const mergeBefore = readMergeBefore(mergeEvent?.before ?? null)
 
   // Find the survivor's merge audit for this pair so we know which emails/aliases
   // they already owned (duplicates deleted on merge — leave those on survivor).
-  const survivorMergeEvents = await db
-    .select()
-    .from(playerChanges)
-    .where(
-      and(eq(playerChanges.playerId, survivorId), eq(playerChanges.changeType, 'merge'))
-    )
-    .orderBy(desc(playerChanges.createdAt))
+  const survivorMergeEvents = await findPlayerMergeChanges(survivorId)
 
   const survivorMergeEvent =
     survivorMergeEvents.find((event) => {
@@ -358,6 +445,9 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
     }) ?? null
   const survivorOwnedBefore = readMergeBefore(survivorMergeEvent?.before ?? null)
   const survivorHadEmail = new Set(survivorOwnedBefore.emails.map((e) => e.email))
+  const survivorHadPhone = new Set(
+    survivorOwnedBefore.phones.map((p) => p.phoneE164)
+  )
   const survivorHadAlias = new Set(
     survivorOwnedBefore.aliases.map((a) => a.alias.toLowerCase())
   )
@@ -415,6 +505,45 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
       .update(playerEmails)
       .set({ isPrimary: true })
       .where(eq(playerEmails.id, emails[0].id))
+  }
+
+  // Restore phones that were moved from this player onto the survivor.
+  for (const phone of mergeBefore.phones) {
+    if (canDetectSurvivorOwned && survivorHadPhone.has(phone.phoneE164)) continue
+
+    const [existing] = await db
+      .select()
+      .from(playerPhones)
+      .where(eq(playerPhones.phoneE164, phone.phoneE164))
+      .limit(1)
+
+    if (!existing) {
+      await db.insert(playerPhones).values({
+        playerId,
+        phoneE164: phone.phoneE164,
+        isPrimary: Boolean(phone.isPrimary),
+      })
+      continue
+    }
+
+    if (existing.playerId === playerId) continue
+
+    if (existing.playerId === survivorId && canDetectSurvivorOwned) {
+      await db
+        .update(playerPhones)
+        .set({ playerId, isPrimary: Boolean(phone.isPrimary) })
+        .where(eq(playerPhones.id, existing.id))
+    }
+  }
+
+  for (const id of [playerId, survivorId]) {
+    const phones = await db.select().from(playerPhones).where(eq(playerPhones.playerId, id))
+    if (phones.length === 0) continue
+    if (phones.some((p) => p.isPrimary)) continue
+    await db
+      .update(playerPhones)
+      .set({ isPrimary: true })
+      .where(eq(playerPhones.id, phones[0].id))
   }
 
   // Restore aliases that were moved (skip ones the survivor already had).

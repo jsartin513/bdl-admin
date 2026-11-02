@@ -8,12 +8,16 @@ import {
   addPlayerAlias,
   addPlayerEmail,
   addPlayerHomeLeague,
+  addPlayerPhone,
   removePlayerAlias,
   removePlayerEmail,
   removePlayerHomeLeague,
+  removePlayerPhone,
   reorderPlayerHomeLeagues,
   setPrimaryEmail,
+  setPrimaryPhone,
   updatePlayer,
+  updatePlayerMessagingPrefs,
 } from '@/app/lib/players/mutations'
 
 type Ctx = { params: Promise<{ id: string }> }
@@ -49,17 +53,32 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       jerseyNumber?: number | null
       jerseyName?: string | null
       skillLevel?: number | null
+      skillLevelFib?: number | null
+      skillAreas?: {
+        offense?: number | null
+        defense?: number | null
+        stayingAlive?: number | null
+        courtPresence?: number | null
+      } | null
       gender?: string | null
       hasStrongPersonality?: boolean
       strongPersonalityNotes?: string | null
       addEmail?: string
       removeEmailId?: string
       setPrimaryEmailId?: string
+      addPhone?: string
+      removePhoneId?: string
+      setPrimaryPhoneId?: string
       addAlias?: string
       removeAliasId?: string
       addHomeLeague?: string
       removeHomeLeagueId?: string
       reorderHomeLeagueIds?: string[]
+      messagingPrefs?: {
+        emailOptOut?: boolean
+        smsOptIn?: boolean
+        whatsappOptIn?: boolean
+      }
     }
 
     let player = await getPlayerSnapshot(id)
@@ -75,6 +94,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
       body.jerseyNumber !== undefined ||
       body.jerseyName !== undefined ||
       body.skillLevel !== undefined ||
+      body.skillLevelFib !== undefined ||
+      body.skillAreas !== undefined ||
       body.gender !== undefined ||
       body.hasStrongPersonality !== undefined ||
       body.strongPersonalityNotes !== undefined
@@ -90,6 +111,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           jerseyNumber: body.jerseyNumber,
           jerseyName: body.jerseyName,
           skillLevel: body.skillLevel,
+          skillLevelFib: body.skillLevelFib,
+          skillAreas: body.skillAreas,
           gender: body.gender,
           hasStrongPersonality: body.hasStrongPersonality,
           strongPersonalityNotes: body.strongPersonalityNotes,
@@ -108,6 +131,19 @@ export async function PATCH(request: NextRequest, context: Ctx) {
     }
     if (body.setPrimaryEmailId) {
       player = await setPrimaryEmail(id, body.setPrimaryEmailId, {
+        actor: session.email,
+      })
+    }
+    if (body.addPhone) {
+      player = await addPlayerPhone(id, body.addPhone, { actor: session.email })
+    }
+    if (body.removePhoneId) {
+      player = await removePlayerPhone(id, body.removePhoneId, {
+        actor: session.email,
+      })
+    }
+    if (body.setPrimaryPhoneId) {
+      player = await setPrimaryPhone(id, body.setPrimaryPhoneId, {
         actor: session.email,
       })
     }
@@ -131,6 +167,11 @@ export async function PATCH(request: NextRequest, context: Ctx) {
     }
     if (body.reorderHomeLeagueIds) {
       player = await reorderPlayerHomeLeagues(id, body.reorderHomeLeagueIds, {
+        actor: session.email,
+      })
+    }
+    if (body.messagingPrefs) {
+      player = await updatePlayerMessagingPrefs(id, body.messagingPrefs, {
         actor: session.email,
       })
     }

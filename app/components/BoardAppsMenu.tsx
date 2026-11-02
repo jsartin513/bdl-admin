@@ -1,7 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { getBoardAppLinks, type BoardAppId } from '@/app/lib/board-apps'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { getBoardAppLinks, type BoardAppId } from '@bdl/board-apps'
+import { NavHintButton, NavHintLink } from '@/app/components/NavHintLink'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300'
 
 type BoardAppsMenuProps = {
   currentApp: BoardAppId
@@ -26,11 +30,13 @@ function getHostnameServerSnapshot() {
 export default function BoardAppsMenu({
   currentApp,
   className = '',
-  linkClassName = 'block px-3 py-2 text-sm text-gray-200 hover:bg-gray-700',
-  menuClassName = 'absolute right-0 mt-1 w-48 rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-gray-600 z-50',
-  buttonClassName = 'hover:underline text-blue-300',
+  linkClassName = 'block px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 focus-visible:bg-gray-700 focus-visible:outline-none',
+  menuClassName = 'absolute right-0 mt-1 w-72 rounded-md bg-gray-800 py-1 shadow-lg ring-1 ring-gray-600 z-50',
+  buttonClassName = 'hover:underline text-blue-100',
 }: BoardAppsMenuProps) {
   const [open, setOpen] = useState(false)
+  const panelId = useId()
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const hostname = useSyncExternalStore(
     subscribeHostname,
     getHostnameSnapshot,
@@ -47,7 +53,10 @@ export default function BoardAppsMenu({
       }
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Escape') {
+        setOpen(false)
+        buttonRef.current?.focus()
+      }
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -61,27 +70,65 @@ export default function BoardAppsMenu({
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
-      <button
-        type="button"
+      <NavHintButton
+        buttonRef={buttonRef}
+        title="Switch Application"
+        description="Jump to another board app (player site, website admin, and more)."
         onClick={() => setOpen((value) => !value)}
-        className={buttonClassName}
+        className={`${buttonClassName} ${FOCUS_RING}`}
         aria-expanded={open}
         aria-haspopup="true"
+        aria-controls={panelId}
+        aria-label="Switch application menu"
       >
         Switch Application
-      </button>
+      </NavHintButton>
       {open ? (
-        <div className={menuClassName}>
+        <div id={panelId} className={menuClassName}>
           {links.map((app) => (
-            <a
+            <NavHintLink
               key={app.id}
               href={app.href}
               className={linkClassName}
+              title={app.label}
+              description={app.description}
               onClick={() => setOpen(false)}
             >
-              {app.label}
-            </a>
+              <span className="font-medium">{app.label}</span>
+              <span className="mt-0.5 block text-xs font-normal text-gray-400">
+                {app.description}
+              </span>
+            </NavHintLink>
           ))}
+          <div className="mt-1 border-t border-gray-600 pt-1">
+            <NavHintLink
+              href="/whats-new"
+              className={linkClassName}
+              title="What's New"
+              description="Release notes for recent admin changes."
+              onClick={() => setOpen(false)}
+            >
+              What&apos;s New
+            </NavHintLink>
+            <NavHintLink
+              href="/request-feature"
+              className={linkClassName}
+              title="Request a feature"
+              description="Suggest an improvement; opens a GitHub issue or prefilled form."
+              onClick={() => setOpen(false)}
+            >
+              Request a feature
+            </NavHintLink>
+            <NavHintLink
+              href="/help"
+              className={linkClassName}
+              title="Help"
+              description="How-to guides and troubleshooting for admin tools."
+              onClick={() => setOpen(false)}
+            >
+              Help
+            </NavHintLink>
+          </div>
         </div>
       ) : null}
     </div>

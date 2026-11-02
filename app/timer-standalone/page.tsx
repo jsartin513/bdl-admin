@@ -83,10 +83,14 @@ export default function StandaloneTimerPage() {
 
         {/* Game Starting Overlay */}
         {isPlayingStartAnnouncement && (
-          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-pulse">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-pulse"
+            role="status"
+            aria-live="polite"
+          >
             <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-12 rounded-2xl shadow-2xl transform scale-110">
               <div className="text-center">
-                <div className="text-6xl font-bold mb-4 animate-bounce">🏁</div>
+                <div className="text-6xl font-bold mb-4 animate-bounce" aria-hidden="true">🏁</div>
                 <div className="text-4xl font-bold mb-2">ROUND STARTING!</div>
                 <div className="text-2xl font-semibold opacity-90">
                   Side ready, side ready, dodgeball!

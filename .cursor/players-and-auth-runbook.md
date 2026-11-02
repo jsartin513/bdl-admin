@@ -1,5 +1,7 @@
 # Players DB + Google admin auth
 
+See [docs/setup-and-capabilities.md](../docs/setup-and-capabilities.md) for a feature matrix (what works without Twilio, Drive, etc.) and full local setup. **Twilio, Resend, Drive, Blob, and publish setup:** [docs/integrations-setup.md](../docs/integrations-setup.md).
+
 ## Environment variables
 
 Add these to `.env.local` (local) and Vercel project env (Production / Preview):
@@ -14,11 +16,36 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the 
 
 # Neon Postgres (also auto-provisioned via `vercel integration add neon`)
 DATABASE_URL=postgresql://...
+
+# Contact players (email via Resend; SMS/WhatsApp via Twilio — see docs/integrations-setup.md)
+RESEND_API_KEY=
+CONTACT_EMAIL_FROM="BDL Events <events@bostondodgeballleague.com>"
+# TWILIO_* — full Twilio + webhook setup: docs/integrations-setup.md
+# CONTACT_DRY_RUN=1                    # log sends without calling providers
+
+# Cross-post composer → public website (same PUBLISH_API_SECRET on bdl-admin + bdl-website)
+# PUBLISH_API_SECRET=
+# WEBSITE_PUBLISH_URL=https://www.bostondodgeballleague.com/api/internal/publish
+# PUBLIC_WEBSITE_URL=https://www.bostondodgeballleague.com
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
 
-On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Preview hosts and localhost stay host-only.
+## Board admin SSO
+
+Cross-app login on `*.bostondodgeballleague.com` uses signed cookies from `@bdl/admin-auth`:
+
+| Environment | Cookie name | Domain | Secret |
+|-------------|-------------|--------|--------|
+| Production | `admin_session` | `.bostondodgeballleague.com` | Production `ADMIN_SESSION_SECRET` (same on all prod apps) |
+| Stable preview | `admin_session_preview` | `.bostondodgeballleague.com` | Preview `ADMIN_SESSION_SECRET` (same on all preview apps; **different** from Production) |
+| Local / PR `*.vercel.app` | `admin_session` | host-only | local or preview env as configured |
+
+Preview and production both use the parent domain, but **different cookie names** so logging into preview does not grant production (and preview logout does not clear production sessions). After one Google sign-in on `admin-preview`, open Merch, Open Gym, Concessions, and Site Builder on their stable preview hosts without signing in again.
+
+Package pin: `@bdl/admin-auth` from [`bdl-packages`](https://github.com/jsartin513/bdl-packages) (`admin-auth/AGENTS.md`).
+
+On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, Open Gym, Concessions, and Site Builder share one login.
 
 | Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
 |-------------|------|------------|------------------------|
@@ -27,6 +54,16 @@ On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `
 | Local | `http://localhost:3000` | — | same origin |
 
 Auth env for the stable preview host is scoped to the **`preview`** Git branch in Vercel.
+
+## Deploy flow
+
+1. Open feature PRs against **`preview`** (not `main`).
+2. Merge to `preview` → Vercel deploys `admin-preview.bostondodgeballleague.com`.
+3. Confirm the preview deploy. You can run `npm run smoke:preview` locally. CI **Preview smoke** (`smoke`) runs on the release PR and waits for `/login`, `/players`, and `/events`.
+4. After preview looks good, open **`preview` → `main`**. **Main merge gate** (`from-preview`) requires the head branch to be `preview`. **Preview smoke** is the health check on that PR.
+5. Merge to `main` → production at `admin.bostondodgeballleague.com`.
+
+If `preview` has fallen behind `main`, fast-forward or merge `main` into `preview` before landing new work there.
 
 ## Google Cloud OAuth
 
@@ -69,15 +106,36 @@ SQL migration source: [`drizzle/0000_players.sql`](../drizzle/0000_players.sql).
 - `/api/admin/google/callback`
 - `/api/admin/session`
 - `/api/admin/logout`
+- `/api/video-tools/upload`
+- `/api/video-tools/worker/*`
+- `/api/webhooks/twilio/messaging` (Twilio signature-validated)
 - Next static assets
 
 Sign in at `/login`. TopNav shows the signed-in email and Log out.
+
+## Contact players
+
+Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… / Contact selected) and **Event detail** (Contact registered players).
+
+- Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
+- Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
+- Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0021_contact_players`).
+- **Outbox** (`/outbox`, top nav): unified log in `outbound_messages` for contact email/SMS/WhatsApp plus operational email (video merge notify, watched login alerts). **Failed** for email means Resend rejected the API call; SMS/WhatsApp can move to failed/delivered via Twilio callbacks. Email accepted by Resend stays `sent` until a future Resend webhook.
+- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging` (step-by-step: [docs/integrations-setup.md](../docs/integrations-setup.md)).
 
 ## Players
 
 - UI: `/players`
 - Import TeamLinkt CSV (dry run → commit). Matching: email, then first+last name.
-- Skill levels: 1 Beginner, 2 Intermediate, 3 Advanced, 4 Worlds level (`null` = Unset).
+- Skill systems (independent per player):
+  - **Normal** (`skill_level`): 1–100 with anchors at 20 Beginner, 40 Intermediate, 60 Advanced, 80 Worlds level (`null` = Unset). Midpoints (e.g. 30, 50) are allowed. Legacy 1–4 values were migrated ×20.
+  - **Fibonacci** (`skill_level_fib`): one of `1, 2, 3, 5, 8, 13, 21, 34, 55, 89` (or unset).
+  - **Skill areas** (`skill_areas` jsonb): offense, defense, staying alive, court presence/play calling — each on the normal scale; blank fields fall back to the main normal skill. Effective score = average of the four resolved values.
+- Players and event pages share a **Skill view** toggle (`localStorage` key `bdl-admin.skillViewMode`) so display, matrix, sorting, and draft balancing follow Normal / Fibonacci / Skill areas.
 - Gender: male / female / nonbinary / other (imported from TeamLinkt Gender column). List sorts female/nonbinary/other together for drafting. Birthdate from TeamLinkt is not stored or shown.
-- Import fills skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate`, `3`/`Advanced`, etc.). Creates get the value; updates only set skill when the existing player is unset.
+- Import fills **linear** skill when the CSV has a Skill / Skill Level column (`2`/`Intermediate` → 40, `3`/`Advanced` → 60, etc.). Creates get the value; updates only set skill when the existing player is unset. Fibonacci and skill areas are not invented by import.
+- Import fills **jersey** the same way when a Jersey Number (or Uniform Number / Shirt Number) column is present.
+- Association members exports usually omit skill and jersey — dry-run preview warns when those columns are missing. Use a roster/participants export (or additional-info columns) to backfill.
+- Committed imports (and **Save for later**) store the full CSV on `import_batches.csv_text` so you can **Load** or **Re-apply** later without re-uploading. Re-apply creates a new batch and still only fills unset jersey/skill.
+- Schema note: after pulling this change, run `npm run db:push` (or apply [`drizzle/0022_import_batches_csv_text.sql`](../drizzle/0022_import_batches_csv_text.sql)) so `source` + `csv_text` exist on `import_batches`.
 - All writes audit to `player_changes` with `actor` = Google email and `source` = `admin` or `import`.

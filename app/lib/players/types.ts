@@ -16,12 +16,22 @@ export type PlayerSnapshot = {
   /** Stored custom jersey name; null means still using last name. */
   jerseyNameCustom: string | null
   skillLevel: number | null
+  skillLevelFib: number | null
+  skillAreas: {
+    offense: number | null
+    defense: number | null
+    stayingAlive: number | null
+    courtPresence: number | null
+  } | null
   gender: string | null
+  photoUrl: string | null
+  photoPathname: string | null
   isMerged: boolean
   mergedIntoPlayerId: string | null
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null
   emails: { id: string; email: string; isPrimary: boolean }[]
+  phones: { id: string; phoneE164: string; isPrimary: boolean }[]
   aliases: { id: string; alias: string }[]
   homeLeagues: {
     id: string
@@ -30,6 +40,13 @@ export type PlayerSnapshot = {
     logoUrl: string | null
     sortOrder: number
   }[]
+  messagingPrefs: {
+    emailOptOutAt: string | null
+    smsOptInAt: string | null
+    smsOptOutAt: string | null
+    whatsappOptInAt: string | null
+    whatsappOptOutAt: string | null
+  } | null
 }
 
 export type PlayerListItem = {
@@ -41,11 +58,20 @@ export type PlayerListItem = {
   jerseyNumber: number | null
   jerseyName: string
   skillLevel: number | null
+  skillLevelFib: number | null
+  skillAreas: {
+    offense: number | null
+    defense: number | null
+    stayingAlive: number | null
+    courtPresence: number | null
+  } | null
   skillLabel: string
   gender: string | null
   genderLabel: string
   genderGroupLabel: string
+  photoUrl: string | null
   primaryEmail: string | null
+  primaryPhone: string | null
   isMerged: boolean
   hasStrongPersonality: boolean
   strongPersonalityNotes: string | null

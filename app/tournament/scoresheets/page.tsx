@@ -1,12 +1,16 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { FieldHelp, LiveMessage } from '@/app/components/ui';
 import {
   buildScoresheetCards,
   filterCardsByCourt,
   uniqueCourts,
   type ScoresheetCard,
 } from '@/app/lib/throwdownScoresheets';
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600';
 
 type PerPage = 2 | 4;
 
@@ -161,12 +165,18 @@ export default function ThrowdownScoresheetsPage() {
           Printable round-robin scoresheets for group phase games — one card per game, sorted by
           court for clipboard stacks.
         </p>
+        <FieldHelp>
+          Upload a Throw Down schedule CSV, preview cards here, then print or download styled Excel.
+        </FieldHelp>
       </div>
 
       <section className="no-print rounded-lg border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-900">1. Schedule CSV</h2>
+        <FieldHelp>
+          Use the same CSV export as team schedules — group-phase games become printable score cards.
+        </FieldHelp>
         <div className="flex flex-wrap gap-3">
-          <label className="inline-flex cursor-pointer items-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700">
+          <label className={`inline-flex cursor-pointer items-center rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 ${FOCUS_RING}`}>
             Choose CSV file
             <input
               ref={fileInputRef}
@@ -180,7 +190,7 @@ export default function ThrowdownScoresheetsPage() {
             type="button"
             onClick={() => void loadSample()}
             disabled={isLoadingSample}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+            className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 ${FOCUS_RING}`}
           >
             {isLoadingSample ? 'Loading sample…' : 'Load sample CSV'}
           </button>
@@ -242,7 +252,7 @@ export default function ThrowdownScoresheetsPage() {
             type="button"
             onClick={handlePrint}
             disabled={cards.length === 0}
-            className="rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
           >
             Print scoresheets
           </button>
@@ -250,7 +260,7 @@ export default function ThrowdownScoresheetsPage() {
             type="button"
             onClick={() => void downloadExcel()}
             disabled={isDownloading || !csv.trim()}
-            className="rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className={`rounded-md border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
           >
             {isDownloading ? 'Downloading…' : 'Download Excel'}
           </button>
@@ -263,9 +273,9 @@ export default function ThrowdownScoresheetsPage() {
           type="text"
           value={outputName}
           onChange={(e) => setOutputName(e.target.value)}
-          className="w-full max-w-md rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className={`w-full max-w-md rounded-md border border-gray-300 px-3 py-2 text-sm ${FOCUS_RING}`}
         />
-        <p className="text-xs text-gray-500">
+        <FieldHelp>
           Styled Excel (matches 4th Edition &quot;Court Assignment Printouts&quot;):{' '}
           <code className="rounded bg-gray-100 px-1">
             python3 schedule_data/build_throwdown_scoresheets.py --tabs-only
@@ -275,13 +285,13 @@ export default function ThrowdownScoresheetsPage() {
             python3 schedule_data/build_throwdown_scoresheets.py --merge-into &quot;schedule_data/The
             Throw Down_ 5th Edition Team Schedules_may_27.xlsx&quot;
           </code>
-        </p>
+        </FieldHelp>
       </section>
 
       {error ? (
-        <div className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <LiveMessage variant="alert" className="no-print rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
-        </div>
+        </LiveMessage>
       ) : null}
 
       {cards.length === 0 && csv.trim() ? (

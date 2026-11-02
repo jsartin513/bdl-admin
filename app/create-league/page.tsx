@@ -2,7 +2,11 @@
 
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { FieldHelp, LiveMessage, Tooltip } from '@/app/components/ui'
 import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 interface DriveFile {
   id: string
@@ -10,6 +14,18 @@ interface DriveFile {
 }
 
 type Step = 1 | 2 | 3
+
+const STEP_LABELS: Record<Step, string> = {
+  1: 'Template & Name',
+  2: 'Team Names',
+  3: 'Setup Options',
+}
+
+const STEP_TOOLTIPS: Record<Step, string> = {
+  1: 'Pick a Google Drive template and name your league. Team count comes from the template filename.',
+  2: 'Enter every team name in League Standings order — this order matters for the “avoid first round” option.',
+  3: 'Optional scheduling tweaks and a summary before you generate the Excel workbook.',
+}
 
 interface FormData {
   templateId: string
@@ -193,8 +209,9 @@ function CreateLeagueForm() {
             >
               {step > s ? '✓' : s}
             </div>
-            <span className={step === s ? 'font-semibold text-gray-900' : 'text-gray-500'}>
-              {s === 1 ? 'Template & Name' : s === 2 ? 'Team Names' : 'Setup Options'}
+            <span className={`inline-flex items-center gap-1 ${step === s ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>
+              {STEP_LABELS[s]}
+              <Tooltip label={`About step ${s}`} content={STEP_TOOLTIPS[s]} />
             </span>
             {s < 3 && <span className="text-gray-300 mx-1">›</span>}
           </div>
@@ -228,7 +245,7 @@ function CreateLeagueForm() {
                     teams,
                   }))
                 }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-4 py-2 border border-gray-300 rounded-md ${FOCUS_RING}`}
               >
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -237,11 +254,11 @@ function CreateLeagueForm() {
                 ))}
               </select>
             )}
-            <p className="mt-1 text-xs text-gray-500">
+            <FieldHelp>
               Templates come from the shared Google Drive folder. Team count is taken from the file
               name. The downloaded workbook is that Google Sheet exported to Excel with your team
               names filled in (same schedule layout as the template).
-            </p>
+            </FieldHelp>
             {formData.templateName &&
               (() => {
                 const n = parseTeamCountFromTemplateName(formData.templateName)
@@ -270,22 +287,22 @@ function CreateLeagueForm() {
               type="text"
               value={formData.leagueName}
               onChange={(e) => setFormData((f) => ({ ...f, leagueName: e.target.value }))}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+              className={`w-full px-4 py-2 border border-gray-300 rounded-md ${FOCUS_RING}`}
               placeholder="e.g., Spring 2027 BYOT League"
             />
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
+          {error ? (
+            <LiveMessage variant="alert" className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
               {error}
-            </div>
-          )}
+            </LiveMessage>
+          ) : null}
 
           <button
             type="button"
             onClick={goToStep2}
             disabled={loadingTemplates}
-            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className={`px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 ${FOCUS_RING}`}
           >
             Next: Enter Team Names →
           </button>
@@ -311,7 +328,7 @@ function CreateLeagueForm() {
                     type="text"
                     value={team}
                     onChange={(e) => updateTeam(index, e.target.value)}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    className={`flex-1 px-4 py-2 border border-gray-300 rounded-md ${FOCUS_RING}`}
                     placeholder={`Team ${index + 1} name`}
                   />
                 </div>
@@ -319,24 +336,24 @@ function CreateLeagueForm() {
             </div>
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
+          {error ? (
+            <LiveMessage variant="alert" className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
               {error}
-            </div>
-          )}
+            </LiveMessage>
+          ) : null}
 
           <div className="flex gap-3">
             <button
               type="button"
               onClick={() => { setError(null); setStep(1) }}
-              className="px-4 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              className={`px-4 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 ${FOCUS_RING}`}
             >
               ← Back
             </button>
             <button
               type="button"
               onClick={goToStep3}
-              className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className={`px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 ${FOCUS_RING}`}
             >
               Next: Setup Options →
             </button>
@@ -355,13 +372,17 @@ function CreateLeagueForm() {
             </p>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-2">
                 Avoid in first round (optional)
+                <Tooltip
+                  label="About avoid in first round"
+                  content="For seven-team templates, pick which of your team names should take the slot that never appears in game 1. Leave blank to keep the default mapping from step 2."
+                />
               </label>
               <select
                 value={formData.avoidFirstRound}
                 onChange={(e) => setFormData((f) => ({ ...f, avoidFirstRound: e.target.value }))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-4 py-2 border border-gray-300 rounded-md ${FOCUS_RING}`}
               >
                 <option value="">— No preference —</option>
                 {filledTeams.map((team) => (
@@ -370,13 +391,13 @@ function CreateLeagueForm() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-gray-500">
+              <FieldHelp>
                 For templates exported from Google Drive, your choice here is matched to the team
                 that never appears in <strong>game 1</strong> on any week (e.g. the seven-team
                 template). Enter teams in step 2 in <strong>League Standings</strong> order, then
                 pick which of your names should take that “late start” slot. Leave blank to keep
                 the default name-to-slot mapping from step 2.
-              </p>
+              </FieldHelp>
             </div>
           </div>
 
@@ -412,19 +433,21 @@ function CreateLeagueForm() {
             </ul>
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
+          {error ? (
+            <LiveMessage variant="alert" className="p-3 bg-red-50 border border-red-300 text-red-700 rounded-md text-sm">
               {error}
-            </div>
-          )}
+            </LiveMessage>
+          ) : null}
 
           {downloadUrl && (
             <div className="p-4 bg-green-50 border border-green-300 rounded-md">
-              <p className="text-green-800 font-medium mb-3">League created successfully!</p>
+              <LiveMessage variant="status" className="text-green-800 font-medium mb-3">
+                League created successfully!
+              </LiveMessage>
               <a
                 href={downloadUrl}
                 download={downloadName}
-                className="inline-block px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                className={`inline-block px-5 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 ${FOCUS_RING}`}
               >
                 Download {downloadName}
               </a>
@@ -435,14 +458,14 @@ function CreateLeagueForm() {
             <button
               type="button"
               onClick={() => { setError(null); setDownloadUrl(null); setStep(2) }}
-              className="px-4 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+              className={`px-4 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 ${FOCUS_RING}`}
             >
               ← Back
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING}`}
             >
               {isSubmitting ? 'Generating…' : 'Generate Schedule'}
             </button>

@@ -14,12 +14,16 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     nickname: 'Alex P',
     jerseyNumber: null,
     jerseyName: 'Player',
-    skillLevel: 2,
+    skillLevel: 40,
+    skillLevelFib: null,
+    skillAreas: null,
     skillLabel: 'Intermediate',
     gender: 'female',
     genderLabel: 'Female',
     genderGroupLabel: 'W/NB/O',
+    photoUrl: null,
     primaryEmail: null,
+    primaryPhone: null,
     isMerged: false,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
@@ -39,15 +43,21 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     jerseyNumber: null,
     jerseyName: 'Player',
     jerseyNameCustom: null,
-    skillLevel: 2,
+    skillLevel: 40,
+    skillLevelFib: null,
+    skillAreas: null,
     gender: 'female',
+    photoUrl: null,
+    photoPathname: null,
     isMerged: false,
     mergedIntoPlayerId: null,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
     emails: [],
+    phones: [],
     aliases: [],
     homeLeagues: [],
+    messagingPrefs: null,
     ...overrides,
   }
 }
@@ -226,7 +236,7 @@ describe('PlayersPage quick fill mode', () => {
             firstName: 'Drew',
             lastName: 'BothMissing',
             rosterName: 'Drew BothMissing',
-            skillLevel: 2,
+            skillLevel: 40,
             gender: 'male',
           }),
         })
@@ -241,12 +251,12 @@ describe('PlayersPage quick fill mode', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    await userEvent.selectOptions(screen.getByLabelText('Set skill for Drew BothMissing'), '2')
+    await userEvent.selectOptions(screen.getByLabelText('Set skill for Drew BothMissing'), '40')
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       method: 'PATCH',
-      body: JSON.stringify({ skillLevel: 2, gender: 'male' }),
+      body: JSON.stringify({ skillLevel: 40, gender: 'male' }),
     })
   })
 })
@@ -304,7 +314,7 @@ describe('PlayersPage bulk edit mode', () => {
               firstName: 'Ada',
               lastName: 'Woman',
               rosterName: 'Ada Woman',
-              skillLevel: 3,
+              skillLevel: 60,
               skillLabel: 'Advanced',
               gender: 'female',
             }),
@@ -313,7 +323,7 @@ describe('PlayersPage bulk edit mode', () => {
               firstName: 'Bea',
               lastName: 'Woman',
               rosterName: 'Bea Woman',
-              skillLevel: 3,
+              skillLevel: 60,
               skillLabel: 'Advanced',
               gender: 'female',
             }),
@@ -346,7 +356,7 @@ describe('PlayersPage bulk edit mode', () => {
     expect(screen.getByLabelText('Select Ada Woman')).toBeChecked()
     expect(screen.getByLabelText('Select Bea Woman')).toBeChecked()
 
-    await userEvent.selectOptions(screen.getByLabelText('Bulk set skill'), '3')
+    await userEvent.selectOptions(screen.getByLabelText('Bulk set skill'), '60')
     await userEvent.click(screen.getByRole('button', { name: 'Apply to 2 players' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
@@ -355,7 +365,7 @@ describe('PlayersPage bulk edit mode', () => {
       method: 'PATCH',
       body: JSON.stringify({
         playerIds: ['w1', 'w2'],
-        patch: { skillLevel: 3 },
+        patch: { skillLevel: 60 },
       }),
     })
     expect(await screen.findByText('Updated 2 players')).toBeInTheDocument()
@@ -438,7 +448,9 @@ describe('PlayersPage home leagues', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByText('Home leagues')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Fields' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home leagues' }))
+    expect(screen.getByRole('heading', { name: 'Home leagues' })).toBeInTheDocument()
 
     await userEvent.selectOptions(
       screen.getByDisplayValue('Select home league'),
@@ -545,11 +557,105 @@ describe('PlayersPage tournament filters and columns', () => {
       ).toBe(true)
     })
 
+    const statusSelect = screen.getByLabelText(
+      'Filter by event registration status'
+    )
+    expect(statusSelect).toHaveValue('registered')
+    await userEvent.selectOptions(statusSelect, 'not_registered')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(
+        urls.some(
+          (url) =>
+            url.includes('eventId=11111111-1111-4111-8111-111111111111') &&
+            url.includes('eventMatch=not_registered')
+        )
+      ).toBe(true)
+    })
+
     await userEvent.selectOptions(screen.getByLabelText('Filter by home league'), 'unset')
 
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map((call) => String(call[0]))
       expect(urls.some((url) => url.includes('homeLeague=unset'))).toBe(true)
+    })
+  })
+})
+
+describe('PlayersPage player app sync', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('calls player-sync and shows a summary message', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          applied: 3,
+          skipped: 1,
+          ambiguous: 0,
+          errors: [],
+          cursor: 'c1',
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+
+    render(<PlayersPage />)
+    await screen.findByText('1 player')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sync from player app' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/player-sync',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+    expect(
+      await screen.findByText(/Player app sync: 3 applied, 1 skipped, 0 ambiguous/)
+    ).toBeInTheDocument()
+  })
+})
+
+describe('PlayersPage accessible dialogs', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('opens edit dialog with dialog role and closes on Escape', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(jsonResponse({ player: playerSnapshot() }))
+
+    render(<PlayersPage />)
+
+    await screen.findByText('1 player')
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Edit player' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/About skill view/i)).toBeInTheDocument()
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Edit player' })).not.toBeInTheDocument()
     })
   })
 })

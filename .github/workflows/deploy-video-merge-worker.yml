@@ -1,0 +1,42 @@
+name: Deploy video-merge worker
+
+# Production Fly worker. Deploys when worker sources change on main, after a
+# preview → main promote. This is the production deploy, so it stays on push
+# to main rather than pull_request. GitHub rejects paths and paths-ignore on
+# the same event; the paths filter below is already narrower than a markdown
+# ignore. Does not deploy the Vercel admin app.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/video-merge/**'
+      - '.github/workflows/deploy-video-merge-worker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-video-merge-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: workers/video-merge
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::Missing GitHub Actions secret FLY_API_TOKEN. Create a Fly deploy token and add it under repo Settings → Secrets."
+            exit 1
+          fi
+          flyctl deploy --remote-only --yes

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { FieldHelp, Tooltip } from '@/app/components/ui'
 import { TeamStatsWithTeam } from './types'
 import type { Game } from './types'
 
@@ -185,11 +186,20 @@ export default function TeamStatsCards({
                             </span>
                           </div>
                           {partialRound && activity === 'Off' && (
-                            <p className="text-xs text-gray-500 mt-1.5 pl-0 leading-snug">
-                              One-court round only. “Consecutive rounds without playing” alerts only
-                              count back-to-back <span className="italic">full two-court</span> rounds,
-                              so this row is fine next to a ref or off slot on a normal round.
-                            </p>
+                            <FieldHelp className="mt-1.5 leading-snug">
+                              One-court round only.{' '}
+                              <Tooltip
+                                label="About consecutive off rounds"
+                                content={
+                                  <>
+                                    “Consecutive rounds without playing” alerts only count
+                                    back-to-back full two-court rounds, so this row is fine next
+                                    to a ref or off slot on a normal round.
+                                  </>
+                                }
+                              />{' '}
+                              This off slot does not count toward consecutive-off warnings.
+                            </FieldHelp>
                           )}
                         </li>
                       ))}

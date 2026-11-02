@@ -21,6 +21,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
+    if (event.teamsLocked) {
+      return NextResponse.json(
+        { error: 'Teams are locked. Unlock to make changes.' },
+        { status: 400 }
+      )
+    }
+
     const results = await promoteEventDraftSnapshot(id, snapshotId)
     return NextResponse.json({ ok: true, results })
   } catch (err) {
@@ -29,7 +36,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const status =
       message === 'Snapshot not found' || message.includes('Registration not found')
         ? 404
-        : message.includes('draftGroup') || message.includes('assignments')
+        : message.includes('draftGroup') ||
+            message.includes('assignments') ||
+            message.includes('locked')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

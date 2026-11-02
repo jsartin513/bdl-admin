@@ -1,0 +1,32 @@
+name: Preview smoke
+
+# Single release-PR smoke check (preview → main). Confirms stable preview
+# /login, /players, and /events after the Vercel deploy. Manual re-run via
+# workflow_dispatch. Main merge gate only checks that the head branch is preview.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}-preview-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Smoke check stable preview
+        env:
+          PREVIEW_BASE_URL: https://admin-preview.bostondodgeballleague.com
+        run: node scripts/smoke-preview.mjs --wait

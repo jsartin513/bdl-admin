@@ -1,9 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { FieldHelp } from '@/app/components/ui'
 import { getConfigs, describeConfig, sizeLabel } from './splits'
 import { type Schedule, SCHEDULES_BY_TEAM_COUNT } from './schedule-data'
 import { TrackTonight } from './tracker'
+
+const FOCUS_RING =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600'
 
 // ── Types & constants ─────────────────────────────────────────────────────
 
@@ -435,7 +439,7 @@ export default function OpenGymPage() {
           <button
             type="button"
             onClick={() => window.print()}
-            className="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 text-sm font-medium"
+            className="px-4 py-2 bg-gray-800 text-white rounded-md hover:bg-gray-700 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-800"
           >
             Print
           </button>
@@ -449,7 +453,7 @@ export default function OpenGymPage() {
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${FOCUS_RING} ${
               tab === activeTab
                 ? tab === 'Track Tonight'
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -465,7 +469,15 @@ export default function OpenGymPage() {
       </div>
 
       {/* Content */}
-      {activeTab === 'Track Tonight' && <TrackTonight />}
+      {activeTab === 'Track Tonight' && (
+        <div className="space-y-4">
+          <FieldHelp>
+            Pick tonight&apos;s rotation, enter scores game by game, and review standings when
+            finished. Progress saves automatically in this browser.
+          </FieldHelp>
+          <TrackTonight />
+        </div>
+      )}
       {activeTab === 'Team Splits' && <TeamSplitsView />}
       {numTeams !== null && <TeamSheet numTeams={numTeams} />}
       {activeTab === 'Attendance' && <AttendanceSheet />}
