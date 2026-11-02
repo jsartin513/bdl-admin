@@ -1,4 +1,6 @@
+import { errorMessage } from '@bdl/board-apps'
 import { NextRequest, NextResponse } from 'next/server'
+import { log } from '@/app/lib/app-log'
 import * as XLSX from 'xlsx'
 import { parseTeamCountFromTemplateName } from '@/app/lib/parseTemplateTeamCount'
 import { exportGoogleSpreadsheetAsXlsx } from '@/app/lib/driveExportSpreadsheet'
@@ -940,7 +942,7 @@ export async function POST(request: NextRequest) {
           },
         })
       } catch (e) {
-        console.error('Template export/mutate failed:', e)
+        log.error('api.failed', { message: errorMessage(e), route: 'create-league' })
         const message =
           e instanceof Error
             ? e.message
@@ -970,7 +972,7 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Error creating league:', error)
+    log.error('api.failed', { message: errorMessage(error), route: 'create-league' })
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to create league' },
       { status: 500 }

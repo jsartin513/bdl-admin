@@ -1,6 +1,8 @@
+import { errorMessage } from '@bdl/board-apps';
 import { access, readFile } from 'fs/promises';
 import { NextResponse } from 'next/server';
 import path from 'path';
+import { log } from '@/app/lib/app-log';
 
 const SCHEDULE_FILE = 'throwdown_5_schedule.csv';
 
@@ -20,7 +22,7 @@ export async function GET() {
     const csv = await readFile(filePath, 'utf-8');
     return NextResponse.json({ csv, filename });
   } catch (err) {
-    console.error('tournament-schedule GET:', err);
+    log.error('api.failed', { message: errorMessage(err), route: 'tournament-schedule' });
     return NextResponse.json(
       {
         error:

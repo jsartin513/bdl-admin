@@ -1,6 +1,8 @@
+import { errorMessage } from '@bdl/board-apps';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import { log } from '@/app/lib/app-log';
 import {
   buildTeamSchedulesBuffer,
   defaultTeamSchedulesFilename,
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e) {
-    console.error('throwdown-team-schedules failed:', e);
+    log.error('api.failed', { message: errorMessage(e), route: 'throwdown-team-schedules' });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Failed to build team schedules.' },
       { status: 500 }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { log } from '@/app/lib/app-log'
 
 export interface DriveFile {
   id: string
@@ -38,7 +39,11 @@ export async function GET() {
 
   if (!res.ok) {
     const body = await res.text()
-    console.error('Drive API error:', res.status, body)
+    log.error('api.failed', {
+      message: body ? `drive_api_error: ${body.slice(0, 300)}` : 'drive_api_error',
+      route: 'drive-folder',
+      status: res.status,
+    })
     return NextResponse.json(
       { error: `Drive API returned ${res.status}` },
       { status: res.status }

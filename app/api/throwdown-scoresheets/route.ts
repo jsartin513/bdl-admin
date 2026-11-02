@@ -1,6 +1,8 @@
+import { errorMessage } from '@bdl/board-apps';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
+import { log } from '@/app/lib/app-log';
 import { buildScoresheetsBuffer, buildScoresheetCards } from '@/app/lib/throwdownScoresheets';
 
 const SCHEDULE_FILE = 'throwdown_5_schedule.csv';
@@ -30,7 +32,7 @@ export async function GET() {
     const cards = buildScoresheetCards(csv);
     return NextResponse.json({ csv, filename, cardCount: cards.length });
   } catch (err) {
-    console.error('throwdown-scoresheets GET:', err);
+    log.error('api.failed', { message: errorMessage(err), route: 'throwdown-scoresheets' });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Could not read schedule CSV.' },
       { status: 404 }
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e) {
-    console.error('throwdown-scoresheets POST failed:', e);
+    log.error('api.failed', { message: errorMessage(e), route: 'throwdown-scoresheets' });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'Failed to build scoresheets workbook.' },
       { status: 500 }

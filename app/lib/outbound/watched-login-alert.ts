@@ -1,4 +1,5 @@
 import { isWatchedAdminLoginEmail } from '@bdl/admin-auth'
+import { log } from '@/app/lib/app-log'
 import { recordOutboundMessage } from '@/app/lib/outbound/log'
 
 const DEFAULT_LOGIN_ALERT_TO = 'jdoherty513@gmail.com'
@@ -33,19 +34,18 @@ export async function alertWatchedAdminLoginAttempt(
     `VERCEL_ENV: ${process.env.VERCEL_ENV ?? 'unknown'}`,
   ].join('\n')
 
-  console.error('[admin-auth] WATCHED_LOGIN_ATTEMPT', {
-    email: normalized,
-    app: details.app,
-    allowed: details.allowed,
-    alertTo: to,
+  log.error('auth.watched_login', {
+    message: `watched login attempt by ${normalized} (${details.app}, allowed=${details.allowed})`,
+    route: 'admin-login',
   })
 
   const apiKey = process.env.RESEND_API_KEY?.trim()
   const from = adminLoginAlertFrom()
   if (!apiKey || !from) {
-    console.error(
-      '[admin-auth] WATCHED_LOGIN_ATTEMPT email skipped (RESEND_API_KEY or from address not configured)'
-    )
+    log.error('email.failed', {
+      message: 'watched login alert skipped: email not configured',
+      route: 'admin-login',
+    })
     await recordOutboundMessage({
       channel: 'email',
       kind: 'login_alert',
@@ -68,11 +68,13 @@ export async function alertWatchedAdminLoginAttempt(
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error(
-        '[admin-auth] WATCHED_LOGIN_ATTEMPT email failed',
-        res.status,
-        body.slice(0, 300)
-      )
+      log.error('email.failed', {
+        message: body
+          ? `watched login alert resend_http_${res.status}: ${body.slice(0, 300)}`
+          : `watched login alert resend_http_${res.status}`,
+        status: res.status,
+        route: 'admin-login',
+      })
       await recordOutboundMessage({
         channel: 'email',
         kind: 'login_alert',
@@ -104,7 +106,10 @@ export async function alertWatchedAdminLoginAttempt(
       sentAt: new Date(),
     })
   } catch (err) {
-    console.error('[admin-auth] WATCHED_LOGIN_ATTEMPT email error', err)
+    log.error('email.failed', {
+      message: err instanceof Error ? err.message : 'watched login alert send failed',
+      route: 'admin-login',
+    })
     const message = err instanceof Error ? err.message : 'send failed'
     await recordOutboundMessage({
       channel: 'email',

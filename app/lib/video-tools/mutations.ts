@@ -1,4 +1,6 @@
+import { errorMessage } from '@bdl/board-apps'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { log } from '@/app/lib/app-log'
 import { randomUUID } from 'node:crypto'
 import { getDb } from '@/app/lib/db'
 import { videoUploadClips, videoUploadSets } from '@/app/db/schema'
@@ -856,10 +858,10 @@ async function notifyVideoSetTerminal(
       href,
     })
   } catch (err) {
-    console.error(
-      '[video-tools] failed to create admin notification',
-      err instanceof Error ? err.message : err
-    )
+    log.error('email.failed', {
+      message: errorMessage(err),
+      route: 'video-tools-notification',
+    })
   }
 
   try {
@@ -882,10 +884,10 @@ async function notifyVideoSetTerminal(
       text: `${notifBody}\n\nOpen: ${link}`,
     })
   } catch (err) {
-    console.error(
-      '[video-tools] failed to send notify email',
-      err instanceof Error ? err.message : err
-    )
+    log.error('email.failed', {
+      message: errorMessage(err),
+      route: 'video-tools-notify-email',
+    })
   }
 }
 

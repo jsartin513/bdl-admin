@@ -1,3 +1,5 @@
+import { log } from '@/app/lib/app-log'
+
 /**
  * Optional outbound email for admin job completion.
  * Sends only when RESEND_API_KEY and NOTIFY_FROM_EMAIL are set.
@@ -64,12 +66,12 @@ export async function sendNotifyEmail(
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error(
-        '[notify-email] Resend error',
-        res.status,
-        body.slice(0, 500)
-      )
       const error = `Resend returned ${res.status}`
+      log.error('email.failed', {
+        message: body ? `${error}: ${body.slice(0, 500)}` : error,
+        status: res.status,
+        route: 'notify-email',
+      })
       await recordOutboundMessage({
         channel: 'email',
         kind: 'video_notify',
@@ -107,7 +109,7 @@ export async function sendNotifyEmail(
     return { sent: true }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'send failed'
-    console.error('[notify-email]', message)
+    log.error('email.failed', { message, route: 'notify-email' })
     await recordOutboundMessage({
       channel: 'email',
       kind: 'video_notify',

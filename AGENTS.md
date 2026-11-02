@@ -38,6 +38,10 @@ Neon Postgres via Drizzle.
   `incomplete`). User-facing changes get a dated entry in
   `app/changelog/entries.ts`.
 
+## Logging
+
+API routes log structured JSON through `createAppLog('admin')` in [`app/lib/app-log.ts`](app/lib/app-log.ts) (`@bdl/board-apps`). Team-wide Vercel → Axiom setup: [bdl-packages OBSERVABILITY.md](https://github.com/jsartin513/bdl-packages/blob/main/OBSERVABILITY.md).
+
 More: [`.cursor/git-pr-workflow.md`](.cursor/git-pr-workflow.md),
 [`.github/pull_request_template.md`](.github/pull_request_template.md),
 [`docs/setup-and-capabilities.md`](docs/setup-and-capabilities.md).
