@@ -4,10 +4,12 @@ import {
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
 import {
+  enqueueYoutubeUpload,
   markSetReady,
   maybeAutoEnqueueVideoUploadSet,
   resetPendingUploads,
   setAutoEnqueueOnReady,
+  setYoutubePlaylist,
   updateVideoUploadSetMetadata,
 } from '@/app/lib/video-tools/mutations'
 import { getVideoUploadSet } from '@/app/lib/video-tools/queries'
@@ -43,6 +45,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       label?: string
       eventDate?: string
       autoEnqueueOnReady?: boolean
+      playlistId?: string | null
+      playlistTitle?: string | null
     }
 
     if (body.action === 'mark_ready') {
@@ -95,6 +99,29 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.action === 'maybe_auto_enqueue') {
       await maybeAutoEnqueueVideoUploadSet(id)
       const set = await getVideoUploadSet(id)
+      return NextResponse.json({ set })
+    }
+
+    if (body.action === 'set_youtube_playlist') {
+      const playlistId =
+        body.playlistId === null || body.playlistId === undefined
+          ? null
+          : String(body.playlistId)
+      const playlistTitle =
+        body.playlistTitle === null || body.playlistTitle === undefined
+          ? null
+          : String(body.playlistTitle)
+      const updated = await setYoutubePlaylist(id, {
+        playlistId,
+        playlistTitle,
+      })
+      const set = await getVideoUploadSet(updated.id)
+      return NextResponse.json({ set })
+    }
+
+    if (body.action === 'enqueue_youtube_upload') {
+      const updated = await enqueueYoutubeUpload(id)
+      const set = await getVideoUploadSet(updated.id)
       return NextResponse.json({ set })
     }
 

@@ -8,6 +8,8 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true
   if (pathname === '/api/admin/google/login') return true
   if (pathname === '/api/admin/google/callback') return true
+  // YouTube connect callback (session checked in route; cookie must survive redirect).
+  if (pathname === '/api/youtube/callback') return true
   // Allow session probe + logout without a valid cookie (401 / clear cookie).
   if (pathname === '/api/admin/session') return true
   if (pathname === '/api/admin/logout') return true

@@ -1,8 +1,14 @@
-# Video Tools merge worker
+# Video Tools merge + YouTube worker
 
-Long-running Node process that claims queued upload sets from bdl-admin, downloads
-clips from Vercel Blob, concatenates with system `ffmpeg` (`-c copy`, GoPro order),
-and uploads `{Event}_{date}_{Label}_untrimmed.MP4`.
+Long-running Node process that:
+
+1. Claims queued **merge** jobs from bdl-admin, downloads clips from Vercel Blob,
+   concatenates with system `ffmpeg` (`-c copy`, GoPro order), and uploads
+   `{Event}_{date}_{Label}_untrimmed.MP4`.
+2. Claims queued **YouTube** jobs, downloads the merged Blob, resumable-uploads to
+   YouTube, and adds the video to the chosen playlist.
+
+YouTube access tokens are minted by the admin API on claim (refresh token stays in Postgres).
 
 ## Required env
 

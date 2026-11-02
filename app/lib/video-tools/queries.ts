@@ -23,6 +23,13 @@ function mapSet(row: typeof videoUploadSets.$inferSelect): VideoUploadSetRecord 
     outputFilename: row.outputFilename,
     pendingUploadCount: row.pendingUploadCount,
     autoEnqueueOnReady: row.autoEnqueueOnReady,
+    youtubePlaylistId: row.youtubePlaylistId,
+    youtubePlaylistTitle: row.youtubePlaylistTitle,
+    youtubePrivacy: row.youtubePrivacy,
+    youtubeUploadStatus: row.youtubeUploadStatus,
+    youtubeVideoId: row.youtubeVideoId,
+    youtubeVideoUrl: row.youtubeVideoUrl,
+    youtubeErrorMessage: row.youtubeErrorMessage,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

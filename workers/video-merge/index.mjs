@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Video Tools merge worker.
+ * Video Tools merge + YouTube upload worker.
  *
- * Polls bdl-admin for queued upload sets, downloads clips from Vercel Blob,
- * concatenates with ffmpeg (-c copy) in GoPro-aware order, uploads the
- * untrimmed result, and reports complete/fail.
+ * Polls bdl-admin for:
+ *   1) queued merge jobs (ffmpeg concat → Blob)
+ *   2) queued YouTube uploads (download merged Blob → YouTube + playlist)
  *
  * Env:
  *   VIDEO_TOOLS_API_BASE   e.g. https://admin.bostondodgeballleague.com
@@ -16,7 +16,7 @@
  * Requires: ffmpeg, ffprobe on PATH.
  */
 
-import { createWriteStream, promises as fs } from 'node:fs'
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -145,7 +145,6 @@ function assertCompatible(probes, filenames) {
 
 async function uploadMerged(localPath, pathname) {
   const { put } = await import('@vercel/blob')
-  const { createReadStream } = await import('node:fs')
   const blob = await put(pathname, createReadStream(localPath), {
     access: 'public',
     addRandomSuffix: false,
@@ -156,13 +155,13 @@ async function uploadMerged(localPath, pathname) {
   return blob
 }
 
-async function processJob(job) {
+async function processMergeJob(job) {
   const { set, clips, outputFilename, claimToken } = job
   if (!claimToken) {
     throw new Error('Job missing claimToken')
   }
   console.log(
-    `[job ${set.id}] ${set.eventName} · ${set.label} — ${clips.length} clips → ${outputFilename}`
+    `[merge ${set.id}] ${set.eventName} · ${set.label} — ${clips.length} clips → ${outputFilename}`
   )
 
   if (!clips.length) {
@@ -178,12 +177,12 @@ async function processJob(job) {
       const clip = clips[i]
       const safe = `${String(i).padStart(4, '0')}_${path.basename(clip.originalFilename)}`
       const dest = path.join(workDir, safe)
-      console.log(`[job ${set.id}] download ${clip.originalFilename}`)
+      console.log(`[merge ${set.id}] download ${clip.originalFilename}`)
       await downloadToFile(clip.blobUrl, dest)
       localFiles.push({ path: dest, name: clip.originalFilename })
     }
 
-    console.log(`[job ${set.id}] probing compatibility`)
+    console.log(`[merge ${set.id}] probing compatibility`)
     const probes = []
     for (const f of localFiles) {
       probes.push(await probeStream(f.path))
@@ -200,7 +199,7 @@ async function processJob(job) {
     await fs.writeFile(listPath, listBody, 'utf8')
 
     const outPath = path.join(workDir, outputFilename)
-    console.log(`[job ${set.id}] ffmpeg concat`)
+    console.log(`[merge ${set.id}] ffmpeg concat`)
     await run('ffmpeg', [
       '-y',
       '-f',
@@ -215,7 +214,7 @@ async function processJob(job) {
     ])
 
     const mergedPathname = `video-tools/${set.id}/merged/${outputFilename}`
-    console.log(`[job ${set.id}] upload ${mergedPathname}`)
+    console.log(`[merge ${set.id}] upload ${mergedPathname}`)
     const blob = await uploadMerged(outPath, mergedPathname)
 
     await api('/api/video-tools/worker/complete', {
@@ -228,22 +227,210 @@ async function processJob(job) {
         outputFilename,
       }),
     })
-    console.log(`[job ${set.id}] complete`)
+    console.log(`[merge ${set.id}] complete`)
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {})
   }
 }
 
-async function tick() {
+async function refreshYoutubeToken(setId, claimToken) {
+  const data = await api('/api/video-tools/worker/youtube-token', {
+    method: 'POST',
+    body: JSON.stringify({ setId, claimToken }),
+  })
+  if (!data.accessToken) throw new Error('Missing refreshed YouTube access token')
+  return data.accessToken
+}
+
+async function youtubeResumableUpload({
+  filePath,
+  accessToken,
+  title,
+  description,
+  privacyStatus,
+  setId,
+  claimToken,
+}) {
+  const mimeType = 'video/mp4'
+  const stat = await fs.stat(filePath)
+  const fileSize = stat.size
+
+  const metadata = {
+    snippet: {
+      title: String(title).slice(0, 100),
+      description: String(description).slice(0, 5000),
+      categoryId: '17',
+    },
+    status: {
+      privacyStatus: privacyStatus || 'unlisted',
+      selfDeclaredMadeForKids: false,
+    },
+  }
+
+  async function initUpload(token) {
+    const initRes = await fetch(
+      'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': mimeType,
+          'X-Upload-Content-Length': String(fileSize),
+        },
+        body: JSON.stringify(metadata),
+      }
+    )
+    if (initRes.status === 401) return { unauthorized: true }
+    if (!initRes.ok) {
+      const body = await initRes.text().catch(() => '')
+      throw new Error(
+        `YouTube resumable init failed (${initRes.status}): ${body.slice(0, 500)}`
+      )
+    }
+    const uploadUrl = initRes.headers.get('location')
+    if (!uploadUrl) throw new Error('YouTube resumable init missing Location')
+    return { uploadUrl }
+  }
+
+  let token = accessToken
+  let init = await initUpload(token)
+  if (init.unauthorized) {
+    token = await refreshYoutubeToken(setId, claimToken)
+    init = await initUpload(token)
+    if (init.unauthorized) {
+      throw new Error('YouTube unauthorized after token refresh')
+    }
+  }
+
+  const putRes = await fetch(init.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': mimeType,
+      'Content-Length': String(fileSize),
+    },
+    body: createReadStream(filePath),
+    duplex: 'half',
+  })
+
+  const putData = await putRes.json().catch(() => ({}))
+  if (!putRes.ok || !putData.id) {
+    throw new Error(
+      putData?.error?.message || `YouTube upload failed (${putRes.status})`
+    )
+  }
+  return putData.id
+}
+
+async function addToPlaylist({ accessToken, playlistId, videoId, setId, claimToken }) {
+  async function insert(token) {
+    const res = await fetch(
+      'https://www.googleapis.com/youtube/v3/playlistItems?part=snippet',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          snippet: {
+            playlistId,
+            resourceId: {
+              kind: 'youtube#video',
+              videoId,
+            },
+          },
+        }),
+      }
+    )
+    if (res.status === 401) return { unauthorized: true }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(
+        data?.error?.message || `playlistItems.insert failed (${res.status})`
+      )
+    }
+    return { ok: true }
+  }
+
+  let token = accessToken
+  let result = await insert(token)
+  if (result.unauthorized) {
+    token = await refreshYoutubeToken(setId, claimToken)
+    result = await insert(token)
+    if (result.unauthorized) {
+      throw new Error('YouTube playlist insert unauthorized after refresh')
+    }
+  }
+}
+
+async function processYoutubeJob(job) {
+  const {
+    set,
+    claimToken,
+    accessToken,
+    mergedBlobUrl,
+    title,
+    description,
+    privacyStatus,
+    playlistId,
+  } = job
+
+  console.log(`[youtube ${set.id}] upload "${title}" → playlist ${playlistId}`)
+
+  const workDir = path.join(WORK_ROOT, `yt-${set.id}`)
+  await fs.mkdir(workDir, { recursive: true })
+  const localPath = path.join(workDir, 'merged.mp4')
+
+  try {
+    console.log(`[youtube ${set.id}] download merged blob`)
+    await downloadToFile(mergedBlobUrl, localPath)
+
+    console.log(`[youtube ${set.id}] resumable upload`)
+    const videoId = await youtubeResumableUpload({
+      filePath: localPath,
+      accessToken,
+      title,
+      description,
+      privacyStatus,
+      setId: set.id,
+      claimToken,
+    })
+
+    console.log(`[youtube ${set.id}] add to playlist ${playlistId}`)
+    await addToPlaylist({
+      accessToken,
+      playlistId,
+      videoId,
+      setId: set.id,
+      claimToken,
+    })
+
+    await api('/api/video-tools/worker/youtube-complete', {
+      method: 'POST',
+      body: JSON.stringify({
+        setId: set.id,
+        claimToken,
+        youtubeVideoId: videoId,
+      }),
+    })
+    console.log(`[youtube ${set.id}] complete video=${videoId}`)
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+async function tickMerge() {
   const data = await api('/api/video-tools/worker/claim', { method: 'POST' })
   const job = data.job
   if (!job) return false
 
   try {
-    await processJob(job)
+    await processMergeJob(job)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error(`[job ${job.set.id}] failed:`, message)
+    console.error(`[merge ${job.set.id}] failed:`, message)
     try {
       await api('/api/video-tools/worker/fail', {
         method: 'POST',
@@ -254,7 +441,35 @@ async function tick() {
         }),
       })
     } catch (failErr) {
-      console.error('Failed to report failure:', failErr)
+      console.error('Failed to report merge failure:', failErr)
+    }
+  }
+  return true
+}
+
+async function tickYoutube() {
+  const data = await api('/api/video-tools/worker/youtube-claim', {
+    method: 'POST',
+  })
+  const job = data.job
+  if (!job) return false
+
+  try {
+    await processYoutubeJob(job)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[youtube ${job.set.id}] failed:`, message)
+    try {
+      await api('/api/video-tools/worker/youtube-fail', {
+        method: 'POST',
+        body: JSON.stringify({
+          setId: job.set.id,
+          claimToken: job.claimToken,
+          errorMessage: message,
+        }),
+      })
+    } catch (failErr) {
+      console.error('Failed to report YouTube failure:', failErr)
     }
   }
   return true
@@ -270,13 +485,16 @@ async function main() {
     process.exit(1)
   })
 
-  console.log(`Video merge worker polling ${API_BASE} every ${POLL_MS}ms`)
+  console.log(
+    `Video merge + YouTube worker polling ${API_BASE} every ${POLL_MS}ms`
+  )
   await fs.mkdir(WORK_ROOT, { recursive: true })
 
   for (;;) {
     try {
-      const worked = await tick()
-      if (!worked) await sleep(POLL_MS)
+      const didMerge = await tickMerge()
+      const didYoutube = await tickYoutube()
+      if (!didMerge && !didYoutube) await sleep(POLL_MS)
     } catch (err) {
       console.error('Poll error:', err)
       await sleep(POLL_MS)

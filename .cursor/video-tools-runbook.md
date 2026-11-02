@@ -13,14 +13,19 @@ POST …/enqueue → status=queued    →    POST /api/video-tools/worker/claim
                                        ffmpeg concat (-c copy)
                                        upload _untrimmed.MP4
                                   ←    POST …/worker/complete
+playlist chosen on set                 if youtubePlaylistId set → youtube queued
+                                  →    POST …/worker/youtube-claim
+                                       download merged Blob
+                                       YouTube resumable upload + playlistItems
+                                  ←    POST …/worker/youtube-complete
 ```
 
 | Piece | Host | What it does |
 |-------|------|----------------|
-| **bdl-admin** | Vercel | UI, APIs, Blob upload tokens, job status in Postgres |
-| **bdl-video-merge** | Fly.io | Long-running Node + ffmpeg; claims queued sets and merges |
+| **bdl-admin** | Vercel | UI, APIs, Blob upload tokens, job status in Postgres, YouTube OAuth |
+| **bdl-video-merge** | Fly.io | Long-running Node + ffmpeg; claims merge **and** YouTube upload jobs |
 
-Deploying the Next.js app alone does **not** start merges. Jobs stay **queued** until the Fly worker is running and can authenticate with the same `VIDEO_WORKER_SECRET`.
+Deploying the Next.js app alone does **not** start merges or YouTube uploads. Jobs stay **queued** until the Fly worker is running and can authenticate with the same `VIDEO_WORKER_SECRET`.
 
 ## App env (Vercel / `.env.local`)
 
@@ -28,9 +33,22 @@ Deploying the Next.js app alone does **not** start merges. Jobs stay **queued** 
 |----------|---------|
 | `BLOB_READ_WRITE_TOKEN` | Already used for player/event photos; required for client video uploads |
 | `VIDEO_WORKER_SECRET` | Shared bearer secret for `/api/video-tools/worker/*` |
-| `RESEND_API_KEY` | Optional. When set with `NOTIFY_FROM_EMAIL`, email on merge complete/fail |
-| `NOTIFY_FROM_EMAIL` | Optional Resend “from” address for merge notifications |
-| `NEXT_PUBLIC_APP_URL` | Optional absolute site URL used in notification email links |
+| `ADMIN_GOOGLE_CLIENT_ID` / `ADMIN_GOOGLE_CLIENT_SECRET` | Same OAuth client as admin login; also used for YouTube connect |
+| `YOUTUBE_TOKEN_SECRET` | Optional. Encrypts stored YouTube refresh tokens (falls back to `ADMIN_SESSION_SECRET`) |
+| `RESEND_API_KEY` | Optional. When set with `NOTIFY_FROM_EMAIL`, email on merge/YouTube complete/fail |
+| `NOTIFY_FROM_EMAIL` | Optional Resend “from” address for notifications |
+| `NEXT_PUBLIC_APP_URL` | Absolute site URL for OAuth redirect URIs and notification links |
+
+### YouTube Google Cloud setup
+
+1. Enable **YouTube Data API v3** on the Google Cloud project that owns the admin OAuth client.
+2. Add authorized redirect URI (must match `NEXT_PUBLIC_APP_URL`):
+   - Prod: `https://admin.bostondodgeballleague.com/api/youtube/callback`
+   - Preview: your preview origin + `/api/youtube/callback`
+3. On **Video Tools**, click **Connect YouTube** (scopes: `youtube.upload` + `youtube`, offline refresh token). One shared channel for the org.
+4. On each upload set, select or create a playlist. When merge completes, upload is queued automatically (privacy default: **unlisted**).
+
+Admin login scopes stay `openid email profile` — YouTube uses a **separate** connect flow at `/api/youtube/connect`.
 
 ## Worker env (Fly secrets)
 
@@ -61,21 +79,30 @@ The Fly worker is pointed at **production** admin. Merges started on [admin-prev
 
 ## Flow
 
-1. **Video Tools** → New upload set (event name, date, label)
+1. **Video Tools** → Connect YouTube (once) → New upload set (event name, date, label)
 2. Upload MP4s (multipart client → Vercel Blob). Details can be edited while uploading.
-3. Optional: enable **When uploads finish, start merge automatically** (use one fully successful batch, or turn this on after every clip is uploaded)
-4. Or manually **Mark ready** → **Start merge** → status `queued`
-5. Fly worker claims job → ffmpeg concat → uploads `_untrimmed.MP4` → `complete`
-6. In-app notification (nav **Alerts**) for the set creator; optional email if Resend is configured
+3. Select or create a **YouTube playlist** on the set (optional but required for auto-upload).
+4. Optional: enable **When uploads finish, start merge automatically**
+5. Or manually **Mark ready** → **Start merge** → status `queued`
+6. Fly worker claims merge → ffmpeg concat → uploads `_untrimmed.MP4` → `complete`
+7. If a playlist was set, `youtube_upload_status` becomes `queued` → worker uploads to YouTube and adds to the playlist
+8. In-app notification (nav **Alerts**) for merge and YouTube outcomes; optional email if Resend is configured
 
-Keep the browser tab open until uploads finish. After enqueue, merge is backgrounded.
+Keep the browser tab open until uploads finish. After enqueue, merge and YouTube upload are backgrounded.
 
-### Stuck on “queued”
+### Stuck on “queued” (merge)
 
 1. `fly status -a bdl-video-merge` — machine should be `started`
 2. `fly logs -a bdl-video-merge` — look for `polling https://admin…`
 3. Confirm Vercel + Fly share the same `VIDEO_WORKER_SECRET`
 4. Use **Retry merge** on the set page after the worker is healthy
+
+### Stuck on YouTube upload
+
+1. Confirm channel is still connected on Video Tools (refresh token present)
+2. `fly logs` — look for `[youtube …]` lines
+3. Use **Retry YouTube upload** on the set page
+4. Redeploy the worker after `workers/video-merge` changes (GitHub Action on `main`, or `fly deploy`)
 
 ## CI / auto-deploy
 
