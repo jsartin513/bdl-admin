@@ -16,7 +16,7 @@ Use this when opening PRs, choosing a base branch, or promoting to production.
 1. Branch from `preview` (or merge latest `preview` into your branch).
 2. Open PR **into `preview`**.
 3. Merge → Vercel deploys [admin-preview](https://admin-preview.bostondodgeballleague.com).
-4. CI **Preview smoke** checks `/login`, `/players`, `/events` (or run `npm run smoke:preview` locally).
+4. On the release PR, CI **Preview smoke** (`smoke`) checks `/login`, `/players`, `/events` (or run `npm run smoke:preview` locally). **Main merge gate** only checks that the head branch is `preview`.
 5. When preview is good, open **`preview` → `main`**.
 6. Merge to `main` → production at [admin](https://admin.bostondodgeballleague.com).
 
@@ -40,6 +40,6 @@ Set **Base branch** to `preview` in [Cloud Agents → Default settings](https://
 ## Related files
 
 - [.github/pull_request_template.md](../.github/pull_request_template.md) — PR checklist
-- [.github/workflows/main-merge-gate.yml](../.github/workflows/main-merge-gate.yml) — enforces preview-only merges to main
-- [.github/workflows/preview-smoke.yml](../.github/workflows/preview-smoke.yml) — post-merge preview health check
+- [.github/workflows/main-merge-gate.yml](../.github/workflows/main-merge-gate.yml) — enforces preview-only merges to main (`from-preview`)
+- [.github/workflows/preview-smoke.yml](../.github/workflows/preview-smoke.yml) — the one release-PR preview health check (`smoke`)
 - [.cursor/players-and-auth-runbook.md](./players-and-auth-runbook.md) — environment hosts and auth
