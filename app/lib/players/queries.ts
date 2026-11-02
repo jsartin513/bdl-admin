@@ -1,9 +1,12 @@
 import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
 import {
+  getOfficialSkillBundle,
+  listPlayerChangesForPlayer,
+} from '@/app/lib/sensitive/player-data'
+import {
   eventRegistrations,
   playerAliases,
-  playerChanges,
   playerEmails,
   playerHomeLeagues,
   playerMessagingPrefs,
@@ -227,6 +230,8 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
   const nicknameCustom = player.nickname?.trim() ? player.nickname.trim() : null
   const jerseyNameCustom = player.jerseyName?.trim() ? player.jerseyName.trim() : null
 
+  const officialSkill = await getOfficialSkillBundle(playerId)
+
   return {
     id: player.id,
     firstName: player.firstName,
@@ -237,16 +242,18 @@ export async function getPlayerSnapshot(playerId: string): Promise<PlayerSnapsho
     jerseyNumber: player.jerseyNumber,
     jerseyName: resolveJerseyName(jerseyNameCustom, player.lastName),
     jerseyNameCustom,
-    skillLevel: player.skillLevel,
-    skillLevelFib: player.skillLevelFib,
-    skillAreas: player.skillAreas ?? null,
+    skillLevel: officialSkill?.skillLevel ?? player.skillLevel,
+    skillLevelFib: officialSkill?.skillLevelFib ?? player.skillLevelFib,
+    skillAreas: officialSkill?.skillAreas ?? player.skillAreas ?? null,
     gender: player.gender,
     photoUrl: player.photoUrl ?? null,
     photoPathname: player.photoPathname ?? null,
     isMerged: player.isMerged,
     mergedIntoPlayerId: player.mergedIntoPlayerId,
-    hasStrongPersonality: player.hasStrongPersonality,
-    strongPersonalityNotes: player.strongPersonalityNotes,
+    hasStrongPersonality:
+      officialSkill?.hasStrongPersonality ?? player.hasStrongPersonality,
+    strongPersonalityNotes:
+      officialSkill?.strongPersonalityNotes ?? player.strongPersonalityNotes,
     emails: emails.map((e) => ({ id: e.id, email: e.email, isPrimary: e.isPrimary })),
     phones: phones.map((p) => ({
       id: p.id,
@@ -303,12 +310,7 @@ export function snapshotToJson(snapshot: PlayerSnapshot): Record<string, unknown
 }
 
 export async function getPlayerHistory(playerId: string) {
-  const db = getDb()
-  return db
-    .select()
-    .from(playerChanges)
-    .where(eq(playerChanges.playerId, playerId))
-    .orderBy(desc(playerChanges.createdAt))
+  return listPlayerChangesForPlayer(playerId)
 }
 
 /** Find player id by email (any). */

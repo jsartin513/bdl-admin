@@ -6,7 +6,7 @@
   "scripts": {
     "install:deps": "bash scripts/with-bdl-git-auth.sh",
     "dev": "next dev --turbopack",
-    "build": "npm run db:migrate:deploy && next build",
+    "build": "npm run db:check-migrations && npm run db:migrate:deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
@@ -16,6 +16,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:deploy": "node scripts/migrate-on-deploy.mjs",
+    "db:check-migrations": "node scripts/check-migrations.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "smoke:preview": "node scripts/smoke-preview.mjs",
@@ -25,8 +26,8 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@bdl/admin-auth": "github:jsartin513/bdl-packages#5f923c5&path:admin-auth",
-    "@bdl/board-apps": "github:jsartin513/bdl-packages#9b7d7e659bb04aa392171016ac7bc31d84562916&path:board-apps",
+    "@bdl/admin-auth": "github:jsartin513/bdl-packages#5f923c59421d7b8c5b8a23caeaab46de9d0184c5&path:admin-auth",
+    "@bdl/board-apps": "github:jsartin513/bdl-packages#96ca3114a910832bb6b7bdee05e4e0bea55493ce&path:board-apps",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -36,7 +37,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.4.0",
     "drizzle-orm": "^0.45.2",
-    "next": "15.2.8",
+    "next": "15.5.27",
     "next-themes": "^0.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -54,15 +55,29 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/ui": "^4.0.16",
+    "@vitest/ui": "^4.1.11",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "15.2.2",
+    "eslint-config-next": "15.5.27",
     "happy-dom": "^20.0.11",
     "jsdom": "^24.1.3",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "@esbuild-kit/core-utils>esbuild": "0.25.12",
+      "sharp": ">=0.35.5",
+      "source-map-js": ">=1.2.2"
+    },
+    "auditConfig": {
+      "ignoreCves": [
+        "CVE-2023-30533",
+        "CVE-2024-22363",
+        "CVE-2026-93687"
+      ]
+    }
   }
 }

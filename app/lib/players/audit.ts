@@ -1,5 +1,4 @@
-import { getDb } from '@/app/lib/db'
-import { playerChanges } from '@/app/db/schema'
+import { writePlayerChange as writeSensitivePlayerChange } from '@/app/lib/sensitive/player-data'
 import type { ChangeSource, ChangeType } from '@/app/lib/players/types'
 
 export async function writePlayerChange(input: {
@@ -11,14 +10,5 @@ export async function writePlayerChange(input: {
   after: Record<string, unknown> | null
   importBatchId?: string | null
 }) {
-  const db = getDb()
-  await db.insert(playerChanges).values({
-    playerId: input.playerId,
-    source: input.source,
-    actor: input.actor,
-    changeType: input.changeType,
-    before: input.before,
-    after: input.after,
-    importBatchId: input.importBatchId ?? null,
-  })
+  await writeSensitivePlayerChange(input)
 }

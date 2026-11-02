@@ -4,6 +4,10 @@ import * as schema from '@/app/db/schema'
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null
 
+export function isDatabaseConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL?.trim())
+}
+
 export function getDb() {
   const url = process.env.DATABASE_URL?.trim()
   if (!url) {

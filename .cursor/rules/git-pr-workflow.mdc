@@ -1,17 +1,25 @@
 ---
-description: Pull request base branch and preview-to-main deploy promotion flow
+description: Branch flow, CI commands, and limits on reviews and exploration
 alwaysApply: true
 ---
 
 # Pull requests and deploy flow
 
-**Default base branch for new PRs is `preview`, not `main`.**
+BDL Admin is the Next.js board admin (players, events, scheduling, timer, video).
 
-- Open feature and fix PRs against **`preview`**. Merge there first; Vercel deploys `admin-preview.bostondodgeballleague.com`.
-- When creating or updating PRs (`ManagePullRequest`, `gh pr create`, etc.), pass **`base_branch: "preview"`** unless you are explicitly promoting preview to production.
-- **Production promote only:** open **`preview` → `main`** after preview deploy and Preview smoke are healthy. The **Main merge gate** requires the head branch to be exactly `preview`; any other head into `main` fails CI.
-- If `preview` has fallen behind `main`, merge or fast-forward `main` into `preview` before landing new work.
+**Feature PRs go into `preview`. Release PRs go from `preview` to `main`.**
 
-**Cloud Agents dashboard:** In [Cloud Agents → Default settings](https://cursor.com/dashboard/cloud-agents), set **Base branch** to `preview` for this repository (or leave blank if the GitHub default branch is `preview`).
+- Open feature and fix PRs against **`preview`**. Pass **`base_branch: "preview"`** on `ManagePullRequest` unless this is a production promotion.
+- Open **`preview` → `main`** after the preview deploy is healthy. **Main merge gate** (`from-preview`) requires that head. **Preview smoke** (`smoke`) is the only release-PR smoke check.
+- GitHub's default branch is **`main`**. Set Cloud Agents **Base branch** to `preview`. `issues` and `pull_request_target` workflows run from `main`.
+- If `preview` is behind `main`, merge or fast-forward `main` into `preview` before new work.
 
-Full details: [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md), [.github/pull_request_template.md](.github/pull_request_template.md), [AGENTS.md](AGENTS.md).
+## Commands and agent limits
+
+- Install: `npm install`. Lint: `npm run lint`. Test: `npm run test:run`. Private `@bdl/*` packages may not install on agent VMs.
+- Vercel's preview build is the real compile check for `preview` and `main`.
+- Open PRs as drafts. Mark them ready only when the work is done.
+- Do not request Copilot or Bugbot reviews on drafts, docs-only PRs, or release PRs.
+- Keep changes scoped. Avoid broad exploration. Do not use fast mode.
+
+Full details: [AGENTS.md](AGENTS.md), [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md), [.github/pull_request_template.md](.github/pull_request_template.md).

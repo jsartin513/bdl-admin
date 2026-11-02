@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/app/lib/db'
+import { findPlayerMergeChanges } from '@/app/lib/sensitive/player-data'
 import {
   playerAliases,
-  playerChanges,
   playerEmails,
   playerHomeLeagues,
   playerPhones,
@@ -429,24 +429,14 @@ export async function unmergePlayer(input: { playerId: string; actor: string }) 
   if (!survivorBefore) throw new Error('Survivor player not found')
 
   const db = getDb()
-  const [mergeEvent] = await db
-    .select()
-    .from(playerChanges)
-    .where(and(eq(playerChanges.playerId, playerId), eq(playerChanges.changeType, 'merge')))
-    .orderBy(desc(playerChanges.createdAt))
-    .limit(1)
+  const mergeEvents = await findPlayerMergeChanges(playerId)
+  const mergeEvent = mergeEvents[0] ?? null
 
   const mergeBefore = readMergeBefore(mergeEvent?.before ?? null)
 
   // Find the survivor's merge audit for this pair so we know which emails/aliases
   // they already owned (duplicates deleted on merge — leave those on survivor).
-  const survivorMergeEvents = await db
-    .select()
-    .from(playerChanges)
-    .where(
-      and(eq(playerChanges.playerId, survivorId), eq(playerChanges.changeType, 'merge'))
-    )
-    .orderBy(desc(playerChanges.createdAt))
+  const survivorMergeEvents = await findPlayerMergeChanges(survivorId)
 
   const survivorMergeEvent =
     survivorMergeEvents.find((event) => {

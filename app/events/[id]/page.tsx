@@ -14,6 +14,10 @@ import {
   EventDraftSetup,
   type DraftSeedMode,
 } from '@/app/components/events/EventDraftSetup'
+import {
+  EventPlayerCatalogSection,
+  type EventPlayerCatalogFields,
+} from '@/app/components/events/EventPlayerCatalogSection'
 import { EventTeamsSection } from '@/app/components/events/EventTeamsSection'
 import { withDevMode } from '@/app/lib/devMode'
 import { useDevMode } from '@/app/hooks/useDevMode'
@@ -78,6 +82,15 @@ type EventDetail = {
   teamNames: string[]
   teamsLocked: boolean
   teamsFinalizedAt: string | null
+  publishedToPlayerApp: boolean
+  publicDescription: string | null
+  location: string | null
+  sessionTimeLabel: string | null
+  priceCents: number | null
+  capacity: number | null
+  registrationOpensAt: string | null
+  registrationClosesAt: string | null
+  eventEndDate: string | null
 }
 
 type ImportAction = {
@@ -1262,6 +1275,52 @@ function EventTrackerPageContent() {
         <LiveMessage variant="alert" className="text-sm text-red-600">
           {formError}
         </LiveMessage>
+      ) : null}
+
+      <EventPlayerCatalogSection
+        eventId={eventId}
+        fields={{
+          publishedToPlayerApp: event.publishedToPlayerApp ?? false,
+          publicDescription: event.publicDescription,
+          location: event.location,
+          sessionTimeLabel: event.sessionTimeLabel,
+          priceCents: event.priceCents,
+          capacity: event.capacity,
+          registrationOpensAt: event.registrationOpensAt,
+          registrationClosesAt: event.registrationClosesAt,
+          eventEndDate: event.eventEndDate,
+        }}
+        onSaved={(fields: EventPlayerCatalogFields) => {
+          setEvent((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...fields,
+                }
+              : prev
+          )
+          setMessage(
+            fields.publishedToPlayerApp
+              ? 'Player catalog saved — event is published'
+              : 'Player catalog saved'
+          )
+        }}
+        onError={(message) => {
+          if (message) setFormError(message)
+          else setFormError(null)
+        }}
+      />
+
+      {event.eventFormat === 'draft' && devMode ? (
+        <p className="mt-4 text-sm text-violet-900">
+          <Link
+            href={withDevMode(`/events/${eventId}/live-draft`, true)}
+            className="font-medium underline"
+          >
+            Captain live draft (commissioner)
+          </Link>
+          <span className="text-violet-800/80"> — Dev mode only</span>
+        </p>
       ) : null}
 
       <EventTeamsSection

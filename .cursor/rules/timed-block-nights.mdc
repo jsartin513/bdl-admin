@@ -1,0 +1,14 @@
+---
+description: Timed-block / wave league-night formats (2-court gym clock, 5–8 teams). Use when designing, scheduling, or discussing BYOT night flow, transitions, week byes, or create-league sheets.
+alwaysApply: false
+---
+
+# Timed-block nights
+
+Read [`.cursor/timed-block-nights.md`](../timed-block-nights.md) before proposing league-night formats or generators.
+
+- Gym: 10 setup + 10 pack; 100 min for play + 5–10 min rotates. 4×24 does not fit.
+- Pilot is **6-team 3-block** (even 2 play / 1 ref). Do not invent one format for every size.
+- 7-team with 2–3 rounds: **week bye** (6 play even). Packed 3-block only if everyone must show. Skip 2 rounds.
+- Do not auto-build from today’s Drive templates / parser (consecutive rematch, weekly 2-game RR).
+- Board paste: [`timed-block-league-nights.md`](../../timed-block-league-nights.md).

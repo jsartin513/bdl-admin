@@ -573,6 +573,9 @@ export default function PlayersPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [playerSyncBusy, setPlayerSyncBusy] = useState(false)
+  const [playerSyncMessage, setPlayerSyncMessage] = useState<string | null>(null)
+  const [playerSyncError, setPlayerSyncError] = useState<string | null>(null)
 
   const loadPlayers = useCallback(async () => {
     setLoading(true)
@@ -603,6 +606,31 @@ export default function PlayersPage() {
   useEffect(() => {
     void loadPlayers()
   }, [loadPlayers])
+
+  const runPlayerAppSync = async () => {
+    setPlayerSyncBusy(true)
+    setPlayerSyncMessage(null)
+    setPlayerSyncError(null)
+    try {
+      const res = await fetch('/api/admin/player-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Player sync failed')
+      const errorCount = Array.isArray(data.errors) ? data.errors.length : 0
+      const errorPart = errorCount > 0 ? `, ${errorCount} error${errorCount === 1 ? '' : 's'}` : ''
+      setPlayerSyncMessage(
+        `Player app sync: ${data.applied} applied, ${data.skipped} skipped, ${data.ambiguous} ambiguous${errorPart}`
+      )
+      if (data.applied > 0) void loadPlayers()
+    } catch (err) {
+      setPlayerSyncError(err instanceof Error ? err.message : 'Player sync failed')
+    } finally {
+      setPlayerSyncBusy(false)
+    }
+  }
 
   const missingPlayersCount = useMemo(
     () => players.filter((player) => !player.isMerged && hasMissingInfo(player)).length,
@@ -1286,6 +1314,14 @@ export default function PlayersPage() {
           </button>
           <button
             type="button"
+            disabled={playerSyncBusy}
+            onClick={() => void runPlayerAppSync()}
+            className="rounded border border-sky-300 bg-white px-3 py-2 text-sm text-sky-900 hover:bg-sky-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {playerSyncBusy ? 'Syncing player app…' : 'Sync from player app'}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setImportOpen(true)
               setImportPreview(null)
@@ -1719,6 +1755,16 @@ export default function PlayersPage() {
       {error ? (
         <LiveMessage variant="alert" className="text-sm text-red-600">
           {error}
+        </LiveMessage>
+      ) : null}
+      {playerSyncMessage ? (
+        <LiveMessage variant="status" className="text-sm text-sky-900">
+          {playerSyncMessage}
+        </LiveMessage>
+      ) : null}
+      {playerSyncError ? (
+        <LiveMessage variant="alert" className="text-sm text-red-600">
+          {playerSyncError}
         </LiveMessage>
       ) : null}
       {loading ? <p className="text-sm text-gray-600">Loading players…</p> : null}

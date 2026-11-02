@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     path: '/',
     maxAge: 0,
   })
-  if (!setAdminSessionCookie(response, email)) {
+  if (!setAdminSessionCookie(response, email, request.nextUrl.hostname)) {
     return adminErrorRedirect(request, 'session_not_configured')
   }
 

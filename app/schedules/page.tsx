@@ -12,6 +12,7 @@ import {
 } from '../components/schedule'
 import { useScheduleData } from '../components/schedule/useScheduleData'
 import { useDevMode } from '@/app/hooks/useDevMode'
+import { withDevMode } from '@/app/lib/devMode'
 
 interface DriveFile {
   id: string
@@ -187,7 +188,17 @@ function SchedulesPageContent() {
                     </option>
                   ))}
                 </select>
-                {selectedSheetId && !isLocalLeagueId(selectedSheetId) ? (
+                {usingLocalLeague ? (
+                  <Link
+                    href={withDevMode(
+                      `/schedules/print?league=${encodeURIComponent(localLeagueFilename(selectedSheetId))}`,
+                      devMode
+                    )}
+                    className="inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  >
+                    Print team schedules
+                  </Link>
+                ) : selectedSheetId ? (
                   <Link
                     href={`/create-league?templateId=${encodeURIComponent(selectedSheetId)}`}
                     className="inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"

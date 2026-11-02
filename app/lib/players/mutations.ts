@@ -287,6 +287,32 @@ export async function updatePlayer(
 
   await db.update(players).set(updates).where(eq(players.id, playerId))
 
+  const sensitivePatch: {
+    skillLevel?: number | null
+    skillLevelFib?: number | null
+    skillAreas?: SkillAreas | null
+    hasStrongPersonality?: boolean
+    strongPersonalityNotes?: string | null
+  } = {}
+  if (patch.skillLevel !== undefined) sensitivePatch.skillLevel = patch.skillLevel
+  if (patch.skillLevelFib !== undefined) sensitivePatch.skillLevelFib = patch.skillLevelFib
+  if (patch.skillAreas !== undefined) {
+    sensitivePatch.skillAreas =
+      patch.skillAreas === null
+        ? null
+        : mergeSkillAreasPatch(before.skillAreas, patch.skillAreas)
+  }
+  if (patch.hasStrongPersonality !== undefined) {
+    sensitivePatch.hasStrongPersonality = patch.hasStrongPersonality
+  }
+  if (patch.strongPersonalityNotes !== undefined) {
+    sensitivePatch.strongPersonalityNotes = updates.strongPersonalityNotes ?? null
+  }
+  if (Object.keys(sensitivePatch).length > 0) {
+    const { upsertOfficialSkillBundle } = await import('@/app/lib/sensitive/player-data')
+    await upsertOfficialSkillBundle(playerId, sensitivePatch)
+  }
+
   const after = await getPlayerSnapshot(playerId)
   await writePlayerChange({
     playerId,

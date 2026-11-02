@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "bash scripts/with-bdl-git-auth.sh"
+  "installCommand": "bash scripts/with-bdl-git-auth.sh",
+  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
 }

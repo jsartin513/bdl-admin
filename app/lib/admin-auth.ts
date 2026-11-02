@@ -11,7 +11,6 @@ export {
   ADMIN_OAUTH_STATE_COOKIE,
   ADMIN_SESSION_TTL_SECONDS,
   adminUnauthorizedResponse,
-  alertWatchedAdminLoginAttempt,
   clearAdminOAuthStateCookie,
   clearAdminSessionCookie,
   createAdminSessionToken,
@@ -27,6 +26,8 @@ export {
   setAdminOAuthStateCookie,
   setAdminSessionCookie,
 } from '@bdl/admin-auth'
+
+export { alertWatchedAdminLoginAttempt } from '@/app/lib/outbound/watched-login-alert'
 
 const ADMIN_SESSION_TTL_SECONDS = 60 * 60 * 12
 

@@ -1,5 +1,7 @@
 # Players DB + Google admin auth
 
+See [docs/setup-and-capabilities.md](../docs/setup-and-capabilities.md) for a feature matrix (what works without Twilio, Drive, etc.) and full local setup. **Twilio, Resend, Drive, Blob, and publish setup:** [docs/integrations-setup.md](../docs/integrations-setup.md).
+
 ## Environment variables
 
 Add these to `.env.local` (local) and Vercel project env (Production / Preview):
@@ -15,24 +17,35 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000   # no trailing slash; must match the 
 # Neon Postgres (also auto-provisioned via `vercel integration add neon`)
 DATABASE_URL=postgresql://...
 
-# Contact players (email via Resend; SMS/WhatsApp via Twilio)
+# Contact players (email via Resend; SMS/WhatsApp via Twilio — see docs/integrations-setup.md)
 RESEND_API_KEY=
 CONTACT_EMAIL_FROM="BDL Events <events@bostondodgeballleague.com>"
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_MESSAGING_SERVICE_SID=          # preferred over a raw from-number
-TWILIO_FROM_NUMBER=                    # fallback SMS from (E.164)
-TWILIO_WHATSAPP_FROM=whatsapp:+1...    # WhatsApp sender if not using Messaging Service alone
-TWILIO_WA_TEMPLATE_EVENT_REMINDER=HX…  # Twilio Content SIDs
-TWILIO_WA_TEMPLATE_SCHEDULE_CHANGE=HX…
-TWILIO_WA_TEMPLATE_ANNOUNCEMENT=HX…
+# TWILIO_* — full Twilio + webhook setup: docs/integrations-setup.md
 # CONTACT_DRY_RUN=1                    # log sends without calling providers
-# TWILIO_SKIP_SIGNATURE_VALIDATE=1     # local webhook testing only
+
+# Cross-post composer → public website (same PUBLISH_API_SECRET on bdl-admin + bdl-website)
+# PUBLISH_API_SECRET=
+# WEBSITE_PUBLISH_URL=https://www.bostondodgeballleague.com/api/internal/publish
+# PUBLIC_WEBSITE_URL=https://www.bostondodgeballleague.com
 ```
 
 Copy `ADMIN_ALLOWED_EMAILS` from bdl-merch so the same board members can sign in.
 
-On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, and Open Gym share one login. Preview hosts and localhost stay host-only.
+## Board admin SSO
+
+Cross-app login on `*.bostondodgeballleague.com` uses signed cookies from `@bdl/admin-auth`:
+
+| Environment | Cookie name | Domain | Secret |
+|-------------|-------------|--------|--------|
+| Production | `admin_session` | `.bostondodgeballleague.com` | Production `ADMIN_SESSION_SECRET` (same on all prod apps) |
+| Stable preview | `admin_session_preview` | `.bostondodgeballleague.com` | Preview `ADMIN_SESSION_SECRET` (same on all preview apps; **different** from Production) |
+| Local / PR `*.vercel.app` | `admin_session` | host-only | local or preview env as configured |
+
+Preview and production both use the parent domain, but **different cookie names** so logging into preview does not grant production (and preview logout does not clear production sessions). After one Google sign-in on `admin-preview`, open Merch, Open Gym, Concessions, and Site Builder on their stable preview hosts without signing in again.
+
+Package pin: `@bdl/admin-auth` from [`bdl-packages`](https://github.com/jsartin513/bdl-packages) (`admin-auth/AGENTS.md`).
+
+On production `*.bostondodgeballleague.com` hosts, `admin_session` is set with `Domain=.bostondodgeballleague.com` so League Admin, Merch, Open Gym, Concessions, and Site Builder share one login.
 
 | Environment | Host | Git branch | `NEXT_PUBLIC_APP_URL` |
 |-------------|------|------------|------------------------|
@@ -46,8 +59,8 @@ Auth env for the stable preview host is scoped to the **`preview`** Git branch i
 
 1. Open feature PRs against **`preview`** (not `main`).
 2. Merge to `preview` → Vercel deploys `admin-preview.bostondodgeballleague.com`.
-3. CI **Preview smoke** waits for that deploy and checks `/login`, `/players`, and `/events` respond (auth redirect or 200). You can also run `npm run smoke:preview` locally.
-4. After preview looks good, open **`preview` → `main`**. The **Main merge gate** requires the head branch to be `preview` and re-checks that stable preview is healthy.
+3. Confirm the preview deploy. You can run `npm run smoke:preview` locally. CI **Preview smoke** (`smoke`) runs on the release PR and waits for `/login`, `/players`, and `/events`.
+4. After preview looks good, open **`preview` → `main`**. **Main merge gate** (`from-preview`) requires the head branch to be `preview`. **Preview smoke** is the health check on that PR.
 5. Merge to `main` → production at `admin.bostondodgeballleague.com`.
 
 If `preview` has fallen behind `main`, fast-forward or merge `main` into `preview` before landing new work there.
@@ -65,13 +78,19 @@ If `preview` has fallen behind `main`, fast-forward or merge `main` into `previe
 
 1. Provision Neon (Vercel Marketplace → Neon) and set `DATABASE_URL` for
    **Production** and **Preview** (available at build time).
-2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). Deploys apply
-   them automatically: `npm run build` runs `db:migrate:deploy` before
-   `next build` whenever `DATABASE_URL` is set.
-3. Locally (or if you need to migrate without a full build):
+2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). `npm run build`
+   runs `db:check-migrations` (journal ↔ SQL files, no database), then
+   `db:migrate:deploy` before `next build` whenever `DATABASE_URL` is set.
+3. **Every** SQL file must be listed in [`drizzle/meta/_journal.json`](../drizzle/meta/_journal.json)
+   or deploy will never apply it (prod can then 500 on missing columns). Use
+   `npm run db:generate` when possible; see
+   [drizzle-migrations-runbook.md](./drizzle-migrations-runbook.md) for the
+   checklist and debugging `column does not exist` after a schema PR.
+4. Locally (or if you need to migrate without a full build):
 
 ```bash
 npm run db:migrate
+npm run db:check-migrations   # SQL files ↔ journal tags
 ```
 
 `db:migrate:deploy` skips cleanly when `DATABASE_URL` is unset (CI builds).
@@ -101,7 +120,8 @@ Admins can email / SMS / WhatsApp cohorts from **Players** (Contact filtered… 
 - Audience: explicit `playerIds`, or filters (`homeLeague`, `eventId`, search, skill). Local BDL ≈ `homeLeague=boston_dodgeball_league`.
 - Email uses Resend + `player_emails`. SMS/WhatsApp need `player_phones` + opt-in prefs; TeamLinkt import maps Phone columns.
 - Jobs/recipients are stored in `contact_jobs` / `contact_job_recipients` (migration `0021_contact_players`).
-- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging`.
+- **Outbox** (`/outbox`, top nav): unified log in `outbound_messages` for contact email/SMS/WhatsApp plus operational email (video merge notify, watched login alerts). **Failed** for email means Resend rejected the API call; SMS/WhatsApp can move to failed/delivered via Twilio callbacks. Email accepted by Resend stays `sent` until a future Resend webhook.
+- Configure Twilio status callback / inbound webhook to `NEXT_PUBLIC_APP_URL/api/webhooks/twilio/messaging` (step-by-step: [docs/integrations-setup.md](../docs/integrations-setup.md)).
 
 ## Players
 

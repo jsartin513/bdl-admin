@@ -20,6 +20,8 @@ import {
 } from '@/app/lib/contact/whatsapp-templates'
 import type { ParsedContactJobRequest } from '@/app/lib/contact/parse'
 import type { ContactChannel } from '@/app/lib/contact/types'
+import { logContactRecipientsToOutbound } from '@/app/lib/outbound/contact-log'
+import { updateOutboundMessageByProviderId } from '@/app/lib/outbound/log'
 
 /** Inline send runs in the request cycle; keep campaigns small to avoid timeouts. */
 export const DEFAULT_CONTACT_MAX_RECIPIENTS = 50
@@ -280,6 +282,8 @@ async function processContactJob(
     .from(contactJobRecipients)
     .where(eq(contactJobRecipients.jobId, jobId))
 
+  await logContactRecipientsToOutbound(job, finalRecipients)
+
   const anySent = finalRecipients.some(
     (r) => r.status === 'sent' || r.status === 'delivered' || r.status === 'queued'
   )
@@ -378,6 +382,12 @@ export async function updateRecipientStatusByProviderId(opts: {
       updatedAt: new Date(),
     })
     .where(eq(contactJobRecipients.id, existing.id))
+
+  await updateOutboundMessageByProviderId({
+    providerMessageId: opts.providerMessageId,
+    status: opts.status,
+    errorMessage: opts.errorMessage,
+  })
 
   return existing
 }
