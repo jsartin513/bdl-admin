@@ -35,10 +35,8 @@ export async function alertWatchedAdminLoginAttempt(
   ].join('\n')
 
   log.error('auth.watched_login', {
-    message: `watched login attempt by ${normalized}`,
+    message: `watched login attempt by ${normalized} (${details.app}, allowed=${details.allowed})`,
     route: 'admin-login',
-    allowed: details.allowed,
-    sourceApp: details.app,
   })
 
   const apiKey = process.env.RESEND_API_KEY?.trim()

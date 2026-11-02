@@ -40,7 +40,7 @@ export async function GET() {
   if (!res.ok) {
     const body = await res.text()
     log.error('api.failed', {
-      message: 'drive_api_error',
+      message: body ? `drive_api_error: ${body.slice(0, 300)}` : 'drive_api_error',
       route: 'drive-folder',
       status: res.status,
     })
