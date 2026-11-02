@@ -1,10 +1,15 @@
 name: Preview smoke
 
-# Release PR (preview → main): confirm stable preview /login, /players, /events
-# respond after Vercel deploy. Manual re-run via workflow_dispatch.
+# Single release-PR smoke check (preview → main). Confirms stable preview
+# /login, /players, and /events after the Vercel deploy. Manual re-run via
+# workflow_dispatch. Main merge gate only checks that the head branch is preview.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +18,7 @@ concurrency:
 
 jobs:
   smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

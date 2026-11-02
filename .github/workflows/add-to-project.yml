@@ -1,16 +1,40 @@
 name: Add to BDL project
 
+# issues and pull_request_target run the workflow file on the default branch.
+# That branch is main, not preview, so edits here do nothing until a
+# preview → main promotion.
+
 permissions: {}
 
 on:
   issues:
-    types: [opened, labeled, reopened]
+    types: [opened]
   pull_request_target:
-    types: [opened, labeled, reopened]
+    types: [opened]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+concurrency:
+  group: add-to-project-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   add:
+    # The action only adds items that already have a priority label. Skip the
+    # runner when the opened issue or PR has none. GitHub cannot filter the
+    # `labeled` event by label name, so late labels are not a trigger.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'P0') ||
+      contains(github.event.issue.labels.*.name, 'P1') ||
+      contains(github.event.issue.labels.*.name, 'P2') ||
+      contains(github.event.issue.labels.*.name, 'P3') ||
+      contains(github.event.pull_request.labels.*.name, 'P0') ||
+      contains(github.event.pull_request.labels.*.name, 'P1') ||
+      contains(github.event.pull_request.labels.*.name, 'P2') ||
+      contains(github.event.pull_request.labels.*.name, 'P3')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     steps:
       - uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0

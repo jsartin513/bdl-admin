@@ -1,7 +1,10 @@
 name: Deploy video-merge worker
 
-# Production Fly worker. Only deploys when worker sources change on main
-# (after preview → main promote). Does not deploy the Vercel admin app.
+# Production Fly worker. Deploys when worker sources change on main, after a
+# preview → main promote. This is the production deploy, so it stays on push
+# to main rather than pull_request. GitHub rejects paths and paths-ignore on
+# the same event; the paths filter below is already narrower than a markdown
+# ignore. Does not deploy the Vercel admin app.
 on:
   push:
     branches: [main]
@@ -10,9 +13,14 @@ on:
       - '.github/workflows/deploy-video-merge-worker.yml'
   workflow_dispatch:
 
+concurrency:
+  group: deploy-video-merge-worker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: workers/video-merge
