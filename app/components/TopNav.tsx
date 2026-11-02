@@ -7,10 +7,30 @@ import { useDevMode } from '@/app/hooks/useDevMode'
 import { withDevMode } from '@/app/lib/devMode'
 import { fetchAdminSession, logoutAdminSession } from '@/app/lib/admin-client-auth'
 import BoardAppsMenu from '@/app/components/BoardAppsMenu'
+import {
+  NavHintButton,
+  NavHintLink,
+  type NavHint,
+} from '@/app/components/NavHintLink'
+import { ThemeToggle } from '@/app/components/ThemeToggle'
 import { Tooltip } from '@/app/components/ui'
 import type { AdminNotificationRecord } from '@/app/lib/video-tools/types'
+import {
+  inProgressNavEntries,
+  navEntriesForGroup,
+  topLevelNavEntries,
+  type FeatureEntry,
+} from '@/app/lib/feature-maturity'
 
-function NavDropdown({ label, children }: { label: string; children: React.ReactNode }) {
+function NavDropdown({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint: NavHint
+  children: React.ReactNode
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const panelId = useId()
@@ -39,9 +59,10 @@ function NavDropdown({ label, children }: { label: string; children: React.React
 
   return (
     <div ref={ref} className="relative">
-      <button
-        ref={buttonRef}
-        type="button"
+      <NavHintButton
+        buttonRef={buttonRef}
+        title={hint.title}
+        description={hint.description}
         onClick={() => setOpen((v) => !v)}
         className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-expanded={open}
@@ -50,11 +71,11 @@ function NavDropdown({ label, children }: { label: string; children: React.React
         aria-label={`${label} menu`}
       >
         {label} ▾
-      </button>
+      </NavHintButton>
       {open && (
         <div
           id={panelId}
-          className="absolute left-0 mt-1 w-52 rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
+          className="absolute left-0 mt-1 w-56 rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
         >
           {children}
         </div>
@@ -65,6 +86,46 @@ function NavDropdown({ label, children }: { label: string; children: React.React
 
 function menuItemClassName() {
   return 'block px-3 py-2 text-sm text-gray-100 hover:bg-gray-600 focus-visible:bg-gray-600 focus-visible:outline-none'
+}
+
+function IncompleteLabel({ note }: { note?: string }) {
+  return (
+    <span
+      className="ml-1 text-xs italic text-gray-300/90"
+      title={
+        note ??
+        'This feature is still evolving. Expect rough edges or missing ops setup.'
+      }
+    >
+      Incomplete
+    </span>
+  )
+}
+
+function FeatureNavLink({
+  entry,
+  devMode,
+  className,
+}: {
+  entry: FeatureEntry
+  devMode: boolean
+  className: string
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <NavHintLink
+        href={withDevMode(entry.href, devMode)}
+        className={className}
+        title={entry.label}
+        description={entry.description}
+      >
+        {entry.label}
+      </NavHintLink>
+      {entry.maturity === 'incomplete' ? (
+        <IncompleteLabel note={entry.note} />
+      ) : null}
+    </span>
+  )
 }
 
 function NotificationsBell({
@@ -136,7 +197,9 @@ function NotificationsBell({
       setUnreadCount(Number(data.unreadCount) || 0)
       setNotifications((prev) =>
         prev.map((n) =>
-          n.id === id ? { ...n, readAt: data.notification?.readAt ?? new Date() } : n
+          n.id === id
+            ? { ...n, readAt: data.notification?.readAt ?? new Date() }
+            : n
         )
       )
     } catch {
@@ -194,10 +257,11 @@ function NotificationsBell({
         <div
           id={panelId}
           className="absolute right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md bg-gray-700 py-1 shadow-lg ring-1 ring-gray-600 z-50"
-          role="menu"
         >
           <div className="flex items-center justify-between gap-2 border-b border-gray-600 px-3 py-2">
-            <span className="text-sm font-medium text-gray-100">Notifications</span>
+            <span className="text-sm font-medium text-gray-100">
+              Notifications
+            </span>
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -209,7 +273,9 @@ function NotificationsBell({
             )}
           </div>
           {notifications.length === 0 ? (
-            <p className="px-3 py-4 text-sm text-gray-300">No notifications yet.</p>
+            <p className="px-3 py-4 text-sm text-gray-300">
+              No notifications yet.
+            </p>
           ) : (
             <ul className="max-h-80 overflow-y-auto">
               {notifications.map((n) => {
@@ -230,7 +296,10 @@ function NotificationsBell({
                   </>
                 )
                 return (
-                  <li key={n.id} className="border-b border-gray-600 last:border-0">
+                  <li
+                    key={n.id}
+                    className="border-b border-gray-600 last:border-0"
+                  >
                     {href ? (
                       <Link
                         href={href}
@@ -287,81 +356,105 @@ export default function TopNav() {
     router.replace('/login')
   }
 
+  const leagueLinks = navEntriesForGroup('leagues', devMode)
+  const topLevelLinks = topLevelNavEntries(devMode)
+  const inProgressLinks = inProgressNavEntries(devMode)
+  const developerLinks = navEntriesForGroup('developer', devMode)
+
+  const topLinkClass =
+    'hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white'
+
   return (
     <nav
       aria-label="Main"
-      className="bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
+      className="admin-chrome bg-gray-800 text-blue-100 p-4 flex flex-wrap justify-between items-center gap-3"
     >
       <div className="flex flex-wrap space-x-4 items-center">
-        <NavDropdown label="Leagues">
-          <Link
-            href={withDevMode('/schedules', devMode)}
-            className={menuItemClassName()}
+        {leagueLinks.length > 0 ? (
+          <NavDropdown
+            label="Leagues"
+            hint={{
+              title: 'Leagues',
+              description:
+                'View or generate season schedule spreadsheets for the league.',
+            }}
           >
-            View Schedule
-          </Link>
-          <Link
-            href={withDevMode('/create-league', devMode)}
-            className={menuItemClassName()}
-          >
-            Create New Schedule
-          </Link>
-        </NavDropdown>
-        <Link
-          href={withDevMode('/open-gym', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Open Gym
-        </Link>
-        <Link
-          href={withDevMode('/players', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Player Management
-        </Link>
-        <Link
-          href={withDevMode('/events', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Events
-        </Link>
-        <Link
-          href={withDevMode('/video-tools', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Video Tools
-        </Link>
-        <Link
-          href={withDevMode('/non-bdl-events', devMode)}
-          className="hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          Non-BDL Events
-        </Link>
-        {devMode && (
-          <NavDropdown label="Developer">
-            <Link
-              href={withDevMode('/tournament', devMode)}
-              className={menuItemClassName()}
-            >
-              Tournament Audio
-            </Link>
-            <Link
-              href={withDevMode('/tournament/team-schedules', devMode)}
-              className={menuItemClassName()}
-            >
-              Team Schedules
-            </Link>
-            <Link
-              href={withDevMode('/tournament/scoresheets', devMode)}
-              className={menuItemClassName()}
-            >
-              Scoresheets
-            </Link>
+            {leagueLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
           </NavDropdown>
-        )}
+        ) : null}
+        {topLevelLinks.map((entry) => (
+          <FeatureNavLink
+            key={entry.id}
+            entry={entry}
+            devMode={devMode}
+            className={topLinkClass}
+          />
+        ))}
+        {inProgressLinks.length > 0 ? (
+          <NavDropdown
+            label="In progress"
+            hint={{
+              title: 'In progress',
+              description:
+                'Work-in-progress board tools that need extra setup or polish.',
+            }}
+          >
+            {inProgressLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
+          </NavDropdown>
+        ) : null}
+        {developerLinks.length > 0 ? (
+          <NavDropdown
+            label="Developer"
+            hint={{
+              title: 'Developer',
+              description:
+                'Internal utilities shown only while Dev mode is enabled.',
+            }}
+          >
+            {developerLinks.map((entry) => (
+              <FeatureNavLink
+                key={entry.id}
+                entry={entry}
+                devMode={devMode}
+                className={menuItemClassName()}
+              />
+            ))}
+          </NavDropdown>
+        ) : null}
       </div>
       <div className="flex items-center gap-4 text-sm">
+        <ThemeToggle />
         <NotificationsBell enabled={Boolean(email)} devMode={devMode} />
+        <NavHintLink
+          href={withDevMode('/whats-new', devMode)}
+          className={`${topLinkClass} text-blue-100`}
+          title="What's New"
+          description="Release notes for recent admin changes."
+        >
+          What&apos;s New
+        </NavHintLink>
+        <NavHintLink
+          href={withDevMode('/request-feature', devMode)}
+          className={`${topLinkClass} text-blue-100`}
+          title="Request a feature"
+          description="Suggest an improvement; opens a GitHub issue or prefilled form."
+        >
+          Request a feature
+        </NavHintLink>
         <BoardAppsMenu currentApp="admin" />
         {email ? (
           <>
@@ -373,7 +466,7 @@ export default function TopNav() {
                 Dev mode
                 <Tooltip
                   label="About Dev mode"
-                  content="Shows developer-only tools such as tournament audio and scoresheet generators."
+                  content="Shows developer-only tools and promotes in-progress board tools back to the top bar with Incomplete badges."
                 />
               </span>
               <input

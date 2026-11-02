@@ -7,6 +7,7 @@ import { createEvent } from '@/app/lib/events/mutations'
 import { listEvents } from '@/app/lib/events/queries'
 import {
   isValidBallType,
+  isValidEventFormat,
   isValidEventGender,
   isValidEventType,
 } from '@/app/lib/events/types'
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
       name?: string
       eventDate?: string
       eventType?: string | null
+      eventFormat?: string | null
       ballType?: string | null
       gender?: string | null
       notes?: string | null
@@ -50,6 +52,13 @@ export async function POST(request: NextRequest) {
       !isValidEventType(body.eventType)
     ) {
       return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
+    }
+    if (
+      body.eventFormat != null &&
+      body.eventFormat !== '' &&
+      !isValidEventFormat(body.eventFormat)
+    ) {
+      return NextResponse.json({ error: 'Invalid eventFormat' }, { status: 400 })
     }
     if (
       body.ballType != null &&
@@ -70,6 +79,7 @@ export async function POST(request: NextRequest) {
       name: body.name,
       eventDate: body.eventDate,
       eventType: body.eventType,
+      eventFormat: body.eventFormat,
       ballType: body.ballType,
       gender: body.gender,
       notes: body.notes,

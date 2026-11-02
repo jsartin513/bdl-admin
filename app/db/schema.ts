@@ -47,6 +47,10 @@ export const players = pgTable(
     mergedIntoPlayerId: uuid('merged_into_player_id'),
     hasStrongPersonality: boolean('has_strong_personality').notNull().default(false),
     strongPersonalityNotes: text('strong_personality_notes'),
+    /** Player self-reported skill (player app); operational only until sensitive split. */
+    selfReportedSkill: integer('self_reported_skill'),
+    /** Linked player-app account id (operational). */
+    playerAppAccountId: uuid('player_app_account_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -111,8 +115,10 @@ export const events = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     name: text('name').notNull(),
     eventDate: date('event_date').notNull(),
-    /** Canonical: tournament | open_gym | other */
+    /** Canonical: tournament | league | open_gym | other */
     eventType: text('event_type').notNull().default('tournament'),
+    /** Canonical: byot | remix | draft | null (unset; metadata only) */
+    eventFormat: text('event_format'),
     /** Canonical: foam | cloth */
     ballType: text('ball_type').notNull().default('foam'),
     /** Canonical: mixed | open | she_they */
@@ -120,16 +126,43 @@ export const events = pgTable(
     notes: text('notes'),
     /** When false, pair UI/behavior is disabled for the event */
     pairingEnabled: boolean('pairing_enabled').notNull().default(true),
+    /** Ordered team names; index i maps to draft group i + 1 */
+    teamNames: jsonb('team_names').$type<string[]>().notNull().default([]),
+    /** When true, draft-group assignment mutations are blocked */
+    teamsLocked: boolean('teams_locked').notNull().default(false),
+    /** Set on first finalize; enables DodgeballHub export. Not cleared on unlock. */
+    teamsFinalizedAt: timestamp('teams_finalized_at', { withTimezone: true }),
+    /** When true, event is exposed as a sellable product on the player app public catalog. */
+    publishedToPlayerApp: boolean('published_to_player_app').notNull().default(false),
+    /** Player-facing description (not board notes). */
+    publicDescription: text('public_description'),
+    /** Venue or address shown on registration. */
+    location: text('location'),
+    /** Optional end date for multi-session leagues (inclusive). */
+    eventEndDate: date('event_end_date'),
+    /** Human-readable schedule line, e.g. "Tuesdays 6:30–9:00 PM". */
+    sessionTimeLabel: text('session_time_label'),
+    /** Registration price in USD cents; null = TBD / contact. */
+    priceCents: integer('price_cents'),
+    /** Max registrants; null = unlimited / TBD. */
+    capacity: integer('capacity'),
+    registrationOpensAt: timestamp('registration_opens_at', { withTimezone: true }),
+    registrationClosesAt: timestamp('registration_closes_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('events_event_date_idx').on(table.eventDate)]
+  (table) => [
+    index('events_event_date_idx').on(table.eventDate),
+    index('events_published_to_player_app_idx').on(table.publishedToPlayerApp),
+  ]
 )
 
 export const importBatches = pgTable('import_batches', {
   id: uuid('id').defaultRandom().primaryKey(),
   filename: text('filename').notNull(),
   actor: text('actor').notNull(),
+  source: text('source').notNull().default('teamlinkt'),
+  csvText: text('csv_text'),
   rowCount: integer('row_count').notNull().default(0),
   summary: jsonb('summary').$type<Record<string, unknown>>().notNull().default({}),
   eventId: uuid('event_id').references(() => events.id, { onDelete: 'set null' }),
@@ -171,7 +204,12 @@ export const eventRegistrations = pgTable(
     /** Positive int draft bucket; null = unassigned */
     draftGroup: integer('draft_group'),
     isCaptain: boolean('is_captain').notNull().default(false),
-    /** Shared UUID links two registrations as a pair; null = unpaired */
+    /**
+     * When true, draftGroup cannot change via draft apply / bulk / promote / drag.
+     * Used for BYOT signup-team members. Admin override APIs can still change it.
+     */
+    teamLocked: boolean('team_locked').notNull().default(false),
+    /** Shared UUID links registrations as a free-agent group; null = ungrouped */
     pairId: uuid('pair_id'),
     importBatchId: uuid('import_batch_id').references(() => importBatches.id, {
       onDelete: 'set null',
@@ -204,6 +242,71 @@ export const eventDraftSnapshots = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('event_draft_snapshots_event_id_idx').on(table.eventId)]
+)
+
+export const eventLiveDrafts = pgTable(
+  'event_live_drafts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    /** setup | live | paused | complete */
+    status: text('status').notNull().default('setup'),
+    /** snake | linear | custom */
+    orderType: text('order_type').notNull().default('snake'),
+    teamOrder: jsonb('team_order').$type<number[]>().notNull().default([]),
+    customSlots: jsonb('custom_slots').$type<number[] | null>(),
+    pickSequence: jsonb('pick_sequence').$type<number[]>().notNull().default([]),
+    currentPickIndex: integer('current_pick_index').notNull().default(0),
+    rules: jsonb('rules')
+      .$type<{
+        minWomenNb: number
+        includeOtherInWomenNb: boolean
+        minIntermediate: number
+        intermediateMin: number
+        intermediateMax: number
+      }>()
+      .notNull()
+      .default({
+        minWomenNb: 3,
+        includeOtherInWomenNb: false,
+        minIntermediate: 2,
+        intermediateMin: 30,
+        intermediateMax: 50,
+      }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('event_live_drafts_event_id_uidx').on(table.eventId)]
+)
+
+export const eventLiveDraftPicks = pgTable(
+  'event_live_draft_picks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    liveDraftId: uuid('live_draft_id')
+      .notNull()
+      .references(() => eventLiveDrafts.id, { onDelete: 'cascade' }),
+    pickIndex: integer('pick_index').notNull(),
+    draftGroup: integer('draft_group').notNull(),
+    registrationId: uuid('registration_id').references(() => eventRegistrations.id, {
+      onDelete: 'set null',
+    }),
+    /** captain | board | skip */
+    pickedBy: text('picked_by').notNull(),
+    actor: text('actor').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('event_live_draft_picks_live_draft_pick_index_uidx').on(
+      table.liveDraftId,
+      table.pickIndex
+    ),
+    index('event_live_draft_picks_live_draft_id_idx').on(table.liveDraftId),
+  ]
 )
 
 /** External / travel events (not BDL-hosted). */
@@ -469,5 +572,195 @@ export const videoUploadClips = pgTable(
   (table) => [
     index('video_upload_clips_set_id_idx').on(table.setId),
     uniqueIndex('video_upload_clips_pathname_uidx').on(table.pathname),
+  ]
+)
+
+/** E.164 phone numbers for SMS / WhatsApp. */
+export const playerPhones = pgTable(
+  'player_phones',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    phoneE164: text('phone_e164').notNull(),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('player_phones_phone_e164_uidx').on(table.phoneE164)]
+)
+
+/** Per-player messaging consent / opt-out timestamps. */
+export const playerMessagingPrefs = pgTable('player_messaging_prefs', {
+  playerId: uuid('player_id')
+    .primaryKey()
+    .references(() => players.id, { onDelete: 'cascade' }),
+  emailOptOutAt: timestamp('email_opt_out_at', { withTimezone: true }),
+  smsOptInAt: timestamp('sms_opt_in_at', { withTimezone: true }),
+  smsOptOutAt: timestamp('sms_opt_out_at', { withTimezone: true }),
+  whatsappOptInAt: timestamp('whatsapp_opt_in_at', { withTimezone: true }),
+  whatsappOptOutAt: timestamp('whatsapp_opt_out_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * Admin outbound contact campaigns.
+ * channel: email | sms | whatsapp
+ * audience_type: filter | player_ids
+ * status: draft | sending | completed | failed | cancelled
+ */
+export const contactJobs = pgTable(
+  'contact_jobs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    createdByAdminEmail: text('created_by_admin_email').notNull(),
+    channel: text('channel').notNull(),
+    audienceType: text('audience_type').notNull(),
+    audienceSnapshot: jsonb('audience_snapshot')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    eventId: uuid('event_id').references(() => events.id, { onDelete: 'set null' }),
+    subject: text('subject'),
+    bodyText: text('body_text'),
+    bodyHtml: text('body_html'),
+    /** WhatsApp Content/Template SID */
+    templateSid: text('template_sid'),
+    /** WhatsApp template variable map */
+    templateVariables: jsonb('template_variables').$type<Record<string, string> | null>(),
+    status: text('status').notNull().default('draft'),
+    errorMessage: text('error_message'),
+    idempotencyKey: text('idempotency_key'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('contact_jobs_created_at_idx').on(table.createdAt),
+    index('contact_jobs_status_idx').on(table.status),
+    uniqueIndex('contact_jobs_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
+/**
+ * Per-recipient send log for a contact job.
+ * status: pending | skipped | queued | sent | delivered | failed | opted_out
+ */
+export const contactJobRecipients = pgTable(
+  'contact_job_recipients',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    jobId: uuid('job_id')
+      .notNull()
+      .references(() => contactJobs.id, { onDelete: 'cascade' }),
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    address: text('address'),
+    status: text('status').notNull().default('pending'),
+    skipReason: text('skip_reason'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('contact_job_recipients_job_id_idx').on(table.jobId),
+    index('contact_job_recipients_player_id_idx').on(table.playerId),
+    index('contact_job_recipients_provider_message_id_idx').on(table.providerMessageId),
+    uniqueIndex('contact_job_recipients_job_player_uidx').on(table.jobId, table.playerId),
+  ]
+)
+
+/**
+ * Unified outbound comms log (email, SMS, WhatsApp, operational email).
+ * status: skipped | sent | delivered | failed | opted_out
+ */
+export const outboundMessages = pgTable(
+  'outbound_messages',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    channel: text('channel').notNull(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    toAddress: text('to_address'),
+    subject: text('subject'),
+    provider: text('provider'),
+    providerMessageId: text('provider_message_id'),
+    errorMessage: text('error_message'),
+    skipReason: text('skip_reason'),
+    contactJobId: uuid('contact_job_id').references(() => contactJobs.id, {
+      onDelete: 'set null',
+    }),
+    playerId: uuid('player_id').references(() => players.id, { onDelete: 'set null' }),
+    createdByAdminEmail: text('created_by_admin_email'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('outbound_messages_created_at_idx').on(table.createdAt),
+    index('outbound_messages_status_idx').on(table.status),
+    index('outbound_messages_channel_idx').on(table.channel),
+    index('outbound_messages_provider_message_id_idx').on(table.providerMessageId),
+  ]
+)
+
+export const scheduledActions = pgTable(
+  'scheduled_actions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    createdByAdminEmail: text('created_by_admin_email').notNull(),
+    runAt: timestamp('run_at', { withTimezone: true }).notNull(),
+    timezone: text('timezone').notNull().default('America/New_York'),
+    actionType: text('action_type').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    status: text('status').notNull().default('scheduled'),
+    idempotencyKey: text('idempotency_key'),
+    errorMessage: text('error_message'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('scheduled_actions_status_run_at_idx').on(table.status, table.runAt),
+    uniqueIndex('scheduled_actions_idempotency_key_uidx').on(table.idempotencyKey),
+  ]
+)
+
+/** Cross-post composer drafts and published website + social tracking. */
+export const publishPosts = pgTable(
+  'publish_posts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    caption: text('caption').notNull().default(''),
+    mediaUrl: text('media_url'),
+    mediaType: text('media_type'),
+    includeOpenGymFlyer: boolean('include_open_gym_flyer').notNull().default(false),
+    includeSiteAlert: boolean('include_site_alert').notNull().default(false),
+    siteAlertKind: text('site_alert_kind'),
+    siteAlertStartsAt: timestamp('site_alert_starts_at', { withTimezone: true }),
+    siteAlertEndsAt: timestamp('site_alert_ends_at', { withTimezone: true }),
+    newsPublishAt: timestamp('news_publish_at', { withTimezone: true }),
+    includeNewsPost: boolean('include_news_post').notNull().default(false),
+    status: text('status').notNull().default('draft'),
+    scheduledActionId: uuid('scheduled_action_id').references(() => scheduledActions.id, {
+      onDelete: 'set null',
+    }),
+    websiteNewsPostId: uuid('website_news_post_id'),
+    websiteSiteAlertId: uuid('website_site_alert_id'),
+    websiteNewsSlug: text('website_news_slug'),
+    postedToInstagram: boolean('posted_to_instagram').notNull().default(false),
+    postedToYoutube: boolean('posted_to_youtube').notNull().default(false),
+    approvedBy: text('approved_by'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    publishError: text('publish_error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('publish_posts_status_idx').on(table.status),
+    index('publish_posts_created_at_idx').on(table.createdAt),
   ]
 )

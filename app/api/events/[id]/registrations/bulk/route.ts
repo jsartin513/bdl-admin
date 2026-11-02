@@ -20,6 +20,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
+    if (event.teamsLocked) {
+      return NextResponse.json(
+        { error: 'Teams are locked. Unlock to make changes.' },
+        { status: 400 }
+      )
+    }
+
     const body = (await request.json()) as {
       assignments?: Array<{ registrationId?: unknown; draftGroup?: unknown }>
     }
@@ -69,7 +76,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const status =
       message.startsWith('Registration not found')
         ? 404
-        : message.includes('draftGroup') || message.includes('registrationId')
+        : message.includes('draftGroup') ||
+            message.includes('registrationId') ||
+            message.includes('locked')
           ? 400
           : 500
     return NextResponse.json({ error: message }, { status })

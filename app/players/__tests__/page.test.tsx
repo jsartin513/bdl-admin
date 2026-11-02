@@ -23,6 +23,7 @@ function player(overrides: Partial<Record<string, unknown>> = {}) {
     genderGroupLabel: 'W/NB/O',
     photoUrl: null,
     primaryEmail: null,
+    primaryPhone: null,
     isMerged: false,
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
@@ -53,8 +54,10 @@ function playerSnapshot(overrides: Partial<Record<string, unknown>> = {}) {
     hasStrongPersonality: false,
     strongPersonalityNotes: null,
     emails: [],
+    phones: [],
     aliases: [],
     homeLeagues: [],
+    messagingPrefs: null,
     ...overrides,
   }
 }
@@ -445,7 +448,9 @@ describe('PlayersPage home leagues', () => {
 
     await screen.findByText('1 player')
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    expect(screen.getByText('Home leagues')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Fields' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Home leagues' }))
+    expect(screen.getByRole('heading', { name: 'Home leagues' })).toBeInTheDocument()
 
     await userEvent.selectOptions(
       screen.getByDisplayValue('Select home league'),
@@ -552,12 +557,73 @@ describe('PlayersPage tournament filters and columns', () => {
       ).toBe(true)
     })
 
+    const statusSelect = screen.getByLabelText(
+      'Filter by event registration status'
+    )
+    expect(statusSelect).toHaveValue('registered')
+    await userEvent.selectOptions(statusSelect, 'not_registered')
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map((call) => String(call[0]))
+      expect(
+        urls.some(
+          (url) =>
+            url.includes('eventId=11111111-1111-4111-8111-111111111111') &&
+            url.includes('eventMatch=not_registered')
+        )
+      ).toBe(true)
+    })
+
     await userEvent.selectOptions(screen.getByLabelText('Filter by home league'), 'unset')
 
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map((call) => String(call[0]))
       expect(urls.some((url) => url.includes('homeLeague=unset'))).toBe(true)
     })
+  })
+})
+
+describe('PlayersPage player app sync', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('calls player-sync and shows a summary message', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          applied: 3,
+          skipped: 1,
+          ambiguous: 0,
+          errors: [],
+          cursor: 'c1',
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ players: [player()] }))
+
+    render(<PlayersPage />)
+    await screen.findByText('1 player')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sync from player app' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/player-sync',
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+    expect(
+      await screen.findByText(/Player app sync: 3 applied, 1 skipped, 0 ambiguous/)
+    ).toBeInTheDocument()
   })
 })
 

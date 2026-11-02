@@ -3,15 +3,14 @@ import {
   adminUnauthorizedResponse,
   getAdminSessionFromRequest,
 } from '@/app/lib/admin-auth'
+import { parseEventUpdatePatch } from '@/app/lib/events/event-update-patch'
 import { deleteEvent, updateEvent } from '@/app/lib/events/mutations'
 import { getEvent } from '@/app/lib/events/queries'
 import {
   ballTypeLabel,
+  eventFormatLabel,
   eventGenderLabel,
   eventTypeLabel,
-  isValidBallType,
-  isValidEventGender,
-  isValidEventType,
 } from '@/app/lib/events/types'
 
 type RouteContext = { params: Promise<{ id: string }> }
@@ -30,6 +29,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },
@@ -46,53 +46,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params
-    const body = (await request.json()) as {
-      name?: string
-      eventDate?: string
-      eventType?: string | null
-      ballType?: string | null
-      gender?: string | null
-      notes?: string | null
-      pairingEnabled?: boolean
-    }
+    const body = await request.json()
+    const patch = parseEventUpdatePatch(body)
 
-    if (
-      body.eventType != null &&
-      body.eventType !== '' &&
-      !isValidEventType(body.eventType)
-    ) {
-      return NextResponse.json({ error: 'Invalid eventType' }, { status: 400 })
-    }
-    if (
-      body.ballType != null &&
-      body.ballType !== '' &&
-      !isValidBallType(body.ballType)
-    ) {
-      return NextResponse.json({ error: 'Invalid ballType' }, { status: 400 })
-    }
-    if (
-      body.gender != null &&
-      body.gender !== '' &&
-      !isValidEventGender(body.gender)
-    ) {
-      return NextResponse.json({ error: 'Invalid gender' }, { status: 400 })
-    }
-
-    if (
-      body.pairingEnabled !== undefined &&
-      typeof body.pairingEnabled !== 'boolean'
-    ) {
-      return NextResponse.json(
-        { error: 'pairingEnabled must be a boolean' },
-        { status: 400 }
-      )
-    }
-
-    const event = await updateEvent(id, body)
+    const event = await updateEvent(id, patch)
     return NextResponse.json({
       event: {
         ...event,
         eventTypeLabel: eventTypeLabel(event.eventType),
+        eventFormatLabel: eventFormatLabel(event.eventFormat),
         ballTypeLabel: ballTypeLabel(event.ballType),
         genderLabel: eventGenderLabel(event.gender),
       },

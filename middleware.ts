@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  ADMIN_SESSION_COOKIE,
+  getAdminSessionCookieName,
   readAdminSessionEdge,
 } from '@/app/lib/admin-session-edge'
 
@@ -15,7 +15,14 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/api/admin/logout') return true
   // Video Tools: Blob upload completion webhook + secret-gated worker APIs.
   if (pathname === '/api/video-tools/upload') return true
+  if (pathname === '/api/publish/upload') return true
   if (pathname.startsWith('/api/video-tools/worker/')) return true
+  // Twilio delivery status + inbound STOP (signature-validated in route).
+  if (pathname === '/api/webhooks/twilio/messaging') return true
+  if (pathname === '/api/cron/dispatch-scheduled') return true
+  if (pathname === '/api/cron/player-sync') return true
+  if (pathname.startsWith('/api/public/')) return true
+  if (pathname.startsWith('/api/internal/v1/')) return true
   return false
 }
 
@@ -26,7 +33,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const token = request.cookies.get(ADMIN_SESSION_COOKIE)?.value
+  const cookieName = getAdminSessionCookieName(request.nextUrl.hostname)
+  const token = request.cookies.get(cookieName)?.value
   const session = await readAdminSessionEdge(token)
 
   if (session) {

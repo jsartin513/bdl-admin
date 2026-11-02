@@ -14,7 +14,7 @@ export function FieldHelp({ children, id, className }: FieldHelpProps) {
   return (
     <p
       id={id}
-      className={`mt-1 text-xs text-gray-600 ${className ?? ''}`.trim()}
+      className={`mt-1 text-xs text-[var(--tm-muted,#4b5563)] ${className ?? ''}`.trim()}
     >
       {children}
     </p>

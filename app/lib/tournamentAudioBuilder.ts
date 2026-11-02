@@ -277,5 +277,5 @@ export async function buildTournamentMp3(
   onProgress?.('Done', 100);
   const out = await ffmpeg.readFile('output.mp3');
   const bytes = out instanceof Uint8Array ? out : new TextEncoder().encode(out as string);
-  return new Blob([bytes], { type: 'audio/mpeg' });
+  return new Blob([new Uint8Array(bytes)], { type: 'audio/mpeg' });
 }
