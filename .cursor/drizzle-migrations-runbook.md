@@ -1,6 +1,6 @@
 # Drizzle migrations (prevent / debug)
 
-Deploy applies pending migrations automatically: `npm run build` → `db:migrate:deploy` → `drizzle-kit migrate` when `DATABASE_URL` is set (see [`scripts/migrate-on-deploy.mjs`](../scripts/migrate-on-deploy.mjs)).
+`npm run build` starts with `db:check-migrations` (no database; reads `drizzle/*.sql` and the journal only), then `db:migrate:deploy` → `drizzle-kit migrate` when `DATABASE_URL` is set (see [`scripts/migrate-on-deploy.mjs`](../scripts/migrate-on-deploy.mjs)). Vercel and the existing Tests build step both run that script. There is no separate Actions job for the check.
 
 **Only journaled migrations run.** A SQL file under `drizzle/` that is missing from `drizzle/meta/_journal.json` is ignored forever. That is how prod can ship schema/code that expects a column the DB never got.
 
@@ -23,20 +23,7 @@ Deploy applies pending migrations automatically: `npm run build` → `db:migrate
 4. Before merging, verify locally:
 
    ```bash
-   # journal tags must match SQL basenames
-   node -e "
-   const j=require('./drizzle/meta/_journal.json');
-   const fs=require('fs');
-   const tags=new Set(j.entries.map(e=>e.tag));
-   const files=fs.readdirSync('drizzle').filter(f=>f.endsWith('.sql')).map(f=>f.replace(/\\.sql$/,''));
-   const unjournaled=files.filter(t=>!tags.has(t));
-   const missing=j.entries.map(e=>e.tag).filter(t=>!files.includes(t));
-   if (unjournaled.length||missing.length) {
-     console.error({unjournaled, missing});
-     process.exit(1);
-   }
-   console.log('ok', j.entries.length, 'migrations');
-   "
+   npm run db:check-migrations
    ```
 
 5. After merge: check the Vercel **Production** build log for `[db:migrate:deploy] Applying pending Drizzle migrations…` and no drizzle errors. Then hit an endpoint that reads the new column/table.

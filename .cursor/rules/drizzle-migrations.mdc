@@ -15,5 +15,5 @@ Deploy only applies migrations listed in `drizzle/meta/_journal.json` via `drizz
 - Prefer `npm run db:generate` after schema edits.
 - Never add a lone `drizzle/*.sql` without a matching journal `tag`.
 - Never reuse a numeric prefix already used by another migration file.
-- Run `npm run db:check-migrations` before finishing.
+- Run `npm run db:check-migrations` before finishing. `npm run build` runs it before migrate, including on Vercel.
 - If prod 500s with `column … does not exist` after a schema PR, follow `.cursor/drizzle-migrations-runbook.md`.

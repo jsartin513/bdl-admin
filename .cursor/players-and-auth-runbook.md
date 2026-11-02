@@ -78,9 +78,9 @@ If `preview` has fallen behind `main`, fast-forward or merge `main` into `previe
 
 1. Provision Neon (Vercel Marketplace → Neon) and set `DATABASE_URL` for
    **Production** and **Preview** (available at build time).
-2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). Deploys apply
-   them automatically: `npm run build` runs `db:migrate:deploy` before
-   `next build` whenever `DATABASE_URL` is set.
+2. Schema changes ship as SQL under [`drizzle/`](../drizzle/). `npm run build`
+   runs `db:check-migrations` (journal ↔ SQL files, no database), then
+   `db:migrate:deploy` before `next build` whenever `DATABASE_URL` is set.
 3. **Every** SQL file must be listed in [`drizzle/meta/_journal.json`](../drizzle/meta/_journal.json)
    or deploy will never apply it (prod can then 500 on missing columns). Use
    `npm run db:generate` when possible; see

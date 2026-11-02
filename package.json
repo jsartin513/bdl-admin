@@ -6,7 +6,7 @@
   "scripts": {
     "install:deps": "bash scripts/with-bdl-git-auth.sh",
     "dev": "next dev --turbopack",
-    "build": "npm run db:migrate:deploy && next build",
+    "build": "npm run db:check-migrations && npm run db:migrate:deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
