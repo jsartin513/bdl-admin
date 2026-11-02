@@ -102,7 +102,7 @@ Replace the placeholder bullet list with an accurate summary from `git log` / di
 
 ## Merge and post-ship
 
-1. Wait for CI on the PR: **Tests** (`npm run lint`, `npm run test:run`, `npm run build`) and **Main merge gate** (head must be `preview` + preview smoke).
+1. Wait for CI on the PR: **Tests** (`test`: lint, `npm run test:run`, `npm run build`), **Main merge gate** (`from-preview`: head must be `preview`), and **Preview smoke** (`smoke`). The merge gate no longer runs its own smoke.
 2. Merge when approved (user decides timing for live).
 3. **After production deploy (Vercel)**
    - Sign in at https://admin.bostondodgeballleague.com; confirm `/players` and `/events`.

@@ -1,90 +1,44 @@
 # BDL Admin — agent guide
 
-Next.js 15 (App Router) admin tools for the BDL board: players, events/drafts,
-league + tournament scheduling, a game timer, and video tools. Data lives in
-Neon Postgres via Drizzle ORM.
+Next.js 15 (App Router) admin for the BDL board: players, events/drafts,
+league and tournament scheduling, a game timer, and video tools. Data is
+Neon Postgres via Drizzle.
 
-## Cursor Cloud specific instructions
+## Branches and checks
 
-This repo uses a **preview-first** deploy flow. Production merges go `preview` → `main` only after preview is verified.
+- Feature and fix PRs target **`preview`**. Pass `base_branch: "preview"`.
+- Release PRs are **`preview` → `main`**, after the preview deploy is healthy.
+  **Main merge gate** (`from-preview`) rejects any other head. **Preview smoke**
+  (`smoke`) is the one release-PR health check.
+- GitHub's default branch is **`main`**. `issues` and `pull_request_target`
+  workflows (Add to BDL project) run from `main`, so a change on `preview`
+  does not affect them until promotion.
+- Install: `npm install` (or `bash scripts/with-bdl-git-auth.sh` when the
+  private `@bdl/*` git deps must resolve). Lint: `npm run lint`. Tests:
+  `npm run test:run`. Node 20+.
+- Private `@bdl/*` packages may not install on agent VMs. A missing packages
+  token is an environment limit.
+- Vercel's preview build is the real compile check for `preview` and `main`.
+  `vercel.json` `ignoreCommand` skips other branches and docs-only diffs.
+  CI on a ready feature PR still runs lint, tests, and `npm run build`,
+  because that is the pre-merge Next compile.
+- Open PRs as drafts. Mark them ready only when the work is done.
+- Do not request Copilot or Bugbot reviews on drafts, docs-only PRs, or
+  release PRs (`preview` → `main`).
+- Keep changes scoped. Avoid broad exploration. Do not use fast mode.
 
-### Pull requests (required)
+## Local facts
 
-- **Default base branch for new PRs: `preview`** (not `main`).
-- When creating or updating pull requests (`ManagePullRequest`, `gh pr create`, etc.), always pass **`base_branch: "preview"`** unless you are explicitly opening a production promotion PR (`preview` → `main`).
-- Feature and fix branches should merge into `preview` first. CI **Main merge gate** fails if a PR into `main` has any head branch other than `preview`.
+- `npm run dev` is Turbopack and 500s every route after a page imports
+  `@ffmpeg` (`/tournament`, `/video-tools`). Use `npx next dev` for those routes.
+- Dev middleware grants `dev@localhost`. No Google login locally.
+- The app talks to Neon over HTTP (`app/lib/db.ts`). `npm run build` skips
+  migrations when `DATABASE_URL` is unset. Lint, test, and build need no secrets.
+- Register half-baked UI in `app/lib/feature-maturity.ts` (`devOnly` or
+  `incomplete`). User-facing changes get a dated entry in
+  `app/changelog/entries.ts`.
 
-### Branches
-
-- Integration / preview deploy: `preview` → `admin-preview.bostondodgeballleague.com`
-- Production: `main` → `admin.bostondodgeballleague.com`
-- Cloud agent feature branches: `cursor/<descriptive-name>-4208` (or your topic branch), opened against **`preview`**.
-
-### More detail
-
-- [.cursor/git-pr-workflow.md](.cursor/git-pr-workflow.md)
-- [.github/pull_request_template.md](.github/pull_request_template.md)
-- CI / Actions quota: skill **`bdl-pr-checks`** (`~/.cursor/skills/bdl-pr-checks/SKILL.md`)
-
-The startup update script already runs `npm install`. Node 20+ is required
-(`package.json` `engines`); the VM's Node 22 works fine.
-
-Standard commands live in [`package.json`](package.json) `scripts` — use those
-(`npm run lint`, `npm run test:run`, `npm run build`). All three pass without any
-env vars or database. `npm run build` is safe with no DB: `db:migrate:deploy`
-skips cleanly when `DATABASE_URL` is unset.
-
-### Running the dev server (important, non-obvious)
-
-- `npm run dev` uses **`next dev --turbopack`**. Turbopack cannot resolve
-  `@ffmpeg/ffmpeg`'s dynamic worker import. The moment any page that imports
-  `@ffmpeg` is compiled (**`/tournament`** or **`/video-tools`**), Turbopack
-  enters a **global** compilation-error state and returns **HTTP 500 for every
-  route** until the dev server is restarted. Non-ffmpeg pages work until then.
-- **Workaround for full local coverage: run plain webpack dev — `npx next dev`**
-  (no `--turbopack`). It serves every route, including `/tournament` and
-  `/video-tools`, with no 500s. `npm run build` uses webpack and is unaffected.
-
-### Local auth is automatic
-
-In `next dev` (`NODE_ENV=development`), middleware auto-grants a `dev@localhost`
-admin session (see [`app/lib/admin-session-edge.ts`](app/lib/admin-session-edge.ts)),
-so **no Google OAuth or login is needed locally** — every route is reachable.
-
-### Database is Neon-serverless, not plain Postgres
-
-App runtime uses the **Neon serverless HTTP driver** (`neon()` in
-[`app/lib/db.ts`](app/lib/db.ts)), which talks to a real Neon HTTPS endpoint. A
-plain local Postgres over TCP will **not** work at runtime — DB-backed pages
-(`/players`, `/events`, drafts) need a real Neon `DATABASE_URL`. Note
-`drizzle-kit` migrations (`npm run db:migrate`) use node-postgres and *can*
-target any Postgres, but that only covers schema, not the running app.
-
-### Secrets needed only for specific features (all optional for lint/test/build/dev)
-
-- `DATABASE_URL` — Neon Postgres; enables `/players`, `/events`, draft snapshots.
-- `GOOGLE_DRIVE_API_KEY` + `GOOGLE_DRIVE_FOLDER_ID` — enables `/schedules` and
-  `/create-league` (they fetch Drive template/schedule files).
-- `BLOB_READ_WRITE_TOKEN` — Vercel Blob; enables tournament audio clips
-  (`/tournament` steps 2–3) and `/video-tools` uploads.
-- `GITHUB_FEATURE_REQUEST_TOKEN` — optional; in-app **Request a feature** creates
-  GitHub issues. Without it, the form falls back to a prefilled
-  `issues/new` URL.
-
-Without these, the pages still render but their data fetches fail. The fully
-self-contained feature that works with zero secrets is the **`/tournament`
-schedule + audio-cue generator** (reads the bundled `throwdown_5_schedule.csv`).
-
-### Board awareness (maturity + changelog)
-
-- Half-baked UI must be registered in [`app/lib/feature-maturity.ts`](app/lib/feature-maturity.ts)
-  as `devOnly` (hidden unless Dev mode / `?dev=1`) or `incomplete` (visible with
-  an Incomplete badge + page banner). Do not ship unmarked WIP in the main nav.
-- User-facing admin changes should add a dated entry to
-  [`app/changelog/entries.ts`](app/changelog/entries.ts) (shown on `/whats-new`).
-- When linking the player app from admin UI, register that surface as
-  `incomplete` until kickoff is finished.
-
-See also [docs/setup-and-capabilities.md](docs/setup-and-capabilities.md), [docs/integrations-setup.md](docs/integrations-setup.md) (Twilio and other services), [docs/scheduled-comms-design.md](docs/scheduled-comms-design.md) (scheduled sends), and [`.cursor/players-and-auth-runbook.md`](.cursor/players-and-auth-runbook.md).
-
-Timed-block / 2-court gym-night formats (5–8 teams, week byes, clock math): [`.cursor/timed-block-nights.md`](.cursor/timed-block-nights.md). Board paste: [`timed-block-league-nights.md`](timed-block-league-nights.md).
+More: [`.cursor/git-pr-workflow.md`](.cursor/git-pr-workflow.md),
+[`.github/pull_request_template.md`](.github/pull_request_template.md),
+[`docs/setup-and-capabilities.md`](docs/setup-and-capabilities.md).
+Timed-block nights: [`.cursor/timed-block-nights.md`](.cursor/timed-block-nights.md).

@@ -1,14 +1,24 @@
 name: Preview smoke
 
-# After merges land on preview, wait for the Vercel stable preview deploy
-# and confirm /login, /players, and /events respond (auth redirect or 200).
+# Single release-PR smoke check (preview → main). Confirms stable preview
+# /login, /players, and /events after the Vercel deploy. Manual re-run via
+# workflow_dispatch. Main merge gate only checks that the head branch is preview.
 on:
-  push:
-    branches: [preview]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}-preview-smoke
+  cancel-in-progress: true
 
 jobs:
   smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

@@ -2,17 +2,21 @@ name: Tests
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [preview, main]
-  push:
-    branches: [preview, main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   test:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -39,5 +43,8 @@ jobs:
       - name: Run tests
         run: npm run test:run
 
+      # Feature-branch refs are not built by Vercel (ignoreCommand skips
+      # every branch other than preview and main). npm run build is the
+      # pre-merge typecheck and Next compile; there is no separate tsc script.
       - name: Build project
         run: npm run build

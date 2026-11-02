@@ -516,7 +516,7 @@ export function ContactPlayersDialog(props: {
           <div className="space-y-3">
             <LiveMessage variant="status" className="text-sm text-green-700">
               {sendResult.job.status === 'scheduled'
-                ? `Scheduled (job ${sendResult.job.id}). See Scheduled in the top nav.`
+                ? `Scheduled (job ${sendResult.job.id}). Open Scheduled from the Incomplete menu in the nav.`
                 : `Job ${sendResult.job.status}. Sent: ${sendResult.counts.sent ?? 0}, failed: ${sendResult.counts.failed ?? 0}, skipped: ${sendResult.counts.skipped ?? 0}.`}
             </LiveMessage>
             {sendResult.job.errorMessage ? (

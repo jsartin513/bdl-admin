@@ -1,30 +1,32 @@
 name: Main merge gate
 
-# Production merges must come from the preview branch after preview is healthy.
+# Production merges must come from the preview branch.
+# Preview health is the single smoke job in preview-smoke.yml (job id: smoke).
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}-main-merge-gate
+  cancel-in-progress: true
 
 jobs:
   from-preview:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Require head branch is preview
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ "${{ github.head_ref }}" != "preview" ]; then
-            echo "::error::PRs into main must come from the preview branch (got '${{ github.head_ref }}'). Open feature PRs against preview, verify the preview deploy, then open preview → main."
+          if [ "$HEAD_REF" != "preview" ]; then
+            echo "::error::PRs into main must come from the preview branch (got '${HEAD_REF}'). Open feature PRs against preview, verify the preview deploy, then open preview → main."
             exit 1
           fi
           echo "Head branch is preview."
-
-  preview-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Confirm stable preview is healthy
-        env:
-          PREVIEW_BASE_URL: https://admin-preview.bostondodgeballleague.com
-        run: node scripts/smoke-preview.mjs
