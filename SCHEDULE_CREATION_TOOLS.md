@@ -35,6 +35,16 @@ Both approaches:
 ./create_new_league.sh "2027 Spring" "Athena" "Persephone" "Artemis" "Dionysus"
 ```
 
+### 1b. `create_five_team_teamref_league.py` — 5 teams, 2 courts, team refs
+**Single round-robin: each team plays each other once**
+
+```bash
+python3 create_five_team_teamref_league.py "public/league_schedules/Five Team Round Robin.xlsx" \
+  "Carbon Fiber" "Velocity Syndicate" "Hyperdrive" "High Octane" "Full Throttle"
+```
+
+Each night has 5 rounds on 2 courts. The bye team refs **both** courts (counts as 2 refs). Balance per team: **2 home, 2 away, 2 refs**.
+
 ### 2. `create_league_template.py` - Template Generator
 **Creates a blank league spreadsheet with proper structure**
 
