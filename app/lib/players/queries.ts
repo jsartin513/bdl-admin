@@ -6,6 +6,7 @@ import {
 } from '@/app/lib/sensitive/player-data'
 import {
   eventRegistrations,
+  events,
   playerAliases,
   playerEmails,
   playerHomeLeagues,
@@ -341,4 +342,38 @@ export async function findPlayerIdsByName(
       )
     )
   return rows.map((r) => r.id)
+}
+
+export type LastLeagueEventByPlayer = {
+  name: string
+  eventDate: string
+}
+
+/** Latest league registration per player (by events.event_date). */
+export async function getLastLeagueEventByPlayerIds(
+  playerIds: string[]
+): Promise<Map<string, LastLeagueEventByPlayer>> {
+  if (playerIds.length === 0) return new Map()
+
+  const db = getDb()
+  const rows = await db
+    .select({
+      playerId: eventRegistrations.playerId,
+      name: events.name,
+      eventDate: events.eventDate,
+    })
+    .from(eventRegistrations)
+    .innerJoin(events, eq(eventRegistrations.eventId, events.id))
+    .where(
+      and(inArray(eventRegistrations.playerId, playerIds), eq(events.eventType, 'league'))
+    )
+
+  const best = new Map<string, LastLeagueEventByPlayer>()
+  for (const row of rows) {
+    const existing = best.get(row.playerId)
+    if (!existing || row.eventDate > existing.eventDate) {
+      best.set(row.playerId, { name: row.name, eventDate: row.eventDate })
+    }
+  }
+  return best
 }
