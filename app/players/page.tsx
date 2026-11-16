@@ -576,22 +576,28 @@ export default function PlayersPage() {
   const [playerSyncBusy, setPlayerSyncBusy] = useState(false)
   const [playerSyncMessage, setPlayerSyncMessage] = useState<string | null>(null)
   const [playerSyncError, setPlayerSyncError] = useState<string | null>(null)
+  const [exportBusy, setExportBusy] = useState(false)
+
+  const buildPlayerListQueryParams = useCallback(() => {
+    const params = new URLSearchParams()
+    if (q.trim()) params.set('q', q.trim())
+    if (skillFilter) params.set('skill', skillFilter)
+    if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
+    if (eventFilter) {
+      params.set('eventId', eventFilter)
+      if (eventMatch === 'not_registered') {
+        params.set('eventMatch', 'not_registered')
+      }
+    }
+    if (includeMerged) params.set('includeMerged', '1')
+    return params
+  }, [q, skillFilter, homeLeagueFilter, eventFilter, eventMatch, includeMerged])
 
   const loadPlayers = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const params = new URLSearchParams()
-      if (q.trim()) params.set('q', q.trim())
-      if (skillFilter) params.set('skill', skillFilter)
-      if (homeLeagueFilter) params.set('homeLeague', homeLeagueFilter)
-      if (eventFilter) {
-        params.set('eventId', eventFilter)
-        if (eventMatch === 'not_registered') {
-          params.set('eventMatch', 'not_registered')
-        }
-      }
-      if (includeMerged) params.set('includeMerged', '1')
+      const params = buildPlayerListQueryParams()
       const res = await fetch(`/api/players?${params}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load players')
@@ -601,11 +607,38 @@ export default function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, skillFilter, homeLeagueFilter, eventFilter, eventMatch, includeMerged])
+  }, [buildPlayerListQueryParams])
 
   useEffect(() => {
     void loadPlayers()
   }, [loadPlayers])
+
+  const downloadPlayersCsv = async () => {
+    setExportBusy(true)
+    setFormError(null)
+    try {
+      const params = buildPlayerListQueryParams()
+      const res = await fetch(`/api/players/export?${params}`)
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error || 'Failed to export players')
+      }
+      const blob = await res.blob()
+      const disposition = res.headers.get('Content-Disposition')
+      const match = disposition?.match(/filename="([^"]+)"/)
+      const filename = match?.[1] ?? 'bdl-players.csv'
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to export players')
+    } finally {
+      setExportBusy(false)
+    }
+  }
 
   const runPlayerAppSync = async () => {
     setPlayerSyncBusy(true)
@@ -1319,6 +1352,14 @@ export default function PlayersPage() {
             className="rounded border border-sky-300 bg-white px-3 py-2 text-sm text-sky-900 hover:bg-sky-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             {playerSyncBusy ? 'Syncing player app…' : 'Sync from player app'}
+          </button>
+          <button
+            type="button"
+            disabled={exportBusy}
+            onClick={() => void downloadPlayersCsv()}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {exportBusy ? 'Exporting…' : 'Export CSV'}
           </button>
           <button
             type="button"

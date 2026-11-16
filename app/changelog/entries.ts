@@ -15,6 +15,13 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: '2026-11-14',
+    title: 'Export players as CSV',
+    summary:
+      'Players page has an Export CSV button that downloads the current filtered list (name, email, phone, skill, home leagues, and last league event) for use in other board tools.',
+    href: '/players',
+  },
+  {
     date: '2026-10-12',
     title: 'Clearer admin navigation',
     summary:
